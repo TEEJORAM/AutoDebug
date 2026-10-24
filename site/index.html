@@ -273,8 +273,8 @@ python3 -m venv .venv
       <tr><td><code>step</code></td><td>Over, into or out, up to 20 times, with the variables that changed</td></tr>
       <tr><td><code>continue</code></td><td>Runs to the next stop, or past other breakpoints to a chosen line</td></tr>
       <tr><td><code>trace</code></td><td>Runs to a line repeatedly and records each variable before and after it runs</td></tr>
-      <tr><td><code>inspect</code>, <code>stack</code></td><td>Local variables of a frame, and the call stack</td></tr>
-      <tr><td><code>breakpoints</code></td><td>Adds or removes breakpoints during the session</td></tr>
+      <tr><td><code>inspect</code>, <code>stack</code>, <code>threads</code></td><td>Variables, including nested paths such as <code>mesh.verts[2].co</code>, the call stack, and threads</td></tr>
+      <tr><td><code>breakpoints</code>, <code>exceptions</code></td><td>Source and function breakpoints, and exception filters</td></tr>
       <tr><td><code>wait</code>, <code>pause</code>, <code>stop_session</code></td><td>Follows, interrupts or ends the session</td></tr>
       <tr><td><code>write_report</code></td><td>Writes the root-cause report with a timeline of the session</td></tr>
     </tbody>
@@ -294,7 +294,8 @@ python3 -m venv .venv
     <li>One approval covers one debug session and exactly what the dialog showed.</li>
     <li>No expression evaluation and no changes to variables.</li>
     <li>Variables and output that look secret are redacted before the agent or the report sees them.</li>
-    <li>Only 127.0.0.1, with a random token. Breakpoint files must be inside the project.</li>
+    <li>Only 127.0.0.1, with a random token. Breakpoint files must be inside the project or a <code>source_folders</code> path. Remote hosts and <code>${input}</code> / <code>${command}</code> substitutions are refused. The dialog shows the launch configuration exactly as it will run.</li>
+    <li>Attach sessions detach when they end and the program keeps running. Launch sessions stop the program.</li>
     <li>What the agent reads may be sent to its model provider, as with any AI agent. Debug only code and data you are allowed to share with it.</li>
   </ul>
 

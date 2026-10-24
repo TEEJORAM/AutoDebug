@@ -65,7 +65,7 @@ class FakeExtension:
         self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.folder, 0o700)
         path = self.folder / f"{self.window}.json"
-        data = {"protocol": 2, "port": self.port, "token": self.token, "window": self.window, "ide": self.ide,
+        data = {"protocol": 3, "port": self.port, "token": self.token, "window": self.window, "ide": self.ide,
                 "folders": [self.workspace], "version": "0.2.0-fake", **overrides}
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -101,7 +101,7 @@ class FakeExtension:
             hello = json.loads(reader.readline() or b"{}")
             if hello.get("hello") != self.token:
                 return
-            conn.sendall(json.dumps({"hello": "ok", "protocol": 2, "window": self.window}).encode() + b"\n")
+            conn.sendall(json.dumps({"hello": "ok", "protocol": 3, "window": self.window}).encode() + b"\n")
             for line in reader:
                 message = json.loads(line)
                 conn.sendall(json.dumps(self._dispatch(message)).encode() + b"\n")

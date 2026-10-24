@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import bridges_folder, discover, state_folder
+from autodebug.connection import PROTOCOL, bridges_folder, discover, state_folder
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code"}
 PROMPT = ("Help me debug AutoDebugDemo: moving a shape changes its area. Use the autodebug tools to find the "
@@ -107,7 +107,7 @@ def _doctor(args: argparse.Namespace) -> int:
 
 def _old_protocol(path: Path) -> bool:
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("protocol") != 2
+        return json.loads(path.read_text(encoding="utf-8")).get("protocol") != PROTOCOL
     except (OSError, ValueError):
         return False
 

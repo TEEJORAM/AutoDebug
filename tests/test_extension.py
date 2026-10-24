@@ -3,6 +3,7 @@ real Python tools over the real protocol. Skipped without Node.js."""
 
 import json
 import os
+import sys
 import queue
 import shutil
 import subprocess
@@ -37,7 +38,8 @@ class HarnessTest(unittest.TestCase):
         (self.workspace / ".vscode" / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
         self.bridges = Path(tmp.name) / "state" / "bridges"
         env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers,
-                   HARNESS_EDITOR_BP=self.editor_bp)
+                   HARNESS_EDITOR_BP=self.editor_bp, HARNESS_LATE_BP=getattr(self, "late_bp", ""),
+                   HARNESS_BUILD_HANG=getattr(self, "build_hang", ""))
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -181,6 +183,99 @@ class Extension(HarnessTest):
         self.send("exit")
         self.node.wait(10)
         self.assertEqual(discover(self.bridges), [])
+
+
+class ApprovalDetail(HarnessTest):
+    def _launch(self, config, tasks=()):
+        folder = self.workspace / ".vscode"
+        launch = json.loads((folder / "launch.json").read_text(encoding="utf-8"))
+        launch["configurations"].append(config)
+        (folder / "launch.json").write_text(json.dumps(launch), encoding="utf-8")
+        if tasks:
+            task_file = json.loads((folder / "tasks.json").read_text(encoding="utf-8"))
+            task_file["tasks"].extend(tasks)
+            (folder / "tasks.json").write_text(json.dumps(task_file), encoding="utf-8")
+
+    def test_prelaunch_task_command_is_shown(self):
+        self._launch(
+            {"name": "With pre", "type": "debugpy", "request": "launch", "module": "unittest", "preLaunchTask": "build"},
+            [{"label": "configure", "type": "shell", "command": "cmake", "args": ["-S", ".", "-B", "build"]},
+             {"label": "build", "type": "shell", "command": "cmake", "args": ["--build", "build"], "dependsOn": "configure"}],
+        )
+        dialog = self.start(launch_configuration="With pre", breakpoints=[])
+        self.assertIn(
+            'Before the debugger starts (preLaunchTask): "build": cmake --build build (first: "configure": cmake -S . -B build)',
+            dialog["detail"],
+        )
+
+    def test_input_variable_and_remote_host_are_refused(self):
+        self._launch({"name": "Inputs", "type": "debugpy", "request": "launch", "program": "${input:x}"})
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Inputs", breakpoints=[], goal="x")
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("${input:x}", caught.exception.message)
+        self._launch({"name": "Remote", "type": "debugpy", "request": "launch", "program": "a.py", "host": "example.com"})
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Remote", breakpoints=[], goal="x")
+        self.assertIn("only programs on this computer", caught.exception.message)
+
+    def test_platform_block_is_applied(self):
+        self._launch({"name": "Platform", "type": "debugpy", "request": "launch", "program": "fallback.py",
+                      "linux": {"program": "linux.py"}, "windows": {"program": "win.py"}, "osx": {"program": "osx.py"}})
+        dialog = self.start(launch_configuration="Platform", breakpoints=[])
+        program = {"linux": "linux.py", "win32": "win.py", "darwin": "osx.py"}[sys.platform]
+        self.assertIn(f'"program": "{program}"', dialog["detail"])
+        for key in ("windows", "osx", "linux"):
+            self.assertNotIn(f'"{key}"', dialog["detail"])
+
+    def test_attach_dialog_and_detach(self):
+        self._launch({"name": "Attach py", "type": "debugpy", "request": "attach",
+                      "connect": {"host": "localhost", "port": 5678}})
+        dialog = self.start(launch_configuration="Attach py",
+                            breakpoints=[{"file": "geometry.py", "line": 15}])
+        self.assertIn('attach the debugger for "', dialog["message"])
+        self.assertIn("Attach to: the debugger listening on localhost:5678", dialog["detail"])
+        self.assertIn("the debugger detaches and the program keeps running", dialog["detail"])
+        self.send("approve")
+        self.assertEqual(self.debugger.wait(30)["status"], "paused")
+        self.debugger.stop_session()
+        self.assertIn('"terminateDebuggee":false', self.expect("DISCONNECT"))
+
+    def test_process_id_on_a_launch_configuration_is_refused(self):
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x", process_id=1234)
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("process_id is only for attach", caught.exception.message)
+
+
+class LateBreakpoint(HarnessTest):
+    late_bp = "1"
+
+    def test_unverified_breakpoint_binds_when_the_module_loads(self):
+        _, result = self.approved()
+        self.assertTrue(result["breakpoints"][0]["verified"])
+
+
+class NestedAndThreads(HarnessTest):
+    def test_paths_depth_and_child_redaction(self):
+        self.approved()
+        threads = self.debugger.threads()
+        self.assertEqual([item["name"] for item in threads["threads"]], ["main", "worker"])
+        point = self.debugger.inspect(names=["points[2]"], depth=1)["variables"][0]
+        self.assertEqual(point["value"], "(3, 2)")
+        coordinate = self.debugger.inspect(names=["mesh.verts[2].co"], depth=1)["variables"][0]
+        self.assertEqual(coordinate["value"], "(1, 2, 3)")
+        hidden = self.debugger.inspect(names=["credentials"], depth=1)["variables"][0]["children"][0]
+        self.assertEqual(hidden["name"], "note")
+        self.assertEqual(hidden["value"], "***REDACTED***")
+        self.assertNotIn("visible-child", json.dumps(hidden))
+
+
+class CursorCpp(HarnessTest):
+    def test_microsoft_cpp_debugger_is_refused_in_cursor(self):
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Debug C++ (gdb)", breakpoints=[], goal="x")
+        self.assertIn('("type": "lldb")', caught.exception.message)
 
 
 class EditorBreakpoint(HarnessTest):

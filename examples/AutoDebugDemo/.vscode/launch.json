@@ -17,6 +17,41 @@
       "args": ["-v"],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole"
+    },
+    {
+      "name": "Attach to Python (port 5678)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {"host": "localhost", "port": 5678}
+    },
+    {
+      "name": "Debug C++ (CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/cpp/geometry",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build C++",
+      "windows": {"program": "${workspaceFolder}/build/cpp/Debug/geometry.exe"}
+    },
+    {
+      "name": "Debug C++ (Visual Studio debugger)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/cpp/Debug/geometry.exe",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build C++"
+    },
+    {
+      "name": "Debug C++ (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/cpp/geometry",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "preLaunchTask": "build C++",
+      "windows": {"program": "${workspaceFolder}/build/cpp/Debug/geometry.exe"}
     }
   ]
 }

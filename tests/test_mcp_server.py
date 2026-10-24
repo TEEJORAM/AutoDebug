@@ -60,7 +60,7 @@ class Protocol(unittest.TestCase):
         self.assertIn("You cannot approve", init["instructions"])
         names = [t["name"] for t in replies[2]["result"]["tools"]]
         self.assertEqual(names, list(TOOLS))
-        self.assertEqual(len(names), 12)
+        self.assertEqual(len(names), 14)
         self.assertFalse({"evaluate", "evaluate_expression", "set_variable"} & set(names))
         self.assertEqual(replies[3]["result"], {})
         self.assertEqual(replies[4]["error"]["code"], -32601)

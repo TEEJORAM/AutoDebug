@@ -31,7 +31,11 @@ AutoDebug runs the program under the IDE's own debugger (VS Code or Cursor) so y
    program: call them one at a time, never in parallel with stack or inspect.
    Breakpoints with source "editor" were set by the developer and stop the program too.
 5. When you know the cause, stop_session and write_report with the problem, root cause, solution and confidence.
-Only report what tool results showed. Expression evaluation is not available."""
+Only report what tool results showed. Expression evaluation is not available.
+Attach: start_session with an attach configuration. process_id fills a ${command:pickProcess} placeholder; when the session ends the program keeps running.
+threads lists threads and can select one while paused. stack pages with start_frame (up to 200 frames). inspect depth 0-3 reads children; names can be paths such as mesh.verts[2].co (-> is the same as .).
+exceptions lists the debugger's exception filters and can enable them by id. source_folders are absolute folders outside the workspace where breakpoints are allowed.
+wait(ask_developer=...) shows the developer a note asking them to reproduce something in the GUI. That note is not an approval."""
 
 _FILE_LINE = {
     "type": "object",
@@ -63,30 +67,45 @@ TOOLS = {
             "goal": {"type": "string", "description": "One sentence: what you are trying to find out"},
             "workspace_folder": _FOLDER,
             "build_task": {"type": "string", "description": "A task label from .vscode/tasks.json to run first"},
-            "max_steps": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
-            "max_minutes": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+            "max_steps": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+            "max_minutes": {"type": "integer", "minimum": 1, "maximum": 480, "default": 30},
+            "build_minutes": {"type": "integer", "minimum": 1, "maximum": 600, "default": 30},
             "wait_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
+            "process_id": {"type": "integer", "minimum": 1, "description": "PID to attach to; replaces a ${command:…} processId or CodeLLDB pid"},
+            "source_folders": {"type": "array", "items": {"type": "string"}, "maxItems": 10,
+                               "description": "Absolute folders outside the workspace where breakpoints are allowed"},
+            "function_breakpoints": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
         }, ("launch_configuration", "breakpoints", "goal"))),
-    "wait": ("Wait until the session stops, ends or is answered (approval, build).",
-             _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30}})),
+    "wait": ("Wait until the session stops, ends or is answered (approval, build). ask_developer shows an information message; it is not an approval.",
+             _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
+                      "ask_developer": {"type": "string", "maxLength": 300}})),
     "step": ("Resumes the program (call alone). Step over, into or out of the current line, 1-20 times. Returns the "
-             "new location and every variable whose value changed.",
+             "new location and every variable whose value changed. wait_ms is how long to wait for the step (default 15000, max 60000).",
              _schema({"kind": {"type": "string", "enum": ["over", "into", "out"], "default": "over"},
-                      "count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1}})),
+                      "count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1},
+                      "wait_ms": {"type": "integer", "minimum": 0, "maximum": 60000, "default": 15000}})),
     "continue": ("Resumes the program (call alone). Run until the next breakpoint or the end and return where it "
                  "stopped. With until, run past other breakpoints to that line.",
                  _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
                           "until": _FILE_LINE})),
     "pause": ("Pause a running program where it is (for hangs and long loops).", _schema({})),
-    "inspect": ("Variables of a frame. Without names: every variable with a short value. With names: full values.",
+    "inspect": ("Variables of a frame. Without names: every variable with a short value. With names: full values. depth 0-3 expands children. Names may be paths like mesh.verts[2].co.",
                 _schema({"names": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
                          "frame_index": {"type": "integer", "minimum": 0, "default": 0,
-                                         "description": "0 is the current frame; see stack"}})),
-    "stack": ("The call stack, current frame first.",
-              _schema({"levels": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}})),
+                                         "description": "0 is the current frame; see stack"},
+                         "depth": {"type": "integer", "minimum": 0, "maximum": 3, "default": 0}})),
+    "stack": ("The call stack, current frame first. start_frame pages deeper frames. levels is at most 200.",
+              _schema({"levels": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
+                       "start_frame": {"type": "integer", "minimum": 0, "default": 0}})),
+    "threads": ("List threads. select switches the paused thread used by stack, inspect, step and continue.",
+                _schema({"select": {"type": "integer"}})),
+    "exceptions": ("List exception breakpoint filters. enable sets them by id.",
+                   _schema({"enable": {"type": "array", "items": {"type": "string"}, "maxItems": 20}})),
     "breakpoints": ("Add or remove breakpoints during the session; returns all of them and whether they are bound.",
                     _schema({"add": {"type": "array", "items": _FILE_LINE, "maxItems": 20},
-                             "remove": {"type": "array", "items": _FILE_LINE, "maxItems": 20}})),
+                             "remove": {"type": "array", "items": _FILE_LINE, "maxItems": 20},
+                             "add_functions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+                             "remove_functions": {"type": "array", "items": {"type": "string"}, "maxItems": 20}})),
     "trace": ("Resumes the program (call alone). Run to a line repeatedly; each row has the caller and every named "
               "variable as 'before → after' the line runs (one step per hit). Stops early at other breakpoints.",
               _schema({"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1},
