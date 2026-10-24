@@ -183,8 +183,8 @@ DESCRIPTIONS = {
     "autodebug_health": "Server status, backend mode and security-gate state.",
     "autodebug_probe_adapters": "Which debugger adapters exist on this machine and what they can do.",
     "autodebug_list_sessions": "Debug sessions AutoDebug currently controls.",
-    "autodebug_create_case": "Step 1. Open a case for one bug. target: host_id 'local-<os>', ide 'vscode' or 'cursor', "
-                             "debug_session_id null, pid null.",
+    "autodebug_create_case": "Step 1. Open a case for one bug. target: host_id 'local-<os>', ide 'cursor' when you run "
+                             "inside Cursor, otherwise 'vscode'; debug_session_id null, pid null.",
     "autodebug_stage_plan": "Step 2. Stage the plan: schema_version '0.3', absolute workspace_folder, "
                             "launch_configuration_name from .vscode/launch.json, optional build_task label, breakpoints "
                             "relative to the workspace, manual reproduction steps and limits. A different plan needs a new case.",
@@ -215,7 +215,8 @@ INSTRUCTIONS_DEMO = "Synthetic demo: case AUTODEBUG-DEMO is already armed. No to
 INSTRUCTIONS_BRIDGE = (
     "AutoDebug runs the IDE's own debugger (VS Code or Cursor) through the AutoDebug Bridge extension. Nothing runs "
     "until the developer clicks Approve in the IDE; you cannot approve. To debug a project: read the code yourself and "
-    "choose breakpoints on executable lines where the wrong value is computed; create a case; stage a schema 0.3 plan "
+    "choose breakpoints on executable lines where the wrong value is computed; create a case (target ide 'cursor' "
+    "inside Cursor, 'vscode' in VS Code); stage a schema 0.3 plan "
     "(launch configuration from .vscode/launch.json, policy max_operation_seconds 20); request approval and wait for "
     "it; run the build if the plan has build_task; arm; then repeat wait_for_stop, get_stack, list_variables, "
     "get_variables, step or continue until you understand the fault; finally complete the case with problem, root "
