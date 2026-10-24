@@ -1,9 +1,11 @@
 """Run the unittest suite in CI and surface failures as GitHub annotations,
 so failures are readable from the run summary without downloading logs."""
 
+import os
 import sys
 import unittest
 
+sys.path.insert(0, os.getcwd())  # same import roots as `python -m unittest`
 names = sys.argv[1:]
 loader = unittest.defaultTestLoader
 suite = loader.loadTestsFromNames(names) if names else loader.discover("tests")
