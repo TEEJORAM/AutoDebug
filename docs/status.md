@@ -58,9 +58,12 @@ All tests use fake or mock backends.
 
 ## Next action
 
-Owner decides on the publication items and the repository's visibility. No
-further implementation is authorized until a new task is approved in
-`openspec/changes/autodebug-foundation/tasks.md`.
+Owner decides on the publication items and the repository's visibility.
+
+**Proposed, awaiting sign-off:** real debugging in VS Code and Cursor through an
+AutoDebug Bridge extension, with in-IDE approval, build, step and a project
+report ([ide-debug-bridge](../openspec/changes/ide-debug-bridge/proposal.md)).
+No code is written until task B0 there is signed off.
 
 ## Change log
 
