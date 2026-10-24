@@ -54,6 +54,7 @@ SCOPE_BUILD = "op:build"
 #: Longest single approval wait, so MCP tool calls return well within client timeouts.
 MAX_APPROVAL_WAIT = 30.0
 MAX_SELECTION = 50
+MAX_LISTED = 200
 STEP_KINDS = ("step_over", "step_in", "step_out")
 _LOG = logging.getLogger(__name__)
 P = ParamSpec("P")
@@ -888,6 +889,28 @@ class AutoDebugFacade:
             "variables": sanitize_output(sanitized),
             "unavailable_names": [sanitize_text(name) for name in selected_names if name not in raw],
         })
+
+    @_session_tool
+    def autodebug_list_variables(self, *, case_id: str, frame_id: str) -> dict:
+        """BR-07 — names and types of the variables in one frame, never values."""
+        ctx = self._lookup(case_id)
+        if not isinstance(frame_id, str) or not frame_id or len(frame_id) > 500:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="a bounded frame_id is required"))
+        if not hasattr(ctx.adapter, "list_variables"):
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.CAPABILITY_UNSUPPORTED, message="this debugger cannot list variable names"))
+        with self._exclusive(ctx):
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+            ctx.evidence_store.require_capacity(1)
+            self._ensure_inspecting(ctx)
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+            names = self._call(ctx, ctx.adapter.list_variables, ctx.session, frame_id)
+            self._recheck(ctx, ctx.approval, SCOPE_VARIABLES)
+            listed = self._call(ctx, sanitize_output, [{"name": n["name"], "type": n["type"]} for n in names[:MAX_LISTED]])
+            with ctx.state_lock:
+                self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+                self._record(ctx, "variables_listed", "names", ", ".join(item["name"] for item in listed),
+                             frame=f"frame:{frame_id}")
+        return _ok(case_id, {"variables": listed, "next": "read values with autodebug_get_variables"})
 
     @_session_tool
     def autodebug_step(self, *, case_id: str, approval: ApprovalRecord, kind: str) -> dict:

@@ -28,6 +28,7 @@ rules.
 | `autodebug_request_approval` | Approval | Bridge only (`BR-04`): resolve the staged schema 0.3 plan in the IDE and open the approval dialog there; never approves anything itself |
 | `autodebug_wait_for_approval` | Approval | Bridge only: wait at most 30 s for the developer's answer (`pending`, `approved`, `denied`, `expired`); the trusted host, not the tool, then issues the approval |
 | `autodebug_complete_case` (bridge) | Report | Also takes optional `problem`, `solution` and `verification`; writes the structured report (`BR-09`) and, when `report_to_workspace`, a copy to `<workspace>/autodebug-reports/<case-id>.md` returned as `report_file` |
+| `autodebug_list_variables` | Inspection | Bridge only (`BR-07`): names and types of the variables in one paused frame, never values; recorded as evidence |
 | `autodebug_run_build` | Approved build | Bridge only (`BR-05`): start the plan's `build_task` in the IDE after approval; `not_required` when the plan has none |
 | `autodebug_wait_for_build` | Approved build | Wait at most 30 s per call for the build; `BUILD_FAILED` ends the case without launching; exit code and the last 50 output lines are evidence |
 | `autodebug_cancel_case` | Control | Per `DE-09`: stop AutoDebug operations, interrupt pending waits, revoke approval scope, retain partial evidence; idempotent on repeat; does not implicitly terminate app/IDE |

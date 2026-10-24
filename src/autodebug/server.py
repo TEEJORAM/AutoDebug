@@ -177,6 +177,52 @@ def _check_limits(value: object, limits: dict) -> None:
 
 
 _CASE = {"case_id": str}
+
+#: What each tool does, in the order an investigation uses them (BR-10).
+DESCRIPTIONS = {
+    "autodebug_health": "Server status, backend mode and security-gate state.",
+    "autodebug_probe_adapters": "Which debugger adapters exist on this machine and what they can do.",
+    "autodebug_list_sessions": "Debug sessions AutoDebug currently controls.",
+    "autodebug_create_case": "Step 1. Open a case for one bug. target: host_id 'local-<os>', ide 'vscode' or 'cursor', "
+                             "debug_session_id null, pid null.",
+    "autodebug_stage_plan": "Step 2. Stage the plan: schema_version '0.3', absolute workspace_folder, "
+                            "launch_configuration_name from .vscode/launch.json, optional build_task label, breakpoints "
+                            "relative to the workspace, manual reproduction steps and limits. A different plan needs a new case.",
+    "autodebug_request_approval": "Step 3. Show the plan in the IDE's approval dialog. Tell the developer to answer it there. "
+                                  "Nothing runs before they click Approve.",
+    "autodebug_wait_for_approval": "Step 4. Wait up to 30 s for the developer's answer; call again while 'pending'.",
+    "autodebug_run_build": "Step 5 (only if the plan has build_task). Start the build task in the IDE.",
+    "autodebug_wait_for_build": "Wait up to 30 s for the build; call again while 'running'. BUILD_FAILED ends the case.",
+    "autodebug_arm_case": "Step 6. Set the plan's breakpoints and start the launch configuration under the debugger. "
+                          "Pass reviewed_configuration {} and process_running false for schema 0.3 plans.",
+    "autodebug_case_status": "Current case state, bound breakpoints and session.",
+    "autodebug_get_plan": "The staged plan and its digest.",
+    "autodebug_wait_for_stop": "Step 7. Wait for the program to stop; returns the reason and file:line. Call again after "
+                               "autodebug_continue.",
+    "autodebug_get_stack": "The call stack at the current stop, top frame first; frame values are frame_id for other tools.",
+    "autodebug_list_variables": "Names and types of the variables in one frame (no values).",
+    "autodebug_get_variables": "Values of named variables in one frame. Secret-looking values come back as ***REDACTED***.",
+    "autodebug_step": "Step over, into or out of the current line (step_over, step_in, step_out); returns the new "
+                      "file:line. Counts toward max_steps.",
+    "autodebug_continue": "Run to the next breakpoint; then call autodebug_wait_for_stop.",
+    "autodebug_complete_case": "Step 8. Finish with problem, root_cause_statement, solution, verification, confidence, the "
+                               "evidence_ids you collected and reproduced. 'confirmed' needs causal_validation. Returns "
+                               "report_file when the report was written into the project.",
+    "autodebug_cancel_case": "Stop the case, end the debug session and keep the evidence collected so far.",
+}
+
+INSTRUCTIONS_DEMO = "Synthetic demo: case AUTODEBUG-DEMO is already armed. No tool issues approval or controls a real debugger."
+INSTRUCTIONS_BRIDGE = (
+    "AutoDebug runs the IDE's own debugger (VS Code or Cursor) through the AutoDebug Bridge extension. Nothing runs "
+    "until the developer clicks Approve in the IDE; you cannot approve. To debug a project: read the code yourself and "
+    "choose breakpoints on executable lines where the wrong value is computed; create a case; stage a schema 0.3 plan "
+    "(launch configuration from .vscode/launch.json, policy max_operation_seconds 20); request approval and wait for "
+    "it; run the build if the plan has build_task; arm; then repeat wait_for_stop, get_stack, list_variables, "
+    "get_variables, step or continue until you understand the fault; finally complete the case with problem, root "
+    "cause, solution, verification and the evidence IDs, and tell the developer where report_file is. Never say an "
+    "approval, stop or step happened unless a tool result says so. Expression evaluation is not available."
+)
+
 TOOLS = {
     "autodebug_health": _Tool({}),
     "autodebug_probe_adapters": _Tool({}),
@@ -217,6 +263,7 @@ TOOLS = {
         {**_CASE, "timeout_seconds": float},
         limits={"timeout_seconds": {"exclusiveMinimum": 0, "maximum": MAX_APPROVAL_WAIT}},
     ),
+    "autodebug_list_variables": _Tool({**_CASE, "frame_id": str}),
     "autodebug_run_build": _Tool(_CASE),
     "autodebug_wait_for_build": _Tool(
         {**_CASE, "timeout_seconds": float},
@@ -244,6 +291,7 @@ class ToolDispatcher:
         self.adapter = adapter
         self._adapter_factory = adapter_factory
         self._bridge_broker = bridge_broker
+        self.instructions = INSTRUCTIONS_BRIDGE if adapter_factory is not None else INSTRUCTIONS_DEMO
         self.capability_report = capability_report
         self.adapter_probes = adapter_probes
         self._local_approvals = dict(local_approvals or {})
@@ -254,7 +302,7 @@ class ToolDispatcher:
             properties = {key: _schema(value) | tool.limits.get(key, {}) for key, value in tool.parameters.items()}
             result.append({
                 "name": name,
-                "description": name.removeprefix("autodebug_").replace("_", " ") + " (fake-only gateway)",
+                "description": DESCRIPTIONS[name],
                 "inputSchema": _object_schema(properties, [k for k in tool.parameters if k not in tool.optional]),
             })
         return result
@@ -495,7 +543,7 @@ class StdioServer:
                 self._result(request_id, {
                     "protocolVersion": PROTOCOL_VERSION, "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "autodebug", "version": SERVER_VERSION},
-                    "instructions": "Fake-only gateway. No tool issues approval or controls a real debugger.",
+                    "instructions": self.dispatcher.instructions,
                 })
         elif method == "ping":
             if params.keys() - {"_meta"}:

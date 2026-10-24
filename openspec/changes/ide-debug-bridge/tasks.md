@@ -39,7 +39,11 @@ requirement IDs, tests and the observed test result.
   `solution` and `verification` on `autodebug_complete_case`.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 606, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B7 — MCP instructions and tool descriptions; `list_variables` (BR-07, BR-10).
+- [x] B7 — MCP instructions and tool descriptions; `list_variables` (BR-07, BR-10).
+  Per-tool descriptions in workflow order, mode-specific `instructions`,
+  `autodebug_list_variables`, CLI help describes bridge mode.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 608, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B8 — Bridge extension and `autodebug bridge install` (BR-01, BR-12).
 - [ ] B9 — AutoDebugDemo: plan 0.3; manual run on Windows VS Code; ledger entry
   (BR-11). **Phase 1 done.**
