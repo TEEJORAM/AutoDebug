@@ -46,6 +46,7 @@ class Debugger:
         self.version = 0
         self.timeline: list[Event] = []
         self.plan: dict = {}
+        self.sessions = 0
         self._last_status: str | None = None
         self._last_build: dict | None = None
 
@@ -172,11 +173,13 @@ class Debugger:
             self.connection.close()
             self.connection = None
             raise
-        self.version, self.timeline, self._last_status, self._last_build = 0, [], None, None
+        # The timeline runs until the next report, so it covers every session behind it.
+        self.version, self._last_status, self._last_build = 0, None, None
+        self.sessions += 1
         self.folder = workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
         self.plan = {"goal": goal, "launch": launch_configuration, "task": build_task,
                      "breakpoints": [f"{b.get('file')}:{b.get('line')}" for b in breakpoints], "ide": window.ide}
-        self._log("asked", "", f"the developer to approve running {launch_configuration!r}"
+        self._log(f"session {self.sessions}", "", f"asked the developer to approve running {launch_configuration!r}"
                   + (f" after building {build_task!r}" if build_task else ""))
         self._state(raw)
         return self._state(self._wait(min(max(wait_seconds, 0), 55)))
@@ -314,6 +317,7 @@ class Debugger:
             how_confirmed=how_confirmed, verification=verification, open_questions=list(open_questions or []),
             plan=self.plan, timeline=list(self.timeline),
         ))
+        self.timeline, self.sessions = [], 0
         return {"report_file": str(path), "next": "Tell the developer where the report is and summarize it."}
 
     def close(self) -> None:
