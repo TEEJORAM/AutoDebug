@@ -17,13 +17,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from autodebug.adapters.base import CORE_OPERATIONS, BaseAdapter, CapabilityReport
+from autodebug.approvals import BRIDGE_BACKEND_KIND
 from autodebug.bridge.client import BRIDGE_IDES, BridgeConnection, ConnectionInfo, discover, select
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.models import BRIDGE_SCHEMA_VERSION, CapabilityState, CasePlan, SessionRef, StopSnapshot, TargetRef
 from autodebug.plans import resolve_inputs
 from autodebug.workflow import BreakpointBindingResult
 
-BACKEND_KIND = "vscode-bridge"
+BACKEND_KIND = BRIDGE_BACKEND_KIND
 #: Extra operation the facade's stop verification needs.
 _OPERATIONS = (*CORE_OPERATIONS, "get_stop")
 _STEP_OPS = {"step_over": "next", "step_in": "stepIn", "step_out": "stepOut"}
@@ -55,6 +56,7 @@ class VSCodeBridgeAdapter(BaseAdapter):
         self._connection: BridgeConnection | None = None
         self._plan: CasePlan | None = None
         self._approval_id: str | None = None
+        self._approved_digest: str | None = None
         self._sessions: dict[str, SessionRef] = {}
         self._session_numbers = itertools.count(1)
 
@@ -73,6 +75,15 @@ class VSCodeBridgeAdapter(BaseAdapter):
         )
 
     # -- plan and approval (used by the facade's approval tools) ------------
+
+    @property
+    def approved(self) -> bool:
+        """Whether the bridge reported the developer's Approve click."""
+        return self._approval_id is not None
+
+    @property
+    def approved_digest(self) -> str | None:
+        return self._approved_digest
 
     @property
     def window_id(self) -> str | None:
@@ -153,6 +164,7 @@ class VSCodeBridgeAdapter(BaseAdapter):
             if type(approval_id) is not str or not approval_id:
                 raise _fail(ErrorCode.BACKEND_UNAVAILABLE, "the bridge approved without an approval ID")
             self._approval_id = approval_id
+            self._approved_digest = self._plan.digest_sha256
         return status
 
     # -- debugger operations ----------------------------------------------

@@ -21,8 +21,14 @@ requirement IDs, tests and the observed test result.
   `StopSnapshot.location`.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 580, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B4 — Bridge-issued approval, allowlist entry, new approval tools
-  (BR-04, BR-12 allowlist part).
+- [x] B4 — Bridge-issued approval, allowlist entry, new approval tools
+  (BR-04, BR-12 allowlist part). `approvals.APPROVED_BACKEND_KINDS`,
+  `bridge/approval.py` (trusted host issues the approval after the bridge
+  reports the click; the facade still never issues one),
+  `autodebug_request_approval`/`autodebug_wait_for_approval`, bridge mode for
+  plain `serve`, stop reason and location in results, step stops recorded.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 594, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B5 — Build step (BR-05).
 - [ ] B6 — Report sections and workspace export (BR-09).
 - [ ] B7 — MCP instructions and tool descriptions; `list_variables` (BR-07, BR-10).

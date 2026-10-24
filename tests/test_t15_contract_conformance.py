@@ -99,6 +99,8 @@ DOCUMENTED_FACADE_TOOLS = {
     "autodebug_continue",
     "autodebug_complete_case",
     "autodebug_cancel_case",
+    "autodebug_request_approval",
+    "autodebug_wait_for_approval",
 }
 
 

@@ -9,8 +9,9 @@ Trust boundary:
   records come from a separate trusted local process.
 - Arming goes exclusively through `approvals.authorize_and_arm`, never
   `Router.arm_target`.
-- `verify_approval` refuses every backend except the fake one, so real
-  debugger control stays disabled (T05 gate OPEN / NOT APPROVED).
+- `verify_approval` accepts only the reviewed backend allowlist: the fake
+  demo and the AutoDebug Bridge, whose approvals are issued here only after
+  the bridge reports the developer's click in the IDE (ide-debug-bridge BR-04).
 - Every privileged call re-checks cancellation, session identity, plan
   digest, approval and budgets before and after each backend call.
 """
@@ -31,10 +32,12 @@ from typing import ParamSpec, TypeVar
 
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker, authorize_and_arm
+from autodebug.bridge.approval import approval_summary
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.evidence import EvidenceStore, build_investigation_report, sanitize_observation, sanitize_output, sanitize_text, validate_case_id
-from autodebug.models import ApprovalRecord, CasePlan, CaseState, ExecutionConfidence, IntakeSource, RootCauseConfidence, SessionRef, StopSnapshot, TargetRef
+from autodebug.models import BRIDGE_SCHEMA_VERSION, ApprovalRecord, CasePlan, CaseState, ExecutionConfidence, IntakeSource, RootCauseConfidence, SessionRef, StopSnapshot, TargetRef
 from autodebug.operations import call_bounded
+from autodebug.plans import bind_resolved_inputs
 from autodebug.router import Router
 from autodebug.sessions import SessionLease, SessionRegistry
 from autodebug.workflow import INCOMPLETE_STATES, TERMINAL_STATES, Case
@@ -47,6 +50,9 @@ SCOPE_CONTINUE = "op:continue"
 SCOPE_WAIT = "op:wait_for_stop"
 SCOPE_STACK = "op:get_stack"
 SCOPE_VARIABLES = "op:get_variables"
+SCOPE_BUILD = "op:build"
+#: Longest single approval wait, so MCP tool calls return well within client timeouts.
+MAX_APPROVAL_WAIT = 30.0
 MAX_SELECTION = 50
 STEP_KINDS = ("step_over", "step_in", "step_out")
 _LOG = logging.getLogger(__name__)
@@ -121,6 +127,10 @@ class _CaseContext:
     operation_lock: threading.Lock = field(default_factory=threading.Lock)
     state_lock: threading.RLock = field(default_factory=threading.RLock)
     cancel_event: object = None  # threading.Event, injected by the facade
+    #: Bridge approval flow: the plan as staged (before resolved inputs) and
+    #: the open dialog request. The approval itself is issued by the host.
+    staged_plan: CasePlan | None = None
+    approval_request: str | None = None
 
 
 class AutoDebugFacade:
@@ -138,7 +148,9 @@ class AutoDebugFacade:
         sleep: Callable[[float], None] = time.sleep,
         event_factory: Callable[[], object] = threading.Event,
         poll_interval: float = 0.01,
+        backend_mode: str = "fake-only",
     ) -> None:
+        self._backend_mode = backend_mode
         self._registry = registry
         self._router = Router(registry)
         self._broker = broker
@@ -250,6 +262,21 @@ class AutoDebugFacade:
             process_start_id=ctx.session.process_start_id, plan_digest=ctx.case.approved_digest,
         )
 
+    def _record_stop(self, ctx: _CaseContext, stop: StopSnapshot) -> None:
+        if stop.stop_id not in ctx.recorded_stops:
+            value = f"{stop.reason} at {stop.location}" if stop.location else stop.reason
+            self._record(ctx, "stop_observed", "stop_reason", value)
+            ctx.recorded_stops.add(stop.stop_id)
+
+    @staticmethod
+    def _stop_result(ctx: _CaseContext, stop: StopSnapshot | None) -> dict:
+        result = {"state": ctx.case.state.value}
+        if stop is not None:
+            result["reason"] = sanitize_text(stop.reason)
+            if stop.location:
+                result["location"] = sanitize_text(stop.location)
+        return result
+
     def _disconnect(self, ctx: _CaseContext) -> None:
         with ctx.disconnect_lock:
             if ctx.session is None or ctx.disconnected or ctx.backend_active.is_set():
@@ -295,6 +322,8 @@ class AutoDebugFacade:
                     self._registry.release_owner(ctx.session, ctx)
                 if ctx.evidence_store is not None:
                     ctx.evidence_store.finalize(case_state=ctx.case.state.value, report=None)
+                if not ctx.backend_active.is_set():
+                    self._close_adapter(ctx)  # BR-08: end the IDE debug session too
 
     @contextmanager
     def _exclusive(self, ctx: _CaseContext) -> Iterator[None]:
@@ -373,7 +402,7 @@ class AutoDebugFacade:
         self._check_armed_target(ctx)
         self._verify_session(ctx)
         self._broker.verify_approval(
-            approval, plan=ctx.case.plan, backend_kind=ctx.adapter.ide_id,
+            approval, plan=ctx.case.plan, backend_kind=ctx.adapter.backend_kind,
             target_identity=target_identity_for(ctx.target), required_scope=SCOPE_ARM,
         )
         if self._now() - started >= ctx.case.plan.policy.max_inspection_seconds:
@@ -387,7 +416,7 @@ class AutoDebugFacade:
             self._broker.verify_approval(
                 approval,
                 plan=ctx.case.plan,
-                backend_kind=ctx.adapter.ide_id,
+                backend_kind=ctx.adapter.backend_kind,
                 target_identity=target_identity_for(ctx.target),
                 required_scope=required_scope,
             )
@@ -418,17 +447,111 @@ class AutoDebugFacade:
             except (OSError, ValueError):
                 _LOG.error("Evidence persistence failed during arming rollback")
 
+    def _close_adapter(self, ctx: _CaseContext) -> None:
+        """Release a per-case bridge connection once the case is over."""
+        close = getattr(ctx.adapter, "close", None)
+        if close is not None and ctx.case.state in TERMINAL_STATES:
+            try:
+                close()
+            except Exception:
+                _LOG.error("Adapter close failed")
+
+    def _bridge_call(self, ctx: _CaseContext, function: Callable[..., T], *args: object) -> T:
+        """Bounded call for the approval phase, before a session exists."""
+        def execute() -> T:
+            try:
+                return function(*args)
+            except AutoDebugError:
+                raise
+            except Exception:
+                _LOG.error("Bridge call raised an unexpected exception")
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.BACKEND_UNAVAILABLE, message="bridge operation failed")) from None
+        return call_bounded(execute, timeout=ctx.case.plan.policy.max_operation_seconds,
+                            cancellation=ctx.cancel_event, on_abandon=lambda: None)
+
+    def _approved_bridge_case(self, case_id: str) -> tuple[CasePlan, BaseAdapter, TargetRef] | None:
+        """For the trusted dispatcher only (never a tool): the case's plan,
+        adapter and target once the bridge has reported an Approve click."""
+        ctx = self._cases.get(case_id)
+        if ctx is None or not getattr(ctx.adapter, "approved", False) or ctx.case.state != CaseState.AWAITING_APPROVAL:
+            return None
+        return ctx.case.plan, ctx.adapter, ctx.target
+
+    # -- bridge approval tools (BR-04) ----------------------------------------
+
+    def autodebug_request_approval(self, *, case_id: str) -> dict:
+        """Resolve the staged schema 0.3 plan in the IDE and open the
+        approval dialog there. Only the developer's click approves."""
+        try:
+            ctx = self._lookup(case_id)
+            with SessionLease(ctx.operation_lock):
+                if not hasattr(ctx.adapter, "request_approval"):
+                    raise AutoDebugError(ErrorDetail(
+                        code=ErrorCode.CAPABILITY_UNSUPPORTED,
+                        message="this server has no IDE bridge; the demo case is already approved",
+                    ))
+                if ctx.case.state != CaseState.AWAITING_APPROVAL or ctx.adapter.approved:
+                    raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case is not awaiting approval"))
+                if ctx.case.plan.schema_version != BRIDGE_SCHEMA_VERSION:
+                    raise AutoDebugError(ErrorDetail(
+                        code=ErrorCode.CAPABILITY_UNSUPPORTED, message=f"the IDE bridge needs a schema {BRIDGE_SCHEMA_VERSION} plan",
+                    ))
+                if ctx.staged_plan is None:
+                    ctx.staged_plan = ctx.case.plan
+                inputs = self._bridge_call(ctx, ctx.adapter.resolve, ctx.staged_plan)
+                bound = bind_resolved_inputs(ctx.staged_plan, inputs)
+                ctx.case.bind_resolved_plan(bound)
+                ctx.adapter.bind(bound)
+                ctx.approval_request = self._bridge_call(ctx, ctx.adapter.request_approval, case_id, approval_summary(bound))
+        except AutoDebugError as exc:
+            return _err(case_id, exc.detail)
+        except ValueError as exc:
+            return _err(case_id, ErrorDetail(code=ErrorCode.PLAN_CHANGED, message=str(exc), recoverable=True))
+        return _ok(case_id, {
+            "status": "pending", "digest_sha256": bound.digest_sha256,
+            "message": f"Approve or deny the plan in the {ctx.adapter.ide_id} window, then call autodebug_wait_for_approval.",
+        })
+
+    def autodebug_wait_for_approval(self, *, case_id: str, timeout_seconds: float) -> dict:
+        """Wait up to `timeout_seconds` (at most 30) for the developer's answer.
+        `pending` is a normal result: call again."""
+        try:
+            ctx = self._lookup(case_id)
+            if not hasattr(ctx.adapter, "approval_status"):
+                raise AutoDebugError(ErrorDetail(
+                    code=ErrorCode.CAPABILITY_UNSUPPORTED, message="this server has no IDE bridge",
+                ))
+            if not _positive_finite(timeout_seconds) or timeout_seconds > MAX_APPROVAL_WAIT:
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="timeout_seconds must be in (0, 30]"))
+            if getattr(ctx.adapter, "approved", False):
+                return _ok(case_id, {"status": "approved", "next": "call autodebug_arm_case"})
+            if ctx.approval_request is None:
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="call autodebug_request_approval first"))
+            start = self._now()
+            while True:
+                if ctx.cancel_event.is_set():
+                    raise AutoDebugError(ErrorDetail(code=ErrorCode.CANCELLED, message="case was cancelled"))
+                with SessionLease(ctx.operation_lock):
+                    status = self._bridge_call(ctx, ctx.adapter.approval_status, ctx.approval_request)
+                    if status == "approved":
+                        return _ok(case_id, {"status": "approved", "next": "call autodebug_arm_case"})
+                    if status in ("denied", "expired"):
+                        ctx.approval_request = None
+                        return _ok(case_id, {"status": status, "next": "the plan was not approved; nothing ran"})
+                if self._now() - start >= timeout_seconds:
+                    return _ok(case_id, {"status": "pending", "next": "call autodebug_wait_for_approval again"})
+                self._sleep(min(0.25, timeout_seconds))
+        except AutoDebugError as exc:
+            return _err(case_id, exc.detail)
+
     # -- read-only tools ----------------------------------------------------
 
     def autodebug_health(self) -> dict:
-        return _ok(
-            None,
-            {
-                "status": "ok",
-                "backend_mode": "fake-only",
-                "security_gate": "OPEN / NOT APPROVED — real debugger control is disabled",
-            },
-        )
+        if self._backend_mode == "fake-only":
+            gate = "OPEN / NOT APPROVED — real debugger control is disabled"
+        else:
+            gate = "vscode-bridge approved 2026-10-24 — every case needs a click on Approve in the IDE"
+        return _ok(None, {"status": "ok", "backend_mode": self._backend_mode, "security_gate": gate})
 
     def autodebug_probe_adapters(self, *, adapters) -> dict:
         """Report capabilities for caller-supplied `(adapter, backend, host_os)`
@@ -517,7 +640,7 @@ class AutoDebugFacade:
                 if ctx.case.state != CaseState.AWAITING_APPROVAL:
                     raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case is not awaiting approval"))
                 self._broker.verify_approval(
-                    approval, plan=ctx.case.plan, backend_kind=ctx.adapter.ide_id,
+                    approval, plan=ctx.case.plan, backend_kind=ctx.adapter.backend_kind,
                     target_identity=target_identity_for(ctx.target), required_scope=SCOPE_ARM,
                 )
                 existing = self._registry.resolve(ctx.target)
@@ -604,10 +727,8 @@ class AutoDebugFacade:
                     ctx.stop = stop
                     with ctx.state_lock:
                         self._check_active(ctx, ctx.approval, SCOPE_WAIT)
-                        if stop.stop_id not in ctx.recorded_stops:
-                            self._record(ctx, "stop_observed", "stop_reason", stop.reason)
-                            ctx.recorded_stops.add(stop.stop_id)
-                    return _ok(case_id, {"state": ctx.case.state.value})
+                        self._record_stop(ctx, stop)
+                    return _ok(case_id, self._stop_result(ctx, stop))
             if self._now() - start >= timeout_seconds:
                 self._mark_incomplete(ctx)
                 raise AutoDebugError(ErrorDetail(code=ErrorCode.TIMEOUT, message="timed out waiting for a real pause event (DE-01)"))
@@ -695,8 +816,11 @@ class AutoDebugFacade:
             ctx.stop = stop
             if stop is None:
                 ctx.case.resume()
+            else:
+                with ctx.state_lock:
+                    self._record_stop(ctx, stop)
             self._check_active(ctx, approval, SCOPE_STEP)
-        return _ok(case_id, {"steps_taken": ctx.steps_taken})
+        return _ok(case_id, {"steps_taken": ctx.steps_taken, **self._stop_result(ctx, stop)})
 
     @_session_tool
     def autodebug_continue(self, *, case_id: str, approval: ApprovalRecord) -> dict:
@@ -785,6 +909,7 @@ class AutoDebugFacade:
                 if ctx.session is not None:
                     self._registry.release_owner(ctx.session, ctx)
                 self._broker.revoke_for_case(case_id)
+                self._close_adapter(ctx)
         except AutoDebugError as exc:
             return _err(case_id, exc.detail)
         except ValueError as exc:
@@ -826,4 +951,6 @@ class AutoDebugFacade:
         with ctx.state_lock:
             if ctx.session is not None:
                 self._registry.release_owner(ctx.session, ctx)
+        if not ctx.backend_active.is_set():
+            self._close_adapter(ctx)
         return _ok(case_id, {"state": ctx.case.state.value})

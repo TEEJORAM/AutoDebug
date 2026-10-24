@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import types
+from collections.abc import Callable
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -28,8 +29,10 @@ from typing import BinaryIO, Union, get_args, get_origin, get_type_hints
 from autodebug import __version__
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker
+from autodebug.bridge.approval import issue_bridge_approval
+from autodebug.errors import AutoDebugError
 from autodebug.facade import (
-    MAX_SELECTION, SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STACK, SCOPE_STEP, SCOPE_VARIABLES, SCOPE_WAIT, STEP_KINDS,
+    MAX_APPROVAL_WAIT, MAX_SELECTION, SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STACK, SCOPE_STEP, SCOPE_VARIABLES, SCOPE_WAIT, STEP_KINDS,
     AutoDebugFacade, target_identity_for,
 )
 from autodebug.models import (
@@ -208,6 +211,11 @@ TOOLS = {
         "uncertainties": tuple[str, ...], "next_steps": tuple[str, ...], "causal_validation": str | None,
     }, frozenset({"uncertainties", "next_steps", "causal_validation"})),
     "autodebug_cancel_case": _Tool(_CASE),
+    "autodebug_request_approval": _Tool(_CASE),
+    "autodebug_wait_for_approval": _Tool(
+        {**_CASE, "timeout_seconds": float},
+        limits={"timeout_seconds": {"exclusiveMinimum": 0, "maximum": MAX_APPROVAL_WAIT}},
+    ),
 }
 
 
@@ -223,9 +231,13 @@ class ToolDispatcher:
         self, facade: AutoDebugFacade, *, adapter: BaseAdapter,
         capability_report: CapabilityReport, adapter_probes: tuple = (),
         local_approvals: dict[str, ApprovalRecord] | None = None,
+        adapter_factory: Callable[[TargetRef], BaseAdapter] | None = None,
+        bridge_broker: ApprovalBroker | None = None,
     ) -> None:
         self.facade = facade
         self.adapter = adapter
+        self._adapter_factory = adapter_factory
+        self._bridge_broker = bridge_broker
         self.capability_report = capability_report
         self.adapter_probes = adapter_probes
         self._local_approvals = dict(local_approvals or {})
@@ -259,7 +271,15 @@ class ToolDispatcher:
         if name == "autodebug_probe_adapters":
             kwargs["adapters"] = self.adapter_probes
         if name == "autodebug_create_case":
-            kwargs["adapter"] = self.adapter
+            if self._adapter_factory is not None:
+                try:
+                    kwargs["adapter"] = self._adapter_factory(kwargs["target"])
+                except ValueError as exc:
+                    return {"ok": False, "case_id": kwargs["case_id"], "error": {
+                        "code": "CAPABILITY_UNSUPPORTED", "message": str(exc), "recoverable": True,
+                    }}
+            else:
+                kwargs["adapter"] = self.adapter
         if name in ("autodebug_arm_case", "autodebug_step", "autodebug_continue"):
             approval = self._local_approvals.get(kwargs["case_id"])
             if approval is None:
@@ -269,7 +289,29 @@ class ToolDispatcher:
             kwargs["approval"] = approval
         if name == "autodebug_arm_case":
             kwargs["capability_report"] = self.capability_report
-        return getattr(self.facade, name)(**kwargs)
+        result = getattr(self.facade, name)(**kwargs)
+        if name == "autodebug_wait_for_approval" and result.get("ok") and result["result"].get("status") == "approved":
+            self._issue_bridge_approval(kwargs["case_id"], result)
+        return result
+
+    def _issue_bridge_approval(self, case_id: str, result: dict) -> None:
+        """Trusted host step (BR-04): the bridge reported the developer's
+        click, so issue the local approval that arm/step/continue need."""
+        if self._bridge_broker is None or case_id in self._local_approvals:
+            return
+        approved = self.facade._approved_bridge_case(case_id)
+        if approved is None:
+            return
+        plan, adapter, target = approved
+        try:
+            self._local_approvals[case_id] = issue_bridge_approval(
+                self._bridge_broker, plan=plan, adapter=adapter, target=target,
+                target_identity=target_identity_for(target),
+            )
+        except AutoDebugError as exc:
+            result.update(ok=False, error={"code": exc.detail.code.value, "message": exc.detail.message,
+                                           "recoverable": True})
+            result.pop("result", None)
 
 
 @dataclass
@@ -522,15 +564,30 @@ class StdioServer:
                 thread.join(max(0, deadline - time.monotonic()))
 
 
-def build_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
-    """Wire the synthetic adapter, broker, registry and facade for the CLI.
-    With `demo`, seed and arm the fixed synthetic case locally."""
+def build_dispatcher(evidence_dir: Path, *, demo: bool, bridges_folder: Path | None = None) -> ToolDispatcher:
+    """Wire adapter, broker, registry and facade for the CLI.
+
+    With `demo`, seed and arm the fixed synthetic case locally. Otherwise,
+    with `bridges_folder`, each new case gets its own AutoDebug Bridge adapter
+    for the IDE it targets (ide-debug-bridge)."""
     from autodebug.synthetic import SyntheticAdapter
 
-    adapter = SyntheticAdapter()
     broker = ApprovalBroker(now=time.monotonic, make_token=lambda: secrets.token_urlsafe(32))
     registry = SessionRegistry()
+    if not demo and bridges_folder is not None:
+        from autodebug.adapters.vscode_bridge import VSCodeBridgeAdapter
+
+        def bridge_adapter(target: TargetRef) -> BaseAdapter:
+            return VSCodeBridgeAdapter(target.ide, bridges_folder)
+
+        facade = AutoDebugFacade(registry=registry, broker=broker, evidence_base_dir=evidence_dir,
+                                 backend_mode="vscode-bridge")
+        adapter = VSCodeBridgeAdapter("vscode", bridges_folder)
+        return ToolDispatcher(facade, adapter=adapter, capability_report=adapter.probe_capabilities(),
+                              adapter_probes=((adapter, None, None),), adapter_factory=bridge_adapter,
+                              bridge_broker=broker)
     facade = AutoDebugFacade(registry=registry, broker=broker, evidence_base_dir=evidence_dir)
+    adapter = SyntheticAdapter()
     report = adapter.probe_capabilities()
     approvals = {}
     if demo:

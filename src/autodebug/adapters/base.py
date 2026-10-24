@@ -85,6 +85,11 @@ class CapabilityReport:
 
 class BaseAdapter:
     ide_id: str = ""
+
+    @property
+    def backend_kind(self) -> str:
+        """What approvals are bound to; the IDE ID unless an adapter says otherwise."""
+        return self.ide_id
     supported_os: tuple[str, ...] = ()
     proof_task_id: str = ""
 

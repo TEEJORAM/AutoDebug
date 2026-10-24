@@ -25,6 +25,8 @@ rules.
 | `autodebug_step` | **Privileged** | STEP_OVER/IN/OUT; enforce approval scope and step budget |
 | `autodebug_continue` | **Privileged** | Resume within approved scope; explicit current target check |
 | `autodebug_complete_case` | Local write | Finish, persist JSONL + Markdown artifacts; no auto-Jira update |
+| `autodebug_request_approval` | Approval | Bridge only (`BR-04`): resolve the staged schema 0.3 plan in the IDE and open the approval dialog there; never approves anything itself |
+| `autodebug_wait_for_approval` | Approval | Bridge only: wait at most 30 s for the developer's answer (`pending`, `approved`, `denied`, `expired`); the trusted host, not the tool, then issues the approval |
 | `autodebug_cancel_case` | Control | Per `DE-09`: stop AutoDebug operations, interrupt pending waits, revoke approval scope, retain partial evidence; idempotent on repeat; does not implicitly terminate app/IDE |
 
 **Trust boundary:** `autodebug_stage_plan` is **not approval**, and no MCP tool lets the agent approve a plan. Approval must come from a separate trusted local CLI/UI controlled by the developer; that interface is not built yet (only the `--demo` fixture issues a synthetic approval).
