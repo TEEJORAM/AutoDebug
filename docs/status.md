@@ -32,12 +32,13 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 | Date | Environment | Command | Result |
 |---|---|---|---|
-| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 475 tests, OK |
-| 2026-10-24 | Linux, Python 3.10 (user machine VM) | same | 473 OK; 2 packaging tests need Python 3.11 (`tomllib`) |
-| 2026-10-24 (before cleanup) | macOS, Python 3.14.7 and 3.12.13 | same | 468 tests, OK |
+| 2026-10-24 | GitHub Actions run 40074228400 (commit `847c08a`): Ubuntu and macOS, Python 3.11 and 3.12 | full suite, `compileall`, whitespace check | all 4 jobs passed |
+| 2026-10-24 | GitHub Actions, same run: Windows, Python 3.11 and 3.12 | contract-only subset (evidence storage is POSIX-only) | both jobs passed |
+| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 481 tests, OK |
+| 2026-10-24 | Linux, Python 3.10 (user machine VM) | same | 481 tests, OK (2 packaging tests skipped: need 3.11) |
 
-Not yet run: Python 3.11, Windows, GitHub Actions. All tests use fake or mock
-backends.
+Not run: the full suite on Windows (it cannot pass until evidence storage
+supports Windows). All tests use fake or mock backends.
 
 ## Open blockers
 
@@ -61,6 +62,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — quick fixes.** `VisualStudioAdapter` defaults to host
+  `local-windows` (was `local-mac`); packaging tests skip below Python 3.11; CI
+  actions moved to v7 (Node 24); first green CI runs recorded above.
 - **2026-10-24 — readability pass.** Facade session tools share one error
   mapper and lock/recheck helpers; server tool bounds are declared once; task-
   history docstrings replaced; docs consolidated (see release notes).

@@ -4,6 +4,14 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — quick fixes
+
+- `VisualStudioAdapter` now defaults to host `local-windows` instead of
+  `local-mac`; every adapter's default can be overridden with `host_id=`.
+- Offline packaging tests skip with a clear reason below Python 3.11.
+- CI uses `actions/checkout@v7` and `actions/setup-python@v7`; first green runs
+  on Ubuntu/macOS (full suite) and Windows (contract subset), Python 3.11/3.12.
+
 ## 2026-10-24 — readability and cleanup
 
 - Five IDE adapters share one `ClientBackedAdapter`; adapter tests and fake
