@@ -22,6 +22,7 @@ from pathlib import Path
 from collections.abc import Iterator
 from typing import TextIO
 
+from autodebug import _winfs
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.models import SCHEMA_VERSION, EvidenceRecord, ExecutionConfidence, InvestigationReport, RootCauseConfidence
 
@@ -59,10 +60,44 @@ _SENSITIVE_VALUE_PATTERNS = (
 )
 
 
+_WINDOWS = os.name == "nt"
+
+
 def secure_storage_supported() -> bool:
-    """Whether this platform offers the descriptor-relative, no-follow opens
-    that `EvidenceStore` requires (Linux and macOS; not Windows)."""
+    """Whether `EvidenceStore` can guarantee safe storage here: POSIX
+    descriptor-relative no-follow opens, or the Windows handle-based backend."""
+    if _WINDOWS:
+        return _winfs.AVAILABLE
     return os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW")
+
+
+def make_private_dir(path: Path, *, exist_ok: bool = False) -> None:
+    """Create `path` (and missing parents) readable only by the current user:
+    mode 0700 on POSIX, a protected owner-only DACL on Windows."""
+    path = Path(path)
+    if _WINDOWS:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _winfs.create_private_directory(str(path), exist_ok=exist_ok)
+    else:
+        path.mkdir(mode=0o700, parents=True, exist_ok=exist_ok)
+
+
+def is_private_dir(path: Path) -> bool:
+    """Whether the existing directory `path` is private to the current user."""
+    if _WINDOWS:
+        return _winfs.is_private_directory(str(path))
+    info = Path(path).stat()
+    return info.st_uid == os.getuid() and not stat.S_IMODE(info.st_mode) & 0o077
+
+
+def is_link(path: Path) -> bool:
+    """Whether `path` is a symlink or (on Windows) a junction or other
+    reparse point."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def inside_source_checkout(path: Path) -> bool:
@@ -271,14 +306,15 @@ class EvidenceStore:
     caller-supplied; this class never picks a default location. It keeps
     each case directory inside a private base outside the source repository.
     A case directory is
-    exclusively created, never reopened as a new investigation. Platforms
-    without descriptor-relative no-follow opens fail closed.
+    exclusively created, never reopened as a new investigation. POSIX uses
+    descriptor-relative no-follow opens; Windows uses the equivalent
+    handle-based scheme in `_winfs`. Any other platform fails closed.
     """
 
     def __init__(self, base_dir: Path, case_id: str, *, max_events: int = DEFAULT_MAX_EVIDENCE_PER_CASE) -> None:
         validate_case_id(case_id)
         if not secure_storage_supported():
-            raise OSError("secure evidence persistence requires descriptor-relative no-follow opens")
+            raise OSError("secure evidence persistence is not available on this platform")
         if not isinstance(max_events, int) or isinstance(max_events, bool) or max_events < 1:
             raise ValueError("max_events must be a positive integer")
         self.case_id = case_id
@@ -288,8 +324,19 @@ class EvidenceStore:
         base_path = Path(base_dir).resolve()
         if inside_source_checkout(base_path):
             raise ValueError("evidence must be outside the source repository")
-        base_path.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.case_dir = base_path / case_id
+        if _WINDOWS:
+            make_private_dir(base_path, exist_ok=True)
+            self._directory_identity = _winfs.create_case_directory(str(base_path), case_id)
+        else:
+            self._create_case_directory_posix(base_path, case_id)
+        self.events_path = self.case_dir / "events.jsonl"
+        self.case_path = self.case_dir / "case.json"
+        self.report_path = self.case_dir / "report.md"
+        self._next_sequence = 1
+
+    def _create_case_directory_posix(self, base_path: Path, case_id: str) -> None:
+        base_path.mkdir(parents=True, exist_ok=True, mode=0o700)
         base_fd = os.open(base_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             base_info = os.fstat(base_fd)
@@ -309,14 +356,14 @@ class EvidenceStore:
                 os.close(directory_fd)
         finally:
             os.close(base_fd)
-        self.events_path = self.case_dir / "events.jsonl"
-        self.case_path = self.case_dir / "case.json"
-        self.report_path = self.case_dir / "report.md"
-        self._next_sequence = 1
 
     @contextmanager
     def _open_file(self, name: str, mode: str) -> Iterator[TextIO]:
         """Pin the original directory and reject symlinks/non-private files."""
+        if _WINDOWS:
+            with _winfs.open_artifact(str(self.case_dir), name, mode, self._directory_identity) as stream:
+                yield stream
+            return
         try:
             directory_fd = os.open(self.case_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         except FileNotFoundError as exc:

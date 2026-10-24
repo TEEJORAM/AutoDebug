@@ -27,7 +27,7 @@ from pathlib import Path
 
 from autodebug import __version__
 from autodebug.adapters import ALL_ADAPTERS
-from autodebug.evidence import inside_source_checkout, secure_storage_supported
+from autodebug.evidence import inside_source_checkout, is_link, is_private_dir, make_private_dir, secure_storage_supported
 from autodebug.models import CapabilityState
 
 PROG = "autodebug"
@@ -76,12 +76,14 @@ def create_run_dir(root: Path) -> Path:
     """Create a fresh private folder for one server run inside `root`."""
     if inside_source_checkout(root):
         raise ValueError(f"evidence directory must be outside the AutoDebug checkout: {root}")
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if root.is_symlink() or not root.is_dir():
-        raise ValueError(f"evidence directory is not a real directory: {root}")
+    if is_link(root):
+        raise ValueError(f"evidence directory is a link or junction, not a real directory: {root}")
+    make_private_dir(root, exist_ok=True)
+    if not root.is_dir():
+        raise ValueError(f"evidence directory is not a directory: {root}")
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     run_dir = root / f"run-{stamp}-{secrets.token_hex(3)}"
-    run_dir.mkdir(mode=0o700)
+    make_private_dir(run_dir)
     return run_dir
 
 
@@ -93,8 +95,7 @@ def _serve(args: argparse.Namespace) -> int:
 
     logging.basicConfig(stream=sys.stderr, level=args.log_level.upper(), format=f"{PROG}: %(levelname)s: %(message)s")
     if args.demo and not secure_storage_supported():
-        raise ValueError(f"--demo needs evidence storage, which is not supported on {platform.system()}; "
-                         "Windows support is not built yet; run the demo on Linux or macOS")
+        raise ValueError(f"--demo needs evidence storage, which is not available on {platform.system()}")
     run_dir = create_run_dir(resolve_evidence_dir(args.evidence_dir))
     dispatcher = build_dispatcher(run_dir, demo=args.demo)
     mode = "demo case AUTODEBUG-DEMO armed" if args.demo else "no approved cases"
@@ -119,16 +120,16 @@ class Check:
 def _evidence_check(root: Path) -> Check:
     if inside_source_checkout(root):
         return Check("fail", "Evidence folder", f"{root} is inside the AutoDebug checkout; choose another")
-    if root.is_symlink():
-        return Check("fail", "Evidence folder", f"{root} is a symlink; use a real directory")
+    if is_link(root):
+        return Check("fail", "Evidence folder", f"{root} is a link or junction; use a real directory")
     if root.exists():
         if not root.is_dir():
             return Check("fail", "Evidence folder", f"{root} is not a directory")
         if not os.access(root, os.W_OK | os.X_OK):
             return Check("fail", "Evidence folder", f"{root} is not writable")
-        info = root.stat()
-        if hasattr(os, "getuid") and (info.st_uid != os.getuid() or info.st_mode & 0o077):
-            return Check("warn", "Evidence folder", f"{root} is not private (run: chmod 700 '{root}')")
+        if secure_storage_supported() and not is_private_dir(root):
+            fix = "delete it and AutoDebug recreates it privately" if os.name == "nt" else f"run: chmod 700 '{root}'"
+            return Check("warn", "Evidence folder", f"{root} is not private ({fix})")
         return Check("ok", "Evidence folder", str(root))
     parent = root.parent
     while not parent.exists() and parent != parent.parent:
@@ -146,7 +147,7 @@ def run_checks(evidence_dir: Path) -> list[Check]:
         else Check("fail", "Python", f"{version}; AutoDebug needs 3.11 or newer"),
         Check("info", "Platform", f"{system} {platform.release()}"),
         Check("ok", "Evidence storage", "supported") if secure_storage_supported()
-        else Check("fail", "Evidence storage", f"not built for {system} yet; cases fail closed (demo runs on Linux or macOS)"),
+        else Check("fail", "Evidence storage", f"not available on {system}; cases fail closed"),
         _evidence_check(evidence_dir),
         Check("ok", "Demo debugger", "synthetic, ready for `serve --demo`"),
     ]
@@ -263,8 +264,8 @@ def _config(args: argparse.Namespace) -> int:
     print(output)
     _err(f"\n{PROG}: {where}")
     if not secure_storage_supported():
-        _err(f"{PROG}: warning: evidence storage is not supported on {platform.system()}; "
-             "the server starts but every case fails until Windows support is built.")
+        _err(f"{PROG}: warning: evidence storage is not available on {platform.system()}; "
+             "the server starts but every case fails.")
     return 0
 
 

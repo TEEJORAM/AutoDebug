@@ -77,13 +77,15 @@ class TestEvidenceLocation(_TempDir):
                     patch.dict(os.environ, dict(env), clear=True), patch.object(cli.Path, "home", return_value=home):
                 self.assertEqual(cli.default_evidence_dir(), expected)
 
-    @unittest.skipUnless(hasattr(os, "getuid"), "POSIX permissions")
+    @unittest.skipUnless(cli.secure_storage_supported(), "needs secure evidence storage")
     def test_each_run_gets_a_fresh_private_folder(self):
         root = self.tmp / "evidence"
         first, second = cli.create_run_dir(root), cli.create_run_dir(root)
         self.assertNotEqual(first, second)
         for path in (root, first, second):
-            self.assertEqual(path.stat().st_mode & 0o777, 0o700, path)
+            self.assertTrue(cli.is_private_dir(path), path)
+            if hasattr(os, "getuid"):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o700, path)
         self.assertTrue(first.name.startswith("run-"))
 
     def test_refuses_symlink_and_checkout(self):
@@ -116,7 +118,7 @@ class TestDoctor(_TempDir):
         with patch.object(cli, "secure_storage_supported", return_value=False):
             code, out, _ = run_cli("doctor", "--evidence-dir", str(self.tmp / "e"))
         self.assertEqual(code, 1)
-        self.assertIn("not built", out)
+        self.assertIn("not available", out)
         with patch.object(cli, "MIN_PYTHON", (99, 0)):
             code, out, _ = run_cli("doctor", "--evidence-dir", str(self.tmp / "e"))
         self.assertEqual(code, 1)

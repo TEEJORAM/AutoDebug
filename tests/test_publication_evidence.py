@@ -195,6 +195,7 @@ class PublicationEvidenceTests(unittest.TestCase):
                 finally:
                     artifact.unlink()
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "named FIFOs are POSIX-only")
     def test_nonregular_artifacts_are_rejected_without_blocking(self):
         os.mkfifo(self.store.events_path)
         with self.assertRaises((OSError, ValueError)):
