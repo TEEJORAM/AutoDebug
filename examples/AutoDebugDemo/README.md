@@ -65,42 +65,78 @@ the last corner back to the first. At the origin that edge's term happens to be
 Then run the tests again; both pass and `report.py` prints `ok` for every shape.
 </details>
 
-## 3. Try AutoDebug with this project
+## 3. Let an AI agent debug it with AutoDebug
 
-Run this from the AutoDebug folder, then open `examples/AutoDebugDemo` in VS
-Code and start the server (**MCP: List Servers → autodebug → Start Server**).
+The agent sets the breakpoints, runs **Debug tests** under VS Code's debugger,
+steps through the code and writes a report, but only after you click
+**Approve** in VS Code. Do steps 1 and 2 once; they need VS Code with the
+Python extension.
+
+**1. Install the AutoDebug Bridge extension.** From the AutoDebug folder:
 
 Windows (PowerShell):
 
 ```powershell
-py -m autodebug config vscode --demo --write examples\AutoDebugDemo
+py -m autodebug bridge install vscode
 ```
 
 macOS / Linux:
 
 ```sh
-autodebug config vscode --demo --write examples/AutoDebugDemo
+autodebug bridge install vscode
 ```
 
-Ask Copilot Chat in **Agent** mode:
+If it says the `code` command is not on PATH, it prints the path of a `.vsix`
+file instead: in VS Code open **Extensions** → **···** → **Install from VSIX…**
+and choose that file.
 
-> Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its status,
-> the stack, and the variables local_var and password, then complete the case
-> as inconclusive.
+**2. Connect this folder.** Still in the AutoDebug folder:
 
-**What this shows today:** AutoDebug can only drive its built-in *synthetic*
-debugger, so case `AUTODEBUG-DEMO` is not this app. It demonstrates the
-workflow: verified stop, bounded stack, redacted variables (`password`), step
-budget and an evidence report on disk.
+Windows (PowerShell):
 
-## 4. When AutoDebug can drive VS Code's debugger
+```powershell
+py -m autodebug config vscode --write examples\AutoDebugDemo
+```
 
-[`autodebug-plan.json`](autodebug-plan.json) is the plan an AI client would
-stage for this bug: a breakpoint at `geometry.py:15`, a launch of `report.py`
-and manual reproduction steps. You would approve that exact plan, AutoDebug
-would set the breakpoint in your VS Code session, and the AI would read `i`,
-`len(points)` and `total` at each stop. It may report `CONFIRMED` only once the
-fixed code passes the tests.
+macOS / Linux:
+
+```sh
+autodebug config vscode --write examples/AutoDebugDemo
+```
+
+There is no `--demo` here: that would start the practice debugger instead.
+
+**3. Open this folder in VS Code.** **File → Open Folder** →
+`examples/AutoDebugDemo`. The status bar shows **AutoDebug** when the bridge is
+running (if it doesn't, run **Developer: Reload Window**). Then Command Palette
+→ **MCP: List Servers** → **autodebug** → **Start Server** (or **Restart
+Server** if it was already running).
+
+**4. Ask the agent.** In Copilot Chat, **Agent** mode:
+
+> Help to debug AutoDebugDemo using the autodebug tools. Bug: moving a shape
+> changes its area (the "Debug tests" launch configuration shows it). Choose
+> breakpoints in the code that computes the area, request my approval, then
+> step through it to find the cause. Finish the case with the problem, root
+> cause, solution and evidence, and tell me where the report is.
+
+**5. Approve.** VS Code shows a dialog listing exactly what will run: the
+launch configuration, the breakpoints and the step and time limits. Click
+**Approve** only if that is what you want. Nothing runs before you click.
+
+The agent then stops at its breakpoints, reads the stack and variables, and
+steps until it finds the cause. The report appears in
+`autodebug-reports/DEMO-AREA-MOVE.md`, with the problem, a timeline of every
+stop and step, the root cause and the fix. Values that look like secrets are
+shown as `***REDACTED***`.
+
+[`autodebug-plan.json`](autodebug-plan.json) is an example of the plan the agent
+stages; it uses `D:\Projects\AutoDebug\...` as the folder, so the agent
+replaces that with yours.
+
+**Practice debugger.** `config vscode --demo --write examples/AutoDebugDemo`
+instead connects AutoDebug's built-in synthetic debugger (case
+`AUTODEBUG-DEMO`, not this app), which needs no extension and no approval.
 
 ## C++ version
 

@@ -17,21 +17,23 @@ SITE_MUST_CONTAIN = (
     "pip install -e .",
     "py -m autodebug doctor",
     "autodebug doctor",
+    "py -m autodebug bridge install vscode",
+    "autodebug bridge install vscode",
+    "py -m autodebug config vscode --write examples\\AutoDebugDemo",
+    "autodebug config vscode --write examples/AutoDebugDemo",
+    "py -m autodebug config cursor --write",
     "py -m autodebug config vscode --demo --write",
     "autodebug config vscode --demo --write",
-    "py -m autodebug config cursor --demo --write",
-    "autodebug config cursor --demo --write",
     "py -m autodebug config claude-desktop --demo --write",
-    "autodebug config claude-desktop --demo --write",
-    "py -m autodebug config claude-code --demo",
     "autodebug config claude-code --demo",
+    "Help to debug AutoDebugDemo",
+    "click Approve",
     "AUTODEBUG-DEMO",
     "local_var",
     "password",
     "%LOCALAPPDATA%\\autodebug",
     "~/Library/Application Support/autodebug",
     "~/.local/state/autodebug",
-    "Real debugger control is disabled",
     "VS Code",
     "Cursor",
     "CLion",
@@ -47,6 +49,12 @@ SITE_MUST_CONTAIN = (
 )
 
 _PROMPT = (
+    "Help to debug AutoDebugDemo using the autodebug tools. Bug: moving a shape changes its area "
+    "(the \"Debug tests\" launch configuration shows it). Choose breakpoints in the code that computes "
+    "the area, request my approval, then step through it to find the cause. Finish the case with the "
+    "problem, root cause, solution and evidence, and tell me where the report is."
+)
+_DEMO_PROMPT = (
     "Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its "
     "status, the stack, and the variables local_var and password."
 )
@@ -66,13 +74,14 @@ def render_guide(system: str, invocation: str) -> str:
         if system != "Linux"
         else "Claude Desktop has no known configuration path on Linux; use VS Code, Cursor or Claude Code."
     )
+    sep = "\\" if windows else "/"
     return "\n".join((
-        f"AutoDebug guide",
+        "AutoDebug guide",
         f"Full steps (GitHub Pages): {GUIDE_URL}",
         "Open site/index.html in this repository if that site is not published yet.",
         "",
-        "Real debugger control is disabled until the T05 security gate is approved.",
-        "The commands below connect an AI client to the synthetic demo debugger.",
+        "AutoDebug drives the debugger in VS Code and Cursor through the AutoDebug Bridge.",
+        "Nothing runs until you click Approve in the IDE.",
         f"This machine: {system}. Evidence folder: {evidence}",
         "",
         "1. Install once, from the AutoDebug folder",
@@ -81,18 +90,24 @@ def render_guide(system: str, invocation: str) -> str:
         "2. Check this machine",
         f"   {invocation} doctor",
         "",
-        "3. Connect one AI client (replace PROJECT_FOLDER)",
+        "3. Install the AutoDebug Bridge (then Developer: Reload Window in VS Code)",
+        f"   {invocation} bridge install vscode     (Cursor: bridge install cursor)",
+        "",
+        "4. Connect a project (the sample first)",
+        f"   {invocation} config vscode --write examples{sep}AutoDebugDemo",
+        "",
+        "5. Open that folder in VS Code, start the autodebug MCP server, and ask in Agent mode",
+        f"   {_PROMPT}",
+        "   Then click Approve in the dialog. The report goes to autodebug-reports/.",
+        "",
+        "Practice debugger instead (no extension, no approval):",
         f"   VS Code   {invocation} config vscode --demo --write PROJECT_FOLDER",
         f"   Cursor    {invocation} config cursor --demo --write PROJECT_FOLDER",
         f"   Desktop   {desktop}",
         f"   Claude Code prints a command: {invocation} config claude-code --demo",
+        f"   Ask: {_DEMO_PROMPT}",
         "",
-        "4. Ask the client",
-        f"   {_PROMPT}",
-        "",
-        "autodebug config does not write CLion, Visual Studio or Xcode files.",
-        "Use VS Code or Cursor as the AI client on every OS.",
-        "You can still debug examples/AutoDebugDemo by hand in those IDEs;",
-        "AutoDebug will not control their debuggers.",
+        "autodebug config does not write CLion, Visual Studio or Xcode files, and AutoDebug",
+        "does not drive their debuggers yet.",
         "",
     ))

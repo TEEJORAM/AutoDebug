@@ -4,11 +4,12 @@ A local MCP tool server that lets an AI client (such as Claude) investigate
 bugs through a developer's **existing native IDE debugger**, behind explicit,
 plan-bound human approval.
 
-> **Status: fake-only foundation.** The MCP server, case workflow, approval
-> checks and evidence store work against a synthetic debugger. The five IDE
-> adapters are tested only against mocks, and real debugger control is
-> disabled (security gate **OPEN / NOT APPROVED**). Publication is **BLOCKED**
-> pending Autodesk approvals; see [docs/publication.md](docs/publication.md).
+> **Status:** AutoDebug runs the real debugger in **VS Code and Cursor**
+> through the AutoDebug Bridge extension, and only after you click **Approve**
+> in the IDE. It is verified by automated tests, including the real Python
+> debugger (debugpy); the first run in a real VS Code window is still to be
+> recorded. CLion, Visual Studio and Xcode are not supported yet. Publication is
+> **BLOCKED** pending Autodesk approvals; see [docs/publication.md](docs/publication.md).
 
 ## Quick start
 
@@ -38,133 +39,121 @@ autodebug doctor
 ```
 
 `doctor` should show `✔` for Python, Evidence storage and Evidence folder, and
-end with `Ready`. The same steps, switched by operating system, are at
+end with `Ready`. **Already have AutoDebug?** Run `git pull` in its folder, then
+the `pip install -e .` line again. The same steps, switched by operating system, are at
 <https://teejoram.github.io/AutoDebug/> (`site/index.html`). `autodebug guide`
 prints them for the machine you are on.
 
-### 2. Connect VS Code
+### 2. Install the AutoDebug Bridge in VS Code
 
-Run this from the AutoDebug folder. Replace the last part with the project
-folder you open in VS Code; AutoDebug writes `.vscode\mcp.json` there and keeps
-any other servers already in it.
+You need VS Code with the Python extension. From the AutoDebug folder:
 
 **Windows (PowerShell):**
 
 ```powershell
-py -m autodebug config vscode --demo --write D:\Projects\MyApp
+py -m autodebug bridge install vscode
 ```
 
 **macOS / Linux:**
 
 ```sh
-autodebug config vscode --demo --write ~/Projects/MyApp
+autodebug bridge install vscode
 ```
 
-### 3. Try it
+Then in VS Code run **Developer: Reload Window**; the status bar shows
+**AutoDebug**. If the command says `code` is not on PATH, it prints the path of
+a `.vsix` file: in VS Code open **Extensions** → **···** → **Install from
+VSIX…** and choose it. For Cursor, use `bridge install cursor`.
 
-1. Open that project folder in VS Code.
-2. Command Palette (`Ctrl+Shift+P`, macOS `Cmd+Shift+P`) → **MCP: List Servers**
-   → **autodebug** → **Start Server**.
-3. Open Copilot Chat in **Agent** mode and ask:
+### 3. Connect a project
 
-   > Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its
-   > status, the stack, and the variables local_var and password.
-
-You should see a synthetic stack, `local_var = 42` and `password =
-***REDACTED***`. This is a built-in demo debugger: AutoDebug cannot yet drive
-your real IDE debugger. **[docs/getting-started.md](docs/getting-started.md)**
-covers Cursor, Claude Desktop and Claude Code, the full demo walkthrough and
-troubleshooting.
-
-### 4. Try the demo project
-
-[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) is a small Python app
-(with a C++ twin) that has one deliberate bug: moving a shape changes its area.
-It comes with the AutoDebug repository, so there is nothing extra to download.
-
-**Get it.** If you cloned AutoDebug before the demo existed, update first. Run
-from the AutoDebug folder:
-
-```sh
-git pull
-```
-
-**See the bug.** Still in the AutoDebug folder:
+The sample project [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md)
+has one deliberate bug: moving a shape changes its area. Still in the AutoDebug
+folder (use your own project folder later):
 
 **Windows (PowerShell):**
 
 ```powershell
-cd examples\AutoDebugDemo
-py report.py
-py -m unittest -v
+py -m autodebug config vscode --write examples\AutoDebugDemo
 ```
 
-**macOS / Linux** (with `.venv` active from step 1):
+**macOS / Linux:**
 
 ```sh
-cd examples/AutoDebugDemo
-python3 report.py
-python3 -m unittest -v
+autodebug config vscode --write examples/AutoDebugDemo
 ```
 
-`report.py` ends with `3 of 3 shapes change area when moved.` and one test
-fails with `AssertionError: 2.0 != 1.0`. That is expected; it is the bug.
+This writes `.vscode/mcp.json` in that folder and keeps any other servers in it.
 
-**Debug it in VS Code.**
+### 4. Debug with the AI agent
 
-1. **File → Open Folder** → the `examples/AutoDebugDemo` folder inside AutoDebug
-   (for example `D:\Projects\AutoDebug\examples\AutoDebugDemo`). Install the
-   recommended Python extensions if VS Code offers them.
-2. Open `geometry.py` and click left of line 15 to set a breakpoint.
-3. **Run and Debug** → choose **Debug tests** → press `F5`.
-4. At each stop, watch `i`, `len(points)` and `total` in **Variables**.
+1. In VS Code, **File → Open Folder** → `examples/AutoDebugDemo` inside AutoDebug.
+2. Command Palette (`Ctrl+Shift+P`, macOS `Cmd+Shift+P`) → **MCP: List Servers**
+   → **autodebug** → **Start Server** (or **Restart Server**).
+3. Open Copilot Chat in **Agent** mode and ask:
 
-The [demo walkthrough](examples/AutoDebugDemo/README.md) has the answer, the
-C++ build steps (CMake, Visual Studio, CLion) and how to connect AutoDebug to
-this folder.
+   > Help to debug AutoDebugDemo using the autodebug tools. Bug: moving a shape
+   > changes its area (the "Debug tests" launch configuration shows it). Choose
+   > breakpoints in the code that computes the area, request my approval, then
+   > step through it to find the cause. Finish the case with the problem, root
+   > cause, solution and evidence, and tell me where the report is.
+
+4. VS Code shows a dialog with exactly what will run: launch configuration,
+   breakpoints, step and time limits. Click **Approve**.
+
+The agent stops at its breakpoints, reads the stack and variables, steps
+through the loop and writes `autodebug-reports/DEMO-AREA-MOVE.md`: problem,
+timeline of every stop and step, root cause and fix.
+
+**Practice without a debugger:** `config vscode --demo --write FOLDER` connects
+a built-in synthetic debugger instead (case `AUTODEBUG-DEMO`; ask *"Use the
+autodebug tools to investigate case AUTODEBUG-DEMO"*). It needs no extension
+and no approval. **[docs/getting-started.md](docs/getting-started.md)** covers
+Cursor, Claude Desktop and Claude Code, and troubleshooting.
 
 ## How it works
 
 ```text
 Developer → AI client (reads bug, source, API docs; proposes a plan)
           → AutoDebug MCP server (plan, approval, session and evidence checks)
-          → IDE adapter → the IDE's own running debugger → application
+          → AutoDebug Bridge extension → the IDE's own debugger → application
 ```
 
 1. The developer gives the AI client a bug report.
-2. The client stages a plan: target, breakpoints, and a reproduction script or
-   manual steps.
-3. **The developer approves that exact plan** through a trusted local surface
-   (not built yet; only `--demo` issues a synthetic approval). The approval is
-   bound to the plan digest, target, scope and expiry.
-4. AutoDebug launches or attaches through a supported adapter and confirms
-   every breakpoint is bound.
-5. The developer reproduces the bug (scripts run in the application's own UI;
-   AutoDebug never runs them).
-6. The client inspects stop, stack and selected variables one bounded step at
-   a time. AutoDebug redacts and records evidence locally.
-7. The client writes a root-cause report citing evidence IDs, labelled
-   `CONFIRMED`, `LIKELY` or `INCONCLUSIVE`.
+2. The client reads the code and stages a plan: launch configuration, optional
+   build task, breakpoints and limits.
+3. **The developer approves that exact plan** by clicking **Approve** in the
+   IDE's dialog. The approval is bound to the plan digest, the launch and task
+   definitions, the breakpoint files, the IDE window and an expiry; editing any
+   of them stops the case.
+4. AutoDebug runs the build task, starts the launch configuration under the
+   IDE's debugger and confirms every breakpoint is bound.
+5. The client inspects stop, stack and selected variables and steps in, over
+   or out within the step budget. AutoDebug redacts and records evidence locally.
+6. The client completes the case; AutoDebug writes a report citing evidence
+   IDs, labelled `CONFIRMED`, `LIKELY` or `INCONCLUSIVE`, into the project.
 
 ## Targets
 
 | IDE | Windows | macOS | Linux |
 |---|---|---|---|
-| VS Code | target | target | target |
-| Cursor | target | target | target |
+| VS Code | bridge | bridge | bridge |
+| Cursor | bridge | bridge | bridge |
 | CLion | target | target | target |
 | Visual Studio | target | — | — |
 | Xcode | — | target | — |
 
-These are design targets. None is certified yet; current results are in the
-[compatibility ledger](docs/compatibility-ledger.md).
+"bridge" works through the AutoDebug Bridge (tested with automated tests and
+the real Python debugger; not yet certified in a real IDE window). "target" is
+design scope only. Results are in the [compatibility ledger](docs/compatibility-ledger.md).
 
 ## Boundaries
 
 - The AI client is the investigator; AutoDebug is a tool server with no LLM.
-- No approval tool is exposed to the agent, and agent chat is never treated as
-  human approval.
-- No expression evaluation, shell, script execution or network listener.
+- No tool lets the agent approve, and agent chat is never treated as human
+  approval: only a click on **Approve** in the IDE counts.
+- No expression evaluation, variable changes, shell or script execution. The
+  only listener is the bridge's token-protected port on 127.0.0.1.
 - Never a second, hidden debugger; unsupported operations report `UNSUPPORTED`.
 - No copied third-party code (for example Microsoft DebugMCP); integrations
   only through approved, public interfaces.

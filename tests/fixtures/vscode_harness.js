@@ -6,7 +6,10 @@
 //
 // usage: node vscode_harness.js <bridges-folder> <workspace-folder>
 // stdin: "approve" | "deny" | "exit"; stdout: "READY", "DIALOG <json>", "LOG <text>"
+// With HARNESS_DEBUGPY=<python>, debug sessions talk real DAP to that Python's
+// debugpy adapter, the way VS Code's Python extension does.
 
+const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
@@ -85,6 +88,89 @@ class FakeSession {
   }
 }
 
+// A real Debug Adapter Protocol client for debugpy: what VS Code does for a
+// "debugpy" launch configuration, reduced to the requests the bridge relies on.
+class DapSession {
+  constructor(name, configuration, python) {
+    this.id = 'dap-session-1';
+    this.name = name;
+    this.configuration = configuration;
+    this.seq = 1;
+    this.pending = new Map();
+    this.buffer = Buffer.alloc(0);
+    this.initialized = new Promise((resolve) => { this.onInitialized = resolve; });
+    this.adapter = childProcess.spawn(python, ['-m', 'debugpy.adapter'], { stdio: ['pipe', 'pipe', 'inherit'] });
+    this.adapter.stdout.on('data', (chunk) => this.receive(chunk));
+    this.adapter.on('exit', () => tracker && tracker.onExit());
+  }
+  write(message) {
+    const body = Buffer.from(JSON.stringify(message), 'utf8');
+    this.adapter.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+    this.adapter.stdin.write(body);
+  }
+  request(command, args) {
+    const message = { seq: this.seq++, type: 'request', command, arguments: args };
+    tracker.onWillReceiveMessage(message);
+    return new Promise((resolve, reject) => {
+      this.pending.set(message.seq, { resolve, reject });
+      this.write(message);
+    });
+  }
+  receive(chunk) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    for (;;) {
+      const header = this.buffer.indexOf('\r\n\r\n');
+      if (header === -1) return;
+      const length = Number(/Content-Length: (\d+)/i.exec(this.buffer.subarray(0, header).toString())[1]);
+      if (this.buffer.length < header + 4 + length) return;
+      const message = JSON.parse(this.buffer.subarray(header + 4, header + 4 + length).toString('utf8'));
+      this.buffer = this.buffer.subarray(header + 4 + length);
+      this.handle(message);
+    }
+  }
+  handle(message) {
+    if (message.type === 'request' && message.command === 'runInTerminal') {
+      // VS Code would open an integrated terminal; start the process directly.
+      const [program, ...args] = message.arguments.args;
+      const env = { ...process.env, ...(message.arguments.env || {}) };
+      Object.keys(env).forEach((k) => env[k] === null && delete env[k]);
+      const child = childProcess.spawn(program, args, { cwd: message.arguments.cwd, env, stdio: 'ignore' });
+      this.write({ seq: this.seq++, type: 'response', request_seq: message.seq, success: true,
+        command: 'runInTerminal', body: { processId: child.pid } });
+      return;
+    }
+    tracker.onDidSendMessage(message);
+    if (message.type === 'event' && message.event === 'initialized') this.onInitialized();
+    if (message.type === 'response' && this.pending.has(message.request_seq)) {
+      const { resolve, reject } = this.pending.get(message.request_seq);
+      this.pending.delete(message.request_seq);
+      if (message.success) resolve(message.body || {}); else reject(new Error(message.message || 'request failed'));
+    }
+  }
+  async start(byFile) {
+    await this.request('initialize', { clientID: 'vscode', adapterID: 'debugpy', pathFormat: 'path',
+      linesStartAt1: true, columnsStartAt1: true, supportsRunInTerminalRequest: true, supportsVariableType: true });
+    const launched = this.request('launch', this.configuration);
+    await this.initialized;
+    for (const [file, lines] of byFile) {
+      await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
+    }
+    await this.request('configurationDone', {});
+    await launched;
+  }
+  customRequest(command, args) { return this.request(command, args); }
+  stop() {
+    return this.request('disconnect', { terminateDebuggee: true }).catch(() => {}).then(() => this.adapter.kill());
+  }
+}
+
+function resolveVariables(value) {
+  if (typeof value === 'string') return value.replace(/\$\{workspaceFolder\}/g, workspace);
+  if (Array.isArray(value)) return value.map(resolveVariables);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveVariables(v)]));
+  return value;
+}
+
 const vscode = {
   version: '1.99.0-harness',
   env: { appName: 'Visual Studio Code', sessionId: 'harness0session1' },
@@ -114,6 +200,19 @@ const vscode = {
     addBreakpoints: (list) => breakpoints.push(...list),
     removeBreakpoints: (list) => list.forEach((b) => breakpoints.splice(breakpoints.indexOf(b), 1)),
     startDebugging: async (folder, name) => {
+      if (process.env.HARNESS_DEBUGPY) {
+        const config = resolveVariables((readJson('launch.json').configurations || []).find((c) => c.name === name));
+        session = new DapSession(name, { ...config, python: process.env.HARNESS_DEBUGPY }, process.env.HARNESS_DEBUGPY);
+        tracker = bridge.tracker(session);
+        bridge.sessionStarted(session);
+        const byFile = new Map();
+        for (const bp of breakpoints) {
+          const file = bp.location.uri.fsPath;
+          byFile.set(file, [...(byFile.get(file) || []), bp.location.range.start.line + 1]);
+        }
+        await session.start(byFile);
+        return true;
+      }
       session = new FakeSession(name);
       tracker = bridge.tracker(session);
       bridge.sessionStarted(session);
@@ -127,7 +226,10 @@ const vscode = {
       return true;
     },
     stopDebugging: async (target) => {
-      if (target === session) { session.event('terminated', {}); bridge.sessionEnded(session); say('LOG debug session stopped'); }
+      if (target !== session) return;
+      if (session instanceof DapSession) await session.stop(); else session.event('terminated', {});
+      bridge.sessionEnded(session);
+      say('LOG debug session stopped');
     },
   },
 };

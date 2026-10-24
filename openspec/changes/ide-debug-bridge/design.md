@@ -42,9 +42,11 @@ Newline-delimited UTF-8 JSON over one TCP connection to `127.0.0.1:<port>`.
 - Request: `{"id": 7, "op": "stack", "args": {...}}`.
   Reply: `{"id": 7, "ok": true, "result": {...}}` or
   `{"id": 7, "ok": false, "error": {"code": "...", "message": "..."}}`.
-- Operations: `describe`, `resolve_plan`, `request_approval`, `approval_status`,
-  `arm`, `stop_state`, `threads`, `stack`, `scopes`, `variables`, `step`,
-  `continue`, `end`. Every operation after `describe` carries `case_id` and
+- Operations (as built): `describe`, `resolve_plan`, `request_approval` (with
+  the plan's folder, launch name, build task, files, breakpoints and step limit,
+  which the dialog shows and the bridge then enforces), `approval_status`,
+  `build_start`, `build_status`, `launch`, `breakpoints`, `stop_state`, `stack`,
+  `variables`, `step`, `continue`, `end`. Every operation after `describe` carries `case_id` and
   `approval_id`; the bridge checks them against its own record.
 - Messages over 1 MiB are rejected; each request has a timeout.
 
@@ -67,7 +69,8 @@ recomputes it before `arm` and before every step; a mismatch is `PLAN_CHANGED`.
 | `src/autodebug/adapters/vscode_bridge.py` | `VSCodeBridgeAdapter` on the existing adapter protocol |
 | `src/autodebug/approvals.py` | `APPROVED_BACKEND_KINDS = frozenset({"fake", "vscode-bridge"})`; bridge-issued approvals |
 | `src/autodebug/evidence.py` | report sections, workspace export |
-| `extensions/vscode-bridge/` | `package.json`, `extension.js` (no dependencies) |
+| `src/autodebug/bridge/extension/` | `package.json`, `extension.js`, `bridge-core.js` (no dependencies; shipped in the wheel) |
+| `src/autodebug/bridge/package.py` | stdlib `.vsix` builder and installer |
 | `src/autodebug/cli.py` | `bridge install`, doctor line |
 | `tests/fixtures/fake_bridge.py` | Python fake that speaks the protocol |
 

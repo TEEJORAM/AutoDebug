@@ -19,6 +19,25 @@
 | Wrong concurrent session stepped | Explicit native debug session nonce/generation, exclusive operation lease per session and user takeover detection |
 | Incorrect AI RCA confidently asserted | Cite evidence, label `CONFIRMED`, `LIKELY`, or `INCONCLUSIVE`; include missing proof |
 
+## IDE bridge (`vscode-bridge`, approved 2026-10-24)
+
+The developer opened the T05 gate for this one backend
+([ide-debug-bridge](../openspec/changes/ide-debug-bridge/proposal.md), decision 1).
+
+| Control | How |
+|---|---|
+| Human approval | Only a click on **Approve** in the IDE's modal dialog. The dialog lists the build task and command, the launch configuration, every breakpoint and the limits, from the same fields the bridge then enforces. No MCP tool or argument approves; the trusted host issues AutoDebug's approval only after the bridge reports the click. |
+| Binding | Plan digest includes hashes of the launch configuration, build task and breakpoint files. The bridge re-reads them before every action; a change ends the case with `PLAN_CHANGED`. |
+| Endpoint | 127.0.0.1 only, random port, 256-bit token in a connection file in the private `bridges` folder; a wrong token gets no reply. |
+| Operations | Build task, launch (never attach), breakpoints, stack, scopes, variables, step, continue, end. No `evaluate`, `setVariable` or other DAP requests. |
+| Limits | Step budget and expiry enforced by AutoDebug and again by the bridge; the session ends and AutoDebug's breakpoints are removed when the case ends. |
+
+Accepted residual risks: software that can inject mouse or keyboard input on the
+desktop could click Approve; a process running as the same user can read the
+token, but still cannot approve or act outside an approved plan. Reading a
+variable makes the debugger format its value (for Python, `repr`), as the IDE's
+Variables panel does.
+
 ## Privacy reality
 
 DebugMCP and AutoDebug may run locally, **but data read by an AI agent can be sent to its model provider**. Do not interpret “the server is localhost” as “debug information never leaves the computer.” Follow Autodesk-approved AI data handling and avoid sensitive information in prompts/tool responses.

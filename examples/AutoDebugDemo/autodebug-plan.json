@@ -1,17 +1,19 @@
 {
-  "schema_version": "0.2-draft",
+  "schema_version": "0.3",
   "case_id": "DEMO-AREA-MOVE",
   "source_revision": "examples/AutoDebugDemo",
-  "target": {"host_id": "local-dev", "ide": "vscode", "debug_session_id": null, "pid": null},
-  "launch_configuration": [["program", "report.py"]],
-  "process_running": false,
+  "target": {"host_id": "local-windows", "ide": "vscode", "debug_session_id": null, "pid": null},
+  "workspace_folder": "D:\\Projects\\AutoDebug\\examples\\AutoDebugDemo",
+  "launch_configuration_name": "Debug tests",
+  "build_task": null,
+  "report_to_workspace": true,
   "breakpoints": [{"file": "geometry.py", "line": 15}],
   "reproduction": {
     "mode": "manual",
     "steps": [
-      "Run report.py under the debugger",
-      "When the breakpoint stops, compare i, len(points) and total on each pass of the loop"
+      "Run the unit tests under the debugger (launch configuration \"Debug tests\")",
+      "At each stop on line 15, compare i, len(points) and total"
     ]
   },
-  "policy": {"max_steps": 20, "max_inspection_seconds": 600}
+  "policy": {"max_steps": 30, "max_inspection_seconds": 900, "max_operation_seconds": 20}
 }

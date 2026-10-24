@@ -1,9 +1,15 @@
 # IDE integrations
 
-Five adapters cover 11 IDE/OS targets. Each adapter delegates to an injected,
-IDE-specific client (`ClientBackedAdapter` in `src/autodebug/adapters/base.py`)
-and is tested only against mocks. Support is earned through real tests; see the
-[compatibility ledger](compatibility-ledger.md).
+**VS Code and Cursor are driven through the AutoDebug Bridge**, an original
+extension that uses only the public VS Code extension API and the Debug Adapter
+Protocol (`src/autodebug/bridge/extension/`, `VSCodeBridgeAdapter`; see
+[ide-debug-bridge](../openspec/changes/ide-debug-bridge/design.md)). It took the
+"original narrowly scoped extension" route below instead of DebugMCP.
+
+The five client-backed adapters below cover 11 IDE/OS targets. Each delegates
+to an injected, IDE-specific client (`ClientBackedAdapter` in
+`src/autodebug/adapters/base.py`) and is tested only against mocks. Support is
+earned through real tests; see the [compatibility ledger](compatibility-ledger.md).
 
 ## Target matrix
 

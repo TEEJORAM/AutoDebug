@@ -57,7 +57,9 @@ If the plan names `build_task`, arming runs it through the IDE's task system and
 waits for the exit code, at most `policy.max_build_seconds` (default 300, at
 most 900). A non-zero exit or timeout stops the case with a new error code,
 `BUILD_FAILED`, and the program is not launched. The exit code and the last 50
-lines of output, redacted and bounded, are recorded as evidence.
+lines of output, redacted and bounded, are recorded as evidence. *(B8 finding:
+the VS Code extension API cannot read a task's terminal output, so the real
+bridge records the exit code and points to the IDE terminal.)*
 
 ### BR-06 Launch and breakpoints
 After the build, the bridge adds exactly the plan's breakpoints, then starts the

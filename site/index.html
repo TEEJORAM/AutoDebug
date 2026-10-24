@@ -92,11 +92,10 @@
 <body>
 <header>
   <h1>Use AutoDebug</h1>
-  <p class="lede">Install once, then connect VS Code or Cursor on Windows, macOS or Linux. The same steps are in the repository at <code>site/index.html</code>.</p>
+  <p class="lede">Let an AI agent set breakpoints, run and step through your program in VS Code or Cursor on Windows, macOS or Linux, and write a report. The same steps are in the repository at <code>site/index.html</code>.</p>
   <div class="banner">
-    <strong>Real debugger control is disabled</strong> until the T05 security gate is approved.
-    Today AutoDebug runs a synthetic demo debugger. It does not attach to the debugger in VS Code, Cursor, CLion, Visual Studio or Xcode.
-    <code>autodebug config</code> does not write CLion, Visual Studio or Xcode files.
+    <strong>Nothing runs until you click Approve</strong> in the IDE. AutoDebug drives the debugger in <strong>VS Code and Cursor</strong> through the AutoDebug Bridge extension (verified with automated tests and the real Python debugger; first real-IDE run pending).
+    CLion, Visual Studio and Xcode are not supported yet, and <code>autodebug config</code> does not write CLion, Visual Studio or Xcode files.
   </div>
   <div class="tabs" role="tablist" aria-label="Operating system">
     <button type="button" role="tab" id="tab-windows" aria-controls="panel-windows" aria-pressed="false">Windows</button>
@@ -107,24 +106,30 @@
 <main>
   <section class="os" data-os="windows" id="panel-windows">
     <h2>Windows</h2>
-    <p>PowerShell. Python 3.11 or newer (<code>py</code>) and Git.</p>
+    <p>PowerShell. Python 3.11 or newer (<code>py</code>), Git, and VS Code with the Python extension.</p>
     <h3>1. Install</h3>
     <pre>git clone https://github.com/TEEJORAM/AutoDebug.git
 cd AutoDebug
 py -m pip install -e .
 py -m autodebug doctor</pre>
-    <h3>2. Connect an AI client</h3>
-    <p>Replace the folder with the project you open in the editor. This writes that project's MCP config and keeps other servers.</p>
+    <h3>2. Install the AutoDebug Bridge</h3>
+    <pre>py -m autodebug bridge install vscode</pre>
+    <p>Then in VS Code: <strong>Developer: Reload Window</strong>; the status bar shows <strong>AutoDebug</strong>. Use <code>cursor</code> instead of <code>vscode</code> for Cursor. If <code>code</code> is not on PATH, install the printed <code>.vsix</code> with Extensions → ··· → Install from VSIX….</p>
+    <h3>3. Connect a project</h3>
+    <p>The sample project first; later, your own folder. This writes that project's MCP config and keeps other servers.</p>
+    <pre>py -m autodebug config vscode --write examples\AutoDebugDemo
+py -m autodebug config cursor --write D:\Projects\MyApp</pre>
+    <p>Practice debugger instead (no extension, no approval):</p>
     <pre>py -m autodebug config vscode --demo --write D:\Projects\MyApp
 py -m autodebug config cursor --demo --write D:\Projects\MyApp
 py -m autodebug config claude-desktop --demo --write
 py -m autodebug config claude-code --demo</pre>
-    <p>Evidence from each server start goes to <code>%LOCALAPPDATA%\autodebug</code>, in a new <code>run-…</code> folder.</p>
+    <p>Reports go into the project's <code>autodebug-reports</code> folder; raw evidence stays in <code>%LOCALAPPDATA%\autodebug</code>.</p>
   </section>
 
   <section class="os" data-os="macos" id="panel-macos">
     <h2>macOS</h2>
-    <p>Terminal. Python 3.11 or newer and Git.</p>
+    <p>Terminal. Python 3.11 or newer, Git, and VS Code with the Python extension.</p>
     <h3>1. Install</h3>
     <pre>git clone https://github.com/TEEJORAM/AutoDebug.git
 cd AutoDebug
@@ -133,17 +138,24 @@ source .venv/bin/activate
 pip install -e .
 autodebug doctor</pre>
     <p>Run <code>source .venv/bin/activate</code> again in each new terminal.</p>
-    <h3>2. Connect an AI client</h3>
+    <h3>2. Install the AutoDebug Bridge</h3>
+    <pre>autodebug bridge install vscode</pre>
+    <p>Then in VS Code: <strong>Developer: Reload Window</strong>; the status bar shows <strong>AutoDebug</strong>. Use <code>cursor</code> instead of <code>vscode</code> for Cursor. If <code>code</code> is not on PATH, install the printed <code>.vsix</code> with Extensions → ··· → Install from VSIX….</p>
+    <h3>3. Connect a project</h3>
+    <p>The sample project first; later, your own folder. This writes that project's MCP config and keeps other servers.</p>
+    <pre>autodebug config vscode --write examples/AutoDebugDemo
+autodebug config cursor --write ~/Projects/MyApp</pre>
+    <p>Practice debugger instead (no extension, no approval):</p>
     <pre>autodebug config vscode --demo --write ~/Projects/MyApp
 autodebug config cursor --demo --write ~/Projects/MyApp
 autodebug config claude-desktop --demo --write
 autodebug config claude-code --demo</pre>
-    <p>Evidence goes to <code>~/Library/Application Support/autodebug</code>.</p>
+    <p>Raw evidence stays in <code>~/Library/Application Support/autodebug</code>.</p>
   </section>
 
   <section class="os" data-os="linux" id="panel-linux">
     <h2>Linux</h2>
-    <p>Terminal. Python 3.11 or newer and Git.</p>
+    <p>Terminal. Python 3.11 or newer, Git, and VS Code with the Python extension.</p>
     <h3>1. Install</h3>
     <pre>git clone https://github.com/TEEJORAM/AutoDebug.git
 cd AutoDebug
@@ -151,34 +163,38 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 autodebug doctor</pre>
-    <h3>2. Connect an AI client</h3>
+    <h3>2. Install the AutoDebug Bridge</h3>
+    <pre>autodebug bridge install vscode</pre>
+    <p>Then in VS Code: <strong>Developer: Reload Window</strong>; the status bar shows <strong>AutoDebug</strong>. Use <code>cursor</code> instead of <code>vscode</code> for Cursor. If <code>code</code> is not on PATH, install the printed <code>.vsix</code> with Extensions → ··· → Install from VSIX….</p>
+    <h3>3. Connect a project</h3>
+    <p>The sample project first; later, your own folder. This writes that project's MCP config and keeps other servers.</p>
+    <pre>autodebug config vscode --write examples/AutoDebugDemo
+autodebug config cursor --write ~/Projects/MyApp</pre>
+    <p>Practice debugger instead (no extension, no approval):</p>
     <pre>autodebug config vscode --demo --write ~/Projects/MyApp
 autodebug config cursor --demo --write ~/Projects/MyApp
 autodebug config claude-code --demo</pre>
-    <p>Claude Desktop has no known configuration path on Linux; use VS Code, Cursor or Claude Code. Evidence goes to <code>~/.local/state/autodebug</code> (or <code>$XDG_STATE_HOME/autodebug</code>).</p>
+    <p>Claude Desktop has no known configuration path on Linux; use VS Code, Cursor or Claude Code. Raw evidence stays in <code>~/.local/state/autodebug</code> (or <code>$XDG_STATE_HOME/autodebug</code>).</p>
   </section>
 
-  <h2>After config</h2>
+  <h2>4. Debug with the agent</h2>
   <div class="card">
-    <h3>VS Code</h3>
     <ol>
-      <li>Open the project folder you passed to <code>--write</code>.</li>
-      <li>Command Palette → <strong>MCP: List Servers</strong> → <strong>autodebug</strong> → <strong>Start Server</strong>.</li>
-      <li>Open Copilot Chat in <strong>Agent</strong> mode.</li>
+      <li>Open the project folder in VS Code (for the sample: <code>examples/AutoDebugDemo</code> inside AutoDebug).</li>
+      <li>Command Palette → <strong>MCP: List Servers</strong> → <strong>autodebug</strong> → <strong>Start Server</strong> (or <strong>Restart Server</strong>).</li>
+      <li>Open Copilot Chat in <strong>Agent</strong> mode and ask:</li>
     </ol>
+    <pre>Help to debug AutoDebugDemo using the autodebug tools. Bug: moving a shape changes its area (the "Debug tests" launch configuration shows it). Choose breakpoints in the code that computes the area, request my approval, then step through it to find the cause. Finish the case with the problem, root cause, solution and evidence, and tell me where the report is.</pre>
+    <p>VS Code shows a dialog listing the launch configuration, breakpoints and limits. Click <strong>Approve</strong>. The agent stops at <code>geometry.py</code> line 15, steps through the loop and writes <code>autodebug-reports/DEMO-AREA-MOVE.md</code>.</p>
   </div>
   <div class="card">
-    <h3>Cursor</h3>
-    <p><code>--write</code> creates <code>.cursor/mcp.json</code> in the project. Open Cursor Settings and enable <strong>autodebug</strong> under MCP, then use Agent chat.</p>
-  </div>
-  <div class="card">
-    <h3>Claude Desktop and Claude Code</h3>
-    <p>Quit and restart Claude Desktop after <code>--write</code>. For Claude Code, run the <code>claude mcp add</code> command that <code>config claude-code</code> prints, in the project folder.</p>
+    <h3>Cursor, Claude Code and Claude Desktop</h3>
+    <p>Cursor: <code>config cursor --write</code> creates <code>.cursor/mcp.json</code>; enable <strong>autodebug</strong> under MCP in Cursor Settings. Claude Code: run the <code>claude mcp add</code> command that <code>config claude-code</code> prints. Claude Desktop: restart it after <code>config claude-desktop --write</code>. All of them drive the bridge in the VS Code or Cursor window that has the project open.</p>
   </div>
 
-  <h2>Ask this</h2>
+  <h2>Practice debugger</h2>
   <pre>Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its status, the stack, and the variables local_var and password.</pre>
-  <p>You should see a synthetic stack, <code>local_var = 42</code> and <code>password = ***REDACTED***</code>. Case <code>AUTODEBUG-DEMO</code> is the built-in demo, not your application. The demo approval lasts 30 minutes; restart the MCP server after that.</p>
+  <p>With <code>--demo</code> you get a synthetic stack, <code>local_var = 42</code> and <code>password = ***REDACTED***</code>. Case <code>AUTODEBUG-DEMO</code> is built in, not your application; its approval lasts 30 minutes.</p>
 
   <h2>Five IDEs</h2>
   <table>
@@ -186,45 +202,26 @@ autodebug config claude-code --demo</pre>
       <tr><th>IDE</th><th>Where it runs</th><th>What you can do now</th></tr>
     </thead>
     <tbody>
-      <tr>
-        <td>VS Code</td>
-        <td>Windows, macOS, Linux</td>
-        <td>AI client via <code>config vscode</code>. Its own debugger is not driven by AutoDebug.</td>
-      </tr>
-      <tr>
-        <td>Cursor</td>
-        <td>Windows, macOS, Linux</td>
-        <td>AI client via <code>config cursor</code>. Its debugger is not driven by AutoDebug.</td>
-      </tr>
-      <tr>
-        <td>CLion</td>
-        <td>Windows, macOS, Linux</td>
-        <td>Open <code>examples/AutoDebugDemo/cpp</code> and debug it yourself. No verified JetBrains MCP path is written.</td>
-      </tr>
-      <tr>
-        <td>Visual Studio</td>
-        <td>Windows</td>
-        <td>File → Open → CMake… on <code>examples/AutoDebugDemo/cpp/CMakeLists.txt</code>. Not an AutoDebug client.</td>
-      </tr>
-      <tr>
-        <td>Xcode</td>
-        <td>macOS</td>
-        <td>Build the C++ sample with CMake if you want. <code>mcpbridge</code> is not wired up, and AutoDebug does not control Xcode.</td>
-      </tr>
+      <tr><td>VS Code</td><td>Windows, macOS, Linux</td><td>AutoDebug drives its debugger through the AutoDebug Bridge (Python programs; C++ is next).</td></tr>
+      <tr><td>Cursor</td><td>Windows, macOS, Linux</td><td>Same extension (<code>bridge install cursor</code>); not yet tried in a real Cursor window.</td></tr>
+      <tr><td>CLion</td><td>Windows, macOS, Linux</td><td>Open <code>examples/AutoDebugDemo/cpp</code> and debug it yourself. Not driven by AutoDebug.</td></tr>
+      <tr><td>Visual Studio</td><td>Windows</td><td>File → Open → CMake… on <code>examples/AutoDebugDemo/cpp/CMakeLists.txt</code>. Not driven by AutoDebug.</td></tr>
+      <tr><td>Xcode</td><td>macOS</td><td>Build the C++ sample with CMake if you want. Not driven by AutoDebug.</td></tr>
     </tbody>
   </table>
-  <p class="note"><code>examples/AutoDebugDemo</code> is a small Python and C++ program with one deliberate area bug (<code>geometry.py</code> line 15). Debugging it in an IDE teaches the bug. It does not make AutoDebug control that debugger. On macOS and Linux, <code>autodebug doctor</code> lists which of the five adapters target that OS; all of them stay mock-only.</p>
+  <p class="note"><code>examples/AutoDebugDemo</code> is a small Python and C++ program with one deliberate area bug (<code>geometry.py</code> line 15). The security gate (T05) is open only for the VS Code / Cursor bridge.</p>
 
   <h2>If something fails</h2>
   <table>
     <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
     <tbody>
+      <tr><td>No AutoDebug Bridge is running for …</td><td>Open exactly that folder in VS Code with the extension installed; check the <strong>AutoDebug</strong> status bar item. <code>bridge status</code> lists windows.</td></tr>
+      <tr><td>No dialog appears</td><td>It may be behind another window. <strong>AutoDebug Bridge: Show Log</strong> lists each request.</td></tr>
+      <tr><td><code>TIMEOUT</code> while starting</td><td>Ask the agent for <code>max_operation_seconds</code> 20–30.</td></tr>
+      <tr><td><code>PLAN_CHANGED</code></td><td>A file the plan names changed after approval; start a new case.</td></tr>
       <tr><td>No autodebug tools</td><td>Re-run <code>config … --write</code> from the AutoDebug folder, then restart the MCP server.</td></tr>
       <tr><td><code>is not plain JSON</code></td><td>The existing file has comments. Run <code>config</code> without <code>--write</code> and paste the entry yourself.</td></tr>
-      <tr><td><code>serve</code> sits still</td><td>It is waiting for a client on stdin. That is expected. Ctrl+C to quit.</td></tr>
-      <tr><td><code>NOT_APPROVED</code></td><td>The server was started without <code>--demo</code>. Reconfigure with <code>--demo</code>.</td></tr>
-      <tr><td><code>APPROVAL_EXPIRED</code></td><td>The 30-minute demo approval ended. Restart the server.</td></tr>
-      <tr><td>Evidence path error</td><td>Pick a folder outside the AutoDebug checkout.</td></tr>
+      <tr><td><code>APPROVAL_EXPIRED</code> with <code>--demo</code></td><td>The 30-minute demo approval ended. Restart the server.</td></tr>
     </tbody>
   </table>
 
