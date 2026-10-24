@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoDebug documentation</title>
-<meta name="description" content="AutoDebug lets the AI agent in Cursor or VS Code debug your program with the IDE's own debugger, after you approve, and write a root-cause report.">
+<title>AUTODEBUG documentation</title>
+<meta name="description" content="AUTODEBUG lets the AI agent in Cursor or VS Code debug your program with the IDE's own debugger, after you approve, and write a root-cause report.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&display=swap" rel="stylesheet">
 <style>
+  @font-face { font-family: "Lemon Milk"; src: url("fonts/lemon-milk-regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Lemon Milk"; src: url("fonts/lemon-milk-medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+  @font-face { font-family: "Lemon Milk"; src: url("fonts/lemon-milk-bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
   :root {
     --ink: #1c2430;
     --ink-soft: #4a5565;
@@ -24,6 +27,7 @@
     --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
     --sans: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
     --mono: "Source Code Pro", Consolas, "SFMono-Regular", monospace;
+    --display: "Lemon Milk", "Source Sans 3", "Segoe UI", sans-serif;
     --sidebar: 17rem;
   }
   * { box-sizing: border-box; }
@@ -42,7 +46,7 @@
   }
   .brand { display: flex; align-items: center; gap: 0.6rem; color: #fff; text-decoration: none; }
   .brand svg { flex: none; }
-  .brand span { font: 650 1.35rem/1 var(--serif); letter-spacing: 0.01em; }
+  .brand span { font: 700 1.15rem/1 var(--display); letter-spacing: 0.08em; }
   .version { margin: 0.5rem 0 1.75rem; font-size: 0.875rem; color: var(--slate-dim); }
   .sidebar nav p { margin: 1.4rem 0 0.35rem; font: 600 0.8125rem/1.3 var(--sans); color: var(--slate-dim); }
   .sidebar ul { list-style: none; margin: 0; padding: 0; }
@@ -54,10 +58,10 @@
   /* Reading column */
   main { margin-left: var(--sidebar); }
   .page { max-width: 47rem; padding: 3rem 3rem 4rem; }
-  h1, h2, h3 { font-family: var(--serif); font-weight: 650; line-height: 1.2; color: var(--ink); }
-  h1 { font-size: 2.75rem; margin: 0 0 0.75rem; letter-spacing: -0.01em; }
-  h2 { font-size: 1.75rem; margin: 3.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
-  h3 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 500; line-height: 1.25; letter-spacing: 0.04em; color: var(--ink); }
+  h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 0.9rem; letter-spacing: 0.08em; }
+  h2 { font-size: 1.3rem; margin: 3.5rem 0 0.9rem; padding-bottom: 0.55rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 0.98rem; margin: 2rem 0 0.6rem; }
   h2 a.anchor, h3 a.anchor { visibility: hidden; margin-left: 0.4rem; color: var(--slate-dim); text-decoration: none; font-weight: 500; }
   h2:hover a.anchor, h3:hover a.anchor, a.anchor:focus { visibility: visible; }
   .lede { font: 400 1.3rem/1.5 var(--serif); color: var(--ink-soft); margin: 0 0 2rem; max-width: 38rem; }
@@ -148,7 +152,7 @@
 <body>
 <aside class="sidebar" id="sidebar">
   <div class="top">
-    <a class="brand" href="#top" aria-label="AutoDebug home">
+    <a class="brand" href="#top" aria-label="AUTODEBUG home">
       <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
         <rect x="1" y="1" width="24" height="24" rx="4" fill="none" stroke="#c9d2dc" stroke-width="1.5"/>
         <path d="M6 9h14M6 13h9M6 17h11" stroke="#8e9bab" stroke-width="1.5" stroke-linecap="round"/>
@@ -156,7 +160,7 @@
         <path d="M6 13h9" stroke="#24303f" stroke-width="1.5" stroke-linecap="round"/>
         <circle cx="21" cy="13" r="2.3" fill="#c4262e"/>
       </svg>
-      <span>AutoDebug</span>
+      <span>AUTODEBUG</span>
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
@@ -188,10 +192,10 @@
 
 <main id="top">
 <div class="page">
-  <h1>AutoDebug</h1>
+  <h1>AUTODEBUG</h1>
   <p class="lede">Let the AI agent in Cursor or VS Code debug your program with the IDE's own debugger, then explain the root cause in a written report. Nothing runs until you click Approve.</p>
 
-  <figure class="editor" aria-label="An AutoDebug session paused in geometry.py">
+  <figure class="editor" aria-label="An AUTODEBUG session paused in geometry.py">
     <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span id="status">Paused on breakpoint</span></div>
     <div class="code" role="presentation">
 <div class="ln" data-line="9"><span class="gutter"></span><span class="num">9</span><span><span class="kw">def</span> <span class="fn">polygon_area</span>(points: list[Point]) -&gt; <span class="nb">float</span>:</span></div>
@@ -218,7 +222,7 @@
   <p class="caption">From a real session in Cursor: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
 
   <h2 id="overview">Overview <a class="anchor" href="#overview" aria-label="Link to this section">#</a></h2>
-  <p>AutoDebug connects your AI agent to the debugger you already use. The agent reads your code, picks breakpoints and asks to run one of your launch configurations. After you approve, it builds the program, stops at the breakpoints and steps through the code. When it understands the fault, it writes the report into your project.</p>
+  <p>AUTODEBUG connects your AI agent to the debugger you already use. The agent reads your code, picks breakpoints and asks to run one of your launch configurations. After you approve, it builds the program, stops at the breakpoints and steps through the code. When it understands the fault, it writes the report into your project.</p>
   <dl class="facts">
     <dt>It investigates</dt>
     <dd>Each step reports which variables changed. A trace records every pass through a line, before and after it runs. The report keeps a timeline of everything the debugger showed.</dd>
@@ -234,7 +238,7 @@
   <p>You need Python 3.11 or newer, Git, and Cursor or VS Code with the debugger extension for your language. For Python, that is <strong>Python</strong> and <strong>Python Debugger</strong>.</p>
   <ol class="steps">
     <li>
-      <p>Install AutoDebug and connect it to your IDE. Use <code>setup vscode</code> for VS Code.</p>
+      <p>Install AUTODEBUG and connect it to your IDE. Use <code>setup vscode</code> for VS Code.</p>
       <div class="tabs" role="tablist" aria-label="Operating system">
         <button type="button" role="tab" id="tab-win" aria-controls="os-win" aria-selected="true">Windows</button>
         <button type="button" role="tab" id="tab-unix" aria-controls="os-unix" aria-selected="false">macOS and Linux</button>
@@ -248,12 +252,12 @@ cd AutoDebug
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m autodebug setup cursor</pre></div>
-      <p><code>setup</code> installs the AutoDebug extension in the IDE and adds the <code>autodebug</code> MCP server for all your projects.</p>
+      <p><code>setup</code> installs the AUTODEBUG extension in the IDE and adds the <code>autodebug</code> MCP server for all your projects.</p>
     </li>
     <li><p>In the IDE, open the Command Palette and run <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.</p></li>
     <li><p>Turn on the server. In Cursor: <strong>Cursor Settings</strong>, <strong>MCP</strong>, then switch on <strong>autodebug</strong>. In VS Code: <strong>MCP: List Servers</strong>, <strong>autodebug</strong>, <strong>Start Server</strong>.</p></li>
   </ol>
-  <p><code>autodebug doctor</code> checks all of this. To update later, run <code>git pull</code> in the AutoDebug folder, then <code>setup</code> again.</p>
+  <p><code>autodebug doctor</code> checks all of this. To update later, run <code>git pull</code> in the <code>AutoDebug</code> folder, then <code>setup</code> again.</p>
 
   <h2 id="first-session">Your first session <a class="anchor" href="#first-session" aria-label="Link to this section">#</a></h2>
   <p>The repository includes <code>examples/AutoDebugDemo</code>, a small program with one deliberate bug: moving a shape changes its area. Open that folder in the IDE and ask the agent, in Agent mode:</p>
@@ -284,10 +288,10 @@ python3 -m venv .venv
   <p>Each report is a Markdown file in <code>autodebug-reports/</code> in your project. It states the problem, how the program was run, a numbered timeline of every stop, step and trace, the root cause with its confidence, the solution and how it was verified. A cause marked confirmed must say how it was confirmed. Values that look like secrets appear as <code>***REDACTED***</code>.</p>
 
   <h2 id="your-project">Your own project <a class="anchor" href="#your-project" aria-label="Link to this section">#</a></h2>
-  <p>AutoDebug runs the launch configurations in your project's <code>.vscode/launch.json</code>, and optionally a build task from <code>.vscode/tasks.json</code> first. If the program prints to the terminal, set <code>"console": "internalConsole"</code> so the agent can read its output when it ends. Use a test or a small reproduction, never a production system or real customer data.</p>
+  <p>AUTODEBUG runs the launch configurations in your project's <code>.vscode/launch.json</code>, and optionally a build task from <code>.vscode/tasks.json</code> first. If the program prints to the terminal, set <code>"console": "internalConsole"</code> so the agent can read its output when it ends. Use a test or a small reproduction, never a production system or real customer data.</p>
 
   <h2 id="how-it-works">How it works <a class="anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
-  <p>The agent talks to the <code>autodebug</code> MCP server, a small Python program the IDE starts. The server talks to the AutoDebug extension inside the IDE window over a token-protected local connection. The extension drives the IDE's debugger through the public VS Code API and the Debug Adapter Protocol. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+  <p>The agent talks to the <code>autodebug</code> MCP server, a small Python program the IDE starts. The server talks to the AUTODEBUG extension inside the IDE window over a token-protected local connection. The extension drives the IDE's debugger through the public VS Code API and the Debug Adapter Protocol. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
 
   <h2 id="safety">Safety <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
   <ul>
@@ -302,7 +306,7 @@ python3 -m venv .venv
   <table class="ref">
     <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
     <tbody>
-      <tr><td>No window is running the AutoDebug extension</td><td>Open the project folder in the IDE and check for AutoDebug in the status bar. Run <code>autodebug setup</code> if it is missing.</td></tr>
+      <tr><td>No window is running the AUTODEBUG extension</td><td>Open the project folder in the IDE and check for AUTODEBUG in the status bar. Run <code>autodebug setup</code> if it is missing.</td></tr>
       <tr><td>No debugger for type "debugpy"</td><td>Install the Python Debugger extension in the IDE and reload the window.</td></tr>
       <tr><td>No dialog appears</td><td>It may be behind another window. <strong>AutoDebug: Show Log</strong> lists each request.</td></tr>
       <tr><td>The agent uses an old server</td><td>Run <code>autodebug doctor</code>; it points out old entries and how to fix them.</td></tr>
@@ -322,7 +326,7 @@ python3 -m venv .venv
   <p>On Windows, write <code>py -m autodebug</code> instead of <code>autodebug</code>.</p>
 
   <footer>
-    <span>AutoDebug 0.2</span>
+    <span>AUTODEBUG 0.2</span>
     <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
   </footer>
 </div>
