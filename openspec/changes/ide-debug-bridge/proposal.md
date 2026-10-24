@@ -1,6 +1,8 @@
 # IDE debug bridge: real debugging in VS Code and Cursor
 
-**Status: PROPOSED. NOT APPROVED. No code written.**
+**Status: APPROVED by the developer on 2026-10-24** (decisions 1–3 below:
+open the T05 gate for `vscode-bridge` with in-IDE approval; own bridge
+extension; Python first, then C++). Decision 4 remains with Autodesk.
 
 Requested by the developer on 2026-10-24. Given the prompt "Help to debug
 AutoDebugDemo", an AI agent must be able to use AutoDebug to:

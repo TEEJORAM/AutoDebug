@@ -3,8 +3,9 @@
 Do not start B1 until B0 is signed off. One task per change; each lists the
 requirement IDs, tests and the observed test result.
 
-- [ ] B0 — Developer sign-off on proposal decisions 1–3 (T05 gate for
-  `vscode-bridge`, own extension, report location).
+- [x] B0 — Developer sign-off on proposal decisions 1–3 (T05 gate for
+  `vscode-bridge`, own extension, report location). Signed off 2026-10-24:
+  approve gate for `vscode-bridge`; own extension; Python first, then C++.
 - [ ] B1 — Plan schema 0.3 and extended digest (BR-03).
 - [ ] B2 — Bridge protocol, discovery and Python fake bridge (BR-01, BR-02, BR-11).
 - [ ] B3 — `VSCodeBridgeAdapter`: launch, breakpoints, stop, stack, variables,

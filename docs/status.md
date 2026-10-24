@@ -60,10 +60,10 @@ All tests use fake or mock backends.
 
 Owner decides on the publication items and the repository's visibility.
 
-**Proposed, awaiting sign-off:** real debugging in VS Code and Cursor through an
+**Approved 2026-10-24, in progress:** real debugging in VS Code and Cursor through an
 AutoDebug Bridge extension, with in-IDE approval, build, step and a project
 report ([ide-debug-bridge](../openspec/changes/ide-debug-bridge/proposal.md)).
-No code is written until task B0 there is signed off.
+Tasks run one at a time, in order.
 
 ## Change log
 
