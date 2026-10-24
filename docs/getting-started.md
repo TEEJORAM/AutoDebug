@@ -210,6 +210,13 @@ The default base is `%LOCALAPPDATA%\autodebug` on Windows,
 it with `--evidence-dir DIR` or `AUTODEBUG_EVIDENCE_DIR`; it must be outside the
 AutoDebug checkout and private to you.
 
+## Practise on a real bug
+
+[examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md) is a small Python
+and C++ app with one deliberate bug. Debug it yourself in VS Code, Visual Studio
+or CLion now; its `autodebug-plan.json` is the plan AutoDebug will use once it
+can drive the VS Code debugger.
+
 ## Connecting a real IDE debugger
 
 Connection (2) is not built yet. For VS Code it needs all of:

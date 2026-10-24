@@ -19,6 +19,8 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 - Five IDE adapters (VS Code, Cursor, CLion, Xcode, Visual Studio) sharing one
   client-backed implementation, tested against mock clients only.
 - Offline stdlib-only wheel/sdist builder.
+- Sample buggy project for practice and future adapter tests:
+  [examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md).
 
 ## What does not work yet
 
@@ -33,8 +35,8 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 | Date | Environment | Command | Result |
 |---|---|---|---|
-| 2026-10-24 | GitHub Actions run 40076712888: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 508 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
-| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 508 tests, OK (9 skipped) |
+| 2026-10-24 | GitHub Actions run 40078110989: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 518 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
+| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 518 tests, OK (9 skipped) |
 
 All tests use fake or mock backends.
 
@@ -60,6 +62,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — AutoDebugDemo sample project.** `examples/AutoDebugDemo`
+  (Python + C++, one deliberate bug, VS Code launch configs, sample plan) and
+  `tests/test_examples.py`. Documentation and examples only; no behaviour change.
 - **2026-10-24 — copy-and-paste setup.** `config --write`, invocation-aware
   hints, README rewritten with pasteable Windows/macOS/Linux commands.
 - **2026-10-24 — native Windows evidence storage**
