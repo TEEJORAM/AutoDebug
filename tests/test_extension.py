@@ -25,6 +25,7 @@ NODE = shutil.which("node")
 class HarnessTest(unittest.TestCase):
     debugpy: str | None = None
     build_exit = 0
+    debuggers = "debugpy"
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -34,7 +35,7 @@ class HarnessTest(unittest.TestCase):
         tasks = {"version": "2.0.0", "tasks": [{"label": "check", "type": "shell", "command": "python", "args": ["-m", "py_compile", "geometry.py"]}]}
         (self.workspace / ".vscode" / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
         self.bridges = Path(tmp.name) / "state" / "bridges"
-        env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit))
+        env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers)
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -162,6 +163,17 @@ class Extension(HarnessTest):
         self.send("exit")
         self.node.wait(10)
         self.assertEqual(discover(self.bridges), [])
+
+
+class MissingDebugger(HarnessTest):
+    debuggers = ""
+
+    def test_missing_debugger_is_reported_before_asking_for_approval(self):
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x")
+        self.assertEqual(caught.exception.code, "NOT_FOUND")
+        self.assertIn('no debugger for type "debugpy"', caught.exception.message)
+        self.assertIn("Python Debugger extension", caught.exception.message)
 
 
 class FailedBuild(HarnessTest):

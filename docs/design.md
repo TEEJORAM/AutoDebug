@@ -45,6 +45,10 @@ There is no tool that evaluates expressions or changes variables.
 
 ## Approval
 
+Before asking, the extension checks that an installed extension provides the
+launch configuration's debugger type; if not, `start_session` fails with
+`NOT_FOUND` and names the extension to install.
+
 `start_session` opens a modal dialog in the IDE window. It shows what will run:
 the build task's command, the launch configuration (program, module, arguments),
 the breakpoints, the step limit and the goal. Only **Approve** starts anything;
