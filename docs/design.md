@@ -28,20 +28,28 @@ the language debugger (debugpy, C/C++, Node, ...) ── your program
 
 | Tool | Does |
 |---|---|
-| `list_targets` | IDE windows, their folders, launch configurations and build tasks |
+| `list_targets` | IDE windows, their folders, launch configurations (program and module separately) and build tasks |
 | `start_session` | Ask the developer to approve, then build, set breakpoints, launch; waits for the first stop |
 | `wait` | Wait for the session to change state (approval, build, stop, exit) |
 | `step` | Step over, into or out (1–20 times); returns the new location and the variables that changed |
-| `continue` | Run to the next stop and return it |
+| `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line |
 | `pause` | Stop a running program where it is |
-| `inspect` | Variables of a frame: all names, types and short values, or full values of named ones |
+| `inspect` | The frame's local variables with short values, or full values of named ones (locals or globals) |
 | `stack` | Call stack, top frame first |
 | `breakpoints` | Add or remove breakpoints during the session |
-| `trace` | Run to a line repeatedly and collect the named variables at each hit |
+| `trace` | Run to a line repeatedly; each row has the caller and each variable as `before → after` the line runs (one step per hit, counted in the step limit). Stops early at another breakpoint |
 | `stop_session` | End the debug session |
 | `write_report` | Write the Markdown report: problem, root cause, solution, verification, timeline |
 
 There is no tool that evaluates expressions or changes variables.
+`start_session`, `step`, `continue`, `trace` and `pause` move the program; the
+agent must not call them in parallel with `stack` or `inspect`.
+
+Every state lists all breakpoints that can stop the program: `source:
+"session"` for AutoDebug's, `"editor"` for the developer's (left in place).
+When the program ends, the state carries the last lines it printed (redacted);
+launch configurations that print to the terminal (`"console":
+"integratedTerminal"`) cannot be captured.
 
 ## Approval
 
@@ -89,8 +97,8 @@ token closes the connection. Then one JSON object per line:
 | `breakpoints` | `add`, `remove` | `breakpoints` |
 
 `state`: `{version, status, reason, location {file, line}, exit_code, message,
-breakpoints [{file, line, verified, message}], steps_used, max_steps,
-build {task, status, exit_code} | null}` where
+breakpoints [{file, line, source, verified, message}], steps_used, max_steps,
+build {task, status, exit_code} | null, output [last lines], output_note}` where
 `status` is `awaiting_approval`, `denied`, `building`, `build_failed`,
 `starting`, `running`, `paused` or `ended`.
 

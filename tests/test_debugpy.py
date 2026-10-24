@@ -30,13 +30,19 @@ class RealDebugpy(HarnessTest):
         self.assertIn({"name": "total", "before": "0.0", "after": "-1.0"}, step["changed"])
 
         trace = self.debugger.trace("geometry.py", 15, ["i", "total"], hits=2)
-        self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1.0"), ("2", "2.0")])
+        self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1.0 → 2.0"), ("2", "2.0 → 4.0")])
+        self.assertTrue(trace["rows"][0]["caller"].startswith("test_geometry.py:"))
+        self.assertEqual(trace["location"], "geometry.py:12")  # after the last pass
 
-        out = self.debugger.step("over", count=2)
-        self.assertEqual(out["path"], ["geometry.py:12", "geometry.py:16"], "the loop ends after i = 2: no closing edge")
+        out = self.debugger.step("over")
+        self.assertEqual(out["location"], "geometry.py:16", "the loop ends after i = 2: no closing edge")
+        self.assertNotIn("Point", [v["name"] for v in out["variables"]])
         self.assertEqual(self.debugger.stack()["frames"][0]["function"], "polygon_area")
 
-        self.debugger.stop_session()
+        self.debugger.breakpoints(remove=[{"file": "geometry.py", "line": 15}])
+        ended = self.debugger.continue_(30)
+        self.assertEqual(ended["status"], "ended", ended)
+        self.assertTrue(any("AssertionError: 2.0 != 1.0" in line for line in ended["output"]), ended.get("output"))
         report = Path(self.debugger.write_report(
             title="Moving a shape changes its area", problem="A moved unit square reports area 2.0 instead of 1.0.",
             root_cause="polygon_area loops i over range(len(points) - 1), so the edge from the last corner back to "
@@ -44,8 +50,8 @@ class RealDebugpy(HarnessTest):
             solution="Loop over range(n) and use points[(i + 1) % n].", confidence="likely",
         )["report_file"])
         text = report.read_text(encoding="utf-8")
-        self.assertIn("geometry.py:12 → geometry.py:16", text)
-        self.assertIn("i=1, total=-1.0", text)
+        self.assertIn("i=1, total=-1.0 → 2.0", text)
+        self.assertIn("AssertionError: 2.0 != 1.0", text)
 
 
 if __name__ == "__main__":

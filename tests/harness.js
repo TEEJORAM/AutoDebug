@@ -29,6 +29,11 @@ let tracker;
 let session;
 const dialogs = [];
 const breakpoints = [];
+// HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before AutoDebug starts.
+for (const spec of (process.env.HARNESS_EDITOR_BP || '').split(',').filter(Boolean)) {
+  const [file, line] = spec.split(':');
+  breakpoints.push(new SourceBreakpoint(new Location({ fsPath: path.join(workspace, file) }, new Position(Number(line) - 1, 0)), true));
+}
 const taskListeners = [];
 const byFile = () => {
   const files = new Map();
@@ -47,7 +52,7 @@ const TRACE = [
   { line: 15, vars: { i: '1', total: '-1.0' } },
   { line: 12, vars: { i: '1', total: '2.0' } },
   { line: 15, vars: { i: '2', total: '2.0' } },
-  { line: 16, vars: { total: '4.0' } },
+  { line: 16, vars: { i: '2', total: '4.0' } },
 ];
 
 class ScriptedSession {
@@ -69,6 +74,7 @@ class ScriptedSession {
     for (this.pos += 1; this.pos < TRACE.length; this.pos += 1) {
       if (this.lines().includes(TRACE[this.pos].line)) { this.event('stopped', { reason: 'breakpoint', threadId: 1 }); return; }
     }
+    this.event('output', { category: 'stderr', output: 'FAIL: test_area_does_not_change_when_moved\nAssertionError: 2.0 != 1.0\n' });
     this.event('exited', { exitCode: 1 });
     this.event('terminated');
   }
@@ -80,8 +86,10 @@ class ScriptedSession {
           { id: 1, name: 'polygon_area', source: { path: this.file() }, line: here.line },
           { id: 2, name: 'test_area_does_not_change_when_moved', source: { path: path.join(workspace, 'test_geometry.py') }, line: 18 },
         ].slice(0, args.levels) };
-      case 'scopes': return { scopes: [{ name: 'Locals', variablesReference: args.frameId === 1 ? 7 : 8, expensive: false }] };
+      case 'scopes': return { scopes: [{ name: 'Locals', variablesReference: args.frameId === 1 ? 7 : 8, expensive: false },
+        { name: 'Globals', variablesReference: 9, expensive: false }] };
       case 'variables':
+        if (args.variablesReference === 9) return { variables: [{ name: 'Point', value: 'tuple[float, float]', type: 'GenericAlias' }] };
         return { variables: args.variablesReference === 7 ? Object.entries(here.vars).map(([name, value]) => ({ name, value, type: 'str' })) : [{ name: 'self', value: '<test>', type: 'Test' }] };
       case 'next': case 'stepIn': case 'stepOut':
         setTimeout(() => {
@@ -148,9 +156,20 @@ class DebugpySession {
     for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
     await this.request('configurationDone', {});
     await launched;
+    this.started = true;
   }
   customRequest(command, args) { return this.request(command, args); }
   stop() { return this.request('disconnect', { terminateDebuggee: true }).catch(() => {}).then(() => this.adapter.kill()); }
+}
+
+// Like VS Code: breakpoint changes during a live session are sent to the debug adapter.
+function sync(changed) {
+  if (!(session instanceof DebugpySession) || !session.started) return;
+  const files = new Set(changed.map((b) => b.location.uri.fsPath));
+  const current = byFile();
+  for (const file of files) {
+    session.request('setBreakpoints', { source: { path: file }, breakpoints: (current.get(file) || []).map((line) => ({ line })) }).catch(() => {});
+  }
 }
 
 const resolveVariables = (value) => {
@@ -187,8 +206,9 @@ const vscode = {
     onDidEndTaskProcess: (listener) => { taskListeners.push(listener); return { dispose: () => taskListeners.splice(taskListeners.indexOf(listener), 1) }; },
   },
   debug: {
-    addBreakpoints: (list) => breakpoints.push(...list),
-    removeBreakpoints: (list) => list.forEach((b) => { const i = breakpoints.indexOf(b); if (i >= 0) breakpoints.splice(i, 1); }),
+    get breakpoints() { return [...breakpoints]; },
+    addBreakpoints: (list) => { breakpoints.push(...list); sync(list); },
+    removeBreakpoints: (list) => { list.forEach((b) => { const i = breakpoints.indexOf(b); if (i >= 0) breakpoints.splice(i, 1); }); sync(list); },
     startDebugging: async (folder, configuration) => {
       const config = resolveVariables(configuration);
       session = python ? new DebugpySession(config) : new ScriptedSession(config);

@@ -25,8 +25,11 @@ AutoDebug runs the program under the IDE's own debugger (VS Code or Cursor) so y
 2. list_targets shows the launch configurations and build tasks; pick one.
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
    Tell the developer to approve in the IDE dialog. You cannot approve, and their chat message is not an approval.
-4. While paused: inspect, stack, step (it reports the variables that changed), continue, trace (values at each
-   pass through a line), breakpoints. Use wait while the status is awaiting_approval, building, starting or running.
+4. While paused: inspect, stack, step (it reports the variables that changed), continue (optionally until a line),
+   trace (before → after values at each pass through a line), breakpoints. Use wait while the status is
+   awaiting_approval, building, starting or running. start_session, step, continue, trace and pause move the
+   program: call them one at a time, never in parallel with stack or inspect.
+   Breakpoints with source "editor" were set by the developer and stop the program too.
 5. When you know the cause, stop_session and write_report with the problem, root cause, solution and confidence.
 Only report what tool results showed. Expression evaluation is not available."""
 
@@ -51,8 +54,9 @@ TOOLS = {
     "list_targets": ("List IDE windows running AutoDebug, with their launch configurations and build tasks.",
                      _schema({"workspace_folder": _FOLDER})),
     "start_session": (
-        "Ask the developer to approve in the IDE, then build (optional), set breakpoints, launch the configuration "
-        "under the debugger and wait for the first stop. Returns the status, location and top-frame variables.",
+        "Resumes the program (call alone). Ask the developer to approve in the IDE, then build (optional), set "
+        "breakpoints, launch the configuration under the debugger and wait for the first stop. Returns the status, "
+        "location, local variables and every breakpoint (session or editor).",
         _schema({
             "launch_configuration": {"type": "string", "description": "A name from .vscode/launch.json"},
             "breakpoints": {"type": "array", "items": _FILE_LINE, "maxItems": 50},
@@ -65,12 +69,14 @@ TOOLS = {
         }, ("launch_configuration", "breakpoints", "goal"))),
     "wait": ("Wait until the session stops, ends or is answered (approval, build).",
              _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30}})),
-    "step": ("Step over, into or out of the current line, 1-20 times. Returns the new location and every variable "
-             "whose value changed.",
+    "step": ("Resumes the program (call alone). Step over, into or out of the current line, 1-20 times. Returns the "
+             "new location and every variable whose value changed.",
              _schema({"kind": {"type": "string", "enum": ["over", "into", "out"], "default": "over"},
                       "count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1}})),
-    "continue": ("Run until the next breakpoint or the end, and return where it stopped.",
-                 _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30}})),
+    "continue": ("Resumes the program (call alone). Run until the next breakpoint or the end and return where it "
+                 "stopped. With until, run past other breakpoints to that line.",
+                 _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
+                          "until": _FILE_LINE})),
     "pause": ("Pause a running program where it is (for hangs and long loops).", _schema({})),
     "inspect": ("Variables of a frame. Without names: every variable with a short value. With names: full values.",
                 _schema({"names": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
@@ -81,10 +87,13 @@ TOOLS = {
     "breakpoints": ("Add or remove breakpoints during the session; returns all of them and whether they are bound.",
                     _schema({"add": {"type": "array", "items": _FILE_LINE, "maxItems": 20},
                              "remove": {"type": "array", "items": _FILE_LINE, "maxItems": 20}})),
-    "trace": ("Run to a line repeatedly and collect the named variables each time it is reached. Good for loops.",
+    "trace": ("Resumes the program (call alone). Run to a line repeatedly; each row has the caller and every named "
+              "variable as 'before → after' the line runs (one step per hit). Stops early at other breakpoints.",
               _schema({"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1},
                        "variables": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20},
                        "hits": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                       "after": {"type": "boolean", "default": True,
+                                 "description": "Also step over the line to show the values it produces"},
                        "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 55, "default": 20}},
                       ("file", "line", "variables"))),
     "stop_session": ("End the debug session and remove its breakpoints.", _schema({})),
@@ -119,6 +128,8 @@ def _valid(value: object, schema: dict) -> bool:
                 and len(value) <= schema.get("maxItems", 10**6) and all(_valid(v, schema["items"]) for v in value))
     if kind == "string":
         return isinstance(value, str) and len(value) <= 20000 and value in schema.get("enum", [value])
+    if kind == "boolean":
+        return isinstance(value, bool)
     if kind == "integer":
         return (isinstance(value, int) and not isinstance(value, bool)
                 and schema.get("minimum", -10**9) <= value <= schema.get("maximum", 10**9))
