@@ -5,6 +5,8 @@ Let your AI agent debug for real. AutoDebug gives the agent in **Cursor** or
 through the code, reads variables, and writes a root-cause report into your
 project. Nothing runs until you click **Approve**.
 
+**Documentation:** [teejoram.github.io/AutoDebug](https://teejoram.github.io/AutoDebug/)
+
 ```text
 You: "Help me debug this: moving a shape changes its area."
 
