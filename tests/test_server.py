@@ -78,8 +78,8 @@ INITIALIZE = {
 class TestBinding(unittest.TestCase):
     def test_exact_tool_surface_schemas_and_no_approval_channel(self):
         tools = _dispatcher().list_tools()
-        self.assertEqual(len(tools), 15)
-        self.assertEqual(len({t["name"] for t in tools}), 15)
+        self.assertEqual(len(tools), 17)
+        self.assertEqual(len({t["name"] for t in tools}), 17)
         for tool in tools:
             schema = tool["inputSchema"]
             self.assertEqual(schema["type"], "object")
@@ -309,19 +309,20 @@ class TestSubprocess(_WorkspaceTest):
         self.assertEqual(result.stdout, b"")
         self.assertIn(b"serve", result.stderr)
 
-    def test_handshake_negotiates_pinned_version_and_fake_only_lifecycle(self):
+    def test_handshake_negotiates_pinned_version_and_bridge_mode_lifecycle(self):
         process = self.start()
         self.assertEqual(process.request("tools/list")["error"]["code"], -32000)
         self.assertEqual(process.request("ping")["result"], {})
         result = process.initialize("2099-01-01")["result"]
         self.assertEqual(result["protocolVersion"], PROTOCOL_VERSION)
         self.assertEqual(result["capabilities"], {"tools": {"listChanged": False}})
-        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 15)
+        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 17)
         self.assertEqual(process.request("initialize", INITIALIZE)["error"]["code"], -32600)
         self.assertEqual(process.request("unknown")["error"]["code"], -32601)
         health = process.tool("autodebug_health")["result"]
         self.assertFalse(health["isError"])
-        self.assertEqual(health["structuredContent"]["result"]["backend_mode"], "fake-only")
+        # Plain `serve` is bridge mode: nothing runs without a click in the IDE.
+        self.assertEqual(health["structuredContent"]["result"]["backend_mode"], "vscode-bridge")
         self.assertEqual(json.loads(health["content"][0]["text"]), health["structuredContent"])
         self.assertEqual(process.tool("approve", {})["error"]["code"], -32602)
         self.assertEqual(process.tool("autodebug_get_stack", {
@@ -333,10 +334,11 @@ class TestSubprocess(_WorkspaceTest):
         process.process.stdin.close()
         self.assertEqual(process.process.wait(timeout=5), 0)
         stderr = process.process.stderr.read().decode().splitlines()
-        # Only the startup banner and evidence location; no tokens or errors.
-        self.assertEqual(len(stderr), 2, stderr)
+        # Only the startup banner, bridge folder and evidence location; no tokens or errors.
+        self.assertEqual(len(stderr), 3, stderr)
         self.assertTrue(stderr[0].startswith("autodebug 0.1.0 | MCP stdio"))
-        self.assertTrue(stderr[1].startswith("autodebug: evidence: "))
+        self.assertTrue(stderr[1].startswith("autodebug: bridges: "))
+        self.assertTrue(stderr[2].startswith("autodebug: evidence: "))
         self.assertNotIn("token", "\n".join(stderr))
 
     def test_large_invalid_line_recovers_then_ping(self):

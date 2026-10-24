@@ -92,6 +92,17 @@ def create_run_dir(root: Path) -> Path:
     return run_dir
 
 
+def bridge_folder(root: Path) -> Path:
+    """The private folder where AutoDebug Bridge windows announce themselves."""
+    from autodebug.bridge.client import bridges_dir
+
+    folder = bridges_dir(root)
+    if is_link(folder):
+        raise ValueError(f"bridge folder is a link or junction, not a real directory: {folder}")
+    make_private_dir(folder, exist_ok=True)
+    return folder
+
+
 # -- serve ------------------------------------------------------------------
 
 
@@ -101,10 +112,16 @@ def _serve(args: argparse.Namespace) -> int:
     logging.basicConfig(stream=sys.stderr, level=args.log_level.upper(), format=f"{PROG}: %(levelname)s: %(message)s")
     if args.demo and not secure_storage_supported():
         raise ValueError(f"--demo needs evidence storage, which is not available on {platform.system()}")
-    run_dir = create_run_dir(resolve_evidence_dir(args.evidence_dir))
-    dispatcher = build_dispatcher(run_dir, demo=args.demo)
-    mode = "demo case AUTODEBUG-DEMO armed" if args.demo else "no approved cases"
-    _err(f"{PROG} {__version__} | MCP stdio {PROTOCOL_VERSION} | fake-only, real debuggers disabled | {mode}")
+    root = resolve_evidence_dir(args.evidence_dir)
+    run_dir = create_run_dir(root)
+    folder = None if args.demo else bridge_folder(root)
+    dispatcher = build_dispatcher(run_dir, demo=args.demo, bridges_folder=folder)
+    if args.demo:
+        _err(f"{PROG} {__version__} | MCP stdio {PROTOCOL_VERSION} | synthetic demo | case AUTODEBUG-DEMO armed")
+    else:
+        _err(f"{PROG} {__version__} | MCP stdio {PROTOCOL_VERSION} | AutoDebug Bridge for VS Code and Cursor | "
+             "nothing runs until you click Approve in the IDE")
+        _err(f"{PROG}: bridges: {folder}")
     _err(f"{PROG}: evidence: {run_dir}")
     if sys.stdin.isatty():
         _err(f"{PROG}: waiting for an MCP client on stdin; this is not an interactive shell (Ctrl+C to quit)")

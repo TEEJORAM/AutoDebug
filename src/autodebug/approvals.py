@@ -3,10 +3,12 @@
 Binds approvals to a plan digest, target identity, scope and expiry, with
 revocation and one-time tokens. Tested only against the fake backend.
 
-SECURITY GATE (OPEN / NOT APPROVED): `human_presence_confirmed` is a
-placeholder for a real OS-level user-presence check that this code cannot
-perform, and `verify_approval` refuses every backend except `"fake"`. No MCP
-tool issues approvals; only a separate trusted local process may.
+SECURITY GATE: `verify_approval` accepts only the backend kinds in
+`APPROVED_BACKEND_KINDS`. `"fake"` is the synthetic demo. `"vscode-bridge"`
+was approved by the developer on 2026-10-24 (ide-debug-bridge, decision 1):
+its approvals are issued only after the AutoDebug Bridge reports a click on
+Approve in the IDE's modal dialog, and the bridge enforces them again. No MCP
+tool, argument or environment variable can approve or extend this set.
 """
 
 from __future__ import annotations
@@ -27,6 +29,11 @@ from autodebug.router import Router
 #: (RP-05, tasks.md T05 security gate). Any other value is refused by
 #: `verify_approval` regardless of how well-formed the approval otherwise is.
 FAKE_BACKEND_KIND = "fake"
+#: The AutoDebug Bridge in VS Code or Cursor (ide-debug-bridge BR-04).
+BRIDGE_BACKEND_KIND = "vscode-bridge"
+#: Hardcoded on purpose: one reviewed line per approved backend, nothing
+#: configurable (security-gate-closure-proposal.md section 4).
+APPROVED_BACKEND_KINDS = frozenset({FAKE_BACKEND_KIND, BRIDGE_BACKEND_KIND})
 
 
 def reject_prohibited_target(host_id: str) -> None:
@@ -199,10 +206,10 @@ class ApprovalBroker:
                     message="approval is not bound to this backend/target (RP-05-C)",
                 )
             )
-        if backend_kind != FAKE_BACKEND_KIND:
+        if backend_kind not in APPROVED_BACKEND_KINDS:
             # Defense in depth: even a perfectly scope-matched approval can
-            # never authorize a real adapter until the T05 security gate
-            # closes. This check is independent of the scope check above.
+            # never authorize a backend outside the reviewed allowlist. This
+            # check is independent of the scope check above.
             raise AutoDebugError(
                 ErrorDetail(
                     code=ErrorCode.PERMISSION_DENIED,
@@ -240,14 +247,14 @@ def authorize_and_arm(
 
     Verifies the approval first, then that the launch configuration and
     running/launch scenario match the reviewed plan. Backend identity comes
-    from `adapter.ide_id`, so the approval check and the armed adapter cannot
+    from `adapter.backend_kind`, so the approval check and the armed adapter cannot
     diverge. Agent-reachable code must never call `Router.arm_target` directly."""
     if target != plan.target:
         raise AutoDebugError(ErrorDetail(code=ErrorCode.TARGET_MISMATCH, message="routed target differs from plan"))
     broker.verify_approval(
         approval,
         plan=plan,
-        backend_kind=adapter.ide_id,
+        backend_kind=adapter.backend_kind,
         target_identity=target_identity,
         required_scope=required_scope,
     )

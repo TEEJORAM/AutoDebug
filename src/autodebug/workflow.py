@@ -130,6 +130,16 @@ class Case:
         self.plan = validated
         self.approved_digest = None
 
+    def bind_resolved_plan(self, plan: CasePlan) -> None:
+        """BR-03 — replace the staged plan with the same plan plus the
+        bridge's resolved-input hashes, before anything is approved."""
+        if self.state != CaseState.AWAITING_APPROVAL or self.approved_digest is not None or self.plan is None:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case is not awaiting approval"))
+        if plan.case_id != self.case_id or plan.digest_sha256 != plans.compute_plan_digest(plan):
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.PLAN_CHANGED, message="bound plan does not match its digest"))
+        plans.validate_case_plan(plan)
+        self.plan = plan
+
     def mark_approved(self, approved_digest: str) -> None:
         """RP-08 "approved": record a digest that matches the staged plan. Who
         approved it is verified by approvals.py before this is called."""
