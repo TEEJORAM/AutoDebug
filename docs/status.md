@@ -7,6 +7,7 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 ## What works
 
+- Native Windows, macOS and Linux, including evidence storage.
 - `autodebug` CLI: `serve` (dependency-free MCP 2025-11-25 stdio server with 15
   tools), `doctor` and `config` for VS Code, Claude Code, Claude Desktop and
   Cursor; installable with `pip install .` / `-e .` / `pipx`.
@@ -27,20 +28,15 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 - **No trusted human approval.** `issue_approval`'s `human_presence_confirmed`
   flag cannot prove a person approved anything, and `verify_approval` refuses
   every backend except `"fake"`.
-- **Evidence storage is POSIX-only.** On Windows it fails closed: `--demo`
-  exits with a startup error and arming any case returns a storage error.
 
 ## Verification
 
 | Date | Environment | Command | Result |
 |---|---|---|---|
-| 2026-10-24 | GitHub Actions run 40074228400 (commit `847c08a`): Ubuntu and macOS, Python 3.11 and 3.12 | full suite, `compileall`, whitespace check | all 4 jobs passed |
-| 2026-10-24 | GitHub Actions, same run: Windows, Python 3.11 and 3.12 | contract-only subset (evidence storage is POSIX-only) | both jobs passed |
-| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 481 tests, OK |
-| 2026-10-24 | Linux, Python 3.10 (user machine VM) | same | 481 tests, OK (2 packaging tests skipped: need 3.11) |
+| 2026-10-24 | GitHub Actions run 40076712888: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 508 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
+| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 508 tests, OK (9 skipped) |
 
-Not run: the full suite on Windows (it cannot pass until evidence storage
-supports Windows). All tests use fake or mock backends.
+All tests use fake or mock backends.
 
 ## Open blockers
 
@@ -64,6 +60,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — native Windows evidence storage**
+  (`openspec/changes/windows-evidence-storage/`). Handle-based backend with the
+  POSIX guarantees; full suite now runs on Windows CI.
 - **2026-10-24 — CLI and getting started** (`openspec/changes/cli-usability/`).
   `serve`/`doctor`/`config` subcommands, default private evidence location with
   one folder per run, 30-minute demo, editable installs, client snippets, and

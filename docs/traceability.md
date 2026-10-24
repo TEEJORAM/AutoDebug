@@ -28,7 +28,7 @@ authorization missing.
 | DE-02 | IMPLEMENTED | T06, T07 | 1–50 frames/names, recursive bounds, redaction | — |
 | DE-03 | IMPLEMENTED | T06, T07 | Step/time/data budgets, bounded waits | — |
 | DE-04 | IMPLEMENTED | T07 | No evaluation tool; conditional breakpoints refused | — |
-| DE-05 | PARTIAL | T06, T14, T15 | JSONL ledger and three artifacts | Windows secure storage unavailable |
+| DE-05 | IMPLEMENTED | T06, T14, T15, W1–W3 | JSONL ledger and three artifacts; escape tests on POSIX and Windows | — |
 | DE-06 | IMPLEMENTED | T06, T14, T15 | Owned citations; CONFIRMED needs causal validation | Truth of the client's narrative is the client's |
 | DE-07 | PARTIAL | T05, T06 | Prohibited targets refused (T05); no secret leaks (T06) | Host check is a naming heuristic |
 | DE-08 | IMPLEMENTED | T06, T15 | Incomplete recovery with partial evidence | — |
@@ -39,6 +39,8 @@ authorization missing.
 | IDE-04 | BLOCKED | T08–T12 | Mock suites only | No `IDE-04-B` 8-point native certification |
 | IDE-05 | IMPLEMENTED | T13, T15 | 11-cell ledger with honest states | Cells stay NOT_TESTED/BLOCKED until real tests |
 | CLI-01–05 | IMPLEMENTED | `cli-usability` C1–C6 | `tests/test_cli.py`, `tests/test_server.py` | — |
+| WIN-01–03 | IMPLEMENTED | `windows-evidence-storage` W1–W4 | `tests/test_windows_evidence.py`, `tests/test_publication_evidence.py` on Windows CI | — |
 
 Test-case IDs `TC-01`–`TC-24` are defined in [test-plan.md](test-plan.md).
-`CLI-*` requirements are in `openspec/changes/cli-usability/spec.md`.
+`CLI-*` requirements are in `openspec/changes/cli-usability/spec.md`; `WIN-*` in
+`openspec/changes/windows-evidence-storage/spec.md`.

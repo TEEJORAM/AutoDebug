@@ -62,6 +62,7 @@ src/autodebug/
   sessions.py      Session identity, ownership, leases, quarantine
   operations.py    Bounded backend calls with cancellation and late cleanup
   evidence.py      Redaction, bounded output, private evidence store, report
+  _winfs.py        Windows handle-based backend for the evidence store
   models.py        Typed, versioned data contracts
   errors.py        Stable error codes
   synthetic.py     Isolated in-memory debugger for the --demo

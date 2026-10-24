@@ -90,9 +90,20 @@ proprietary documents.
 ## Case-data policy
 
 Implemented: the caller always supplies the evidence base; it must be outside
-the source repository, owned by the current user and private (`0700`, files
-`0600`); each case directory is created exclusively and never reused; artifacts
-are opened without following links; evidence is append-only and capped.
+the source repository, owned by the current user and private; each case
+directory is created exclusively and never reused; artifacts are opened without
+following links; evidence is append-only and capped.
+
+| Guarantee | macOS / Linux | Windows |
+|---|---|---|
+| Private folders | mode `0700`, files `0600` | protected access list: you, SYSTEM, Administrators |
+| No links | `O_NOFOLLOW` | `FILE_FLAG_OPEN_REPARSE_POINT`; symlinks and junctions refused |
+| Case folder can't be swapped | pinned `dir_fd`, identity `(st_dev, st_ino)` | handle held without delete-sharing, identity = volume + file ID |
+| File stays inside its folder | `openat` relative to the pinned folder | final path of the opened file must be the pinned folder + name |
+| No hardlinks | `st_nlink == 1` | `nNumberOfLinks == 1` |
+| Atomic snapshots | `O_EXCL` temp + `renameat` | `CREATE_NEW` temp + in-place rename by handle |
+
+Design: `openspec/changes/windows-evidence-storage/design.md`.
 
 Still requiring an authorized policy decision:
 

@@ -58,11 +58,6 @@ py -m autodebug --version            # autodebug 0.1.0
 On Windows, use `py -m autodebug ...` in place of `autodebug ...` in the rest
 of this guide; it works even if Python's `Scripts` folder is not on your PATH.
 
-> **Windows today:** `doctor` and `config` work, but the demo case cannot run
-> yet. AutoDebug's evidence storage has not been built for Windows, so `doctor`
-> shows `✘ Evidence storage` and `serve --demo` refuses to start. Native Windows
-> support is the next planned fix; until then the demo runs on Linux or macOS.
-
 ## 2. Check your machine
 
 ```sh
@@ -178,16 +173,17 @@ debugger action is refused with `NOT_APPROVED`: no tool can approve a plan.
 Each server start writes to a new private folder:
 
 ```text
-~/.local/state/autodebug/run-20261024T101500Z-a1b2c3/AUTODEBUG-DEMO/
+<evidence base>\run-20261024T101500Z-a1b2c3\AUTODEBUG-DEMO\
   events.jsonl   one redacted observation per line (E0001, E0002, ...)
   case.json      final case state
   report.md      root-cause report citing evidence IDs
 ```
 
-The default base is `~/.local/state/autodebug` on Linux (or
-`$XDG_STATE_HOME/autodebug`) and `~/Library/Application Support/autodebug` on
-macOS. Change it with `--evidence-dir DIR` or `AUTODEBUG_EVIDENCE_DIR`; it must
-be outside the AutoDebug checkout and private to you.
+The default base is `%LOCALAPPDATA%\autodebug` on Windows,
+`~/Library/Application Support/autodebug` on macOS and
+`~/.local/state/autodebug` on Linux (or `$XDG_STATE_HOME/autodebug`). Change
+it with `--evidence-dir DIR` or `AUTODEBUG_EVIDENCE_DIR`; it must be outside the
+AutoDebug checkout and private to you.
 
 ## Connecting a real IDE debugger
 
@@ -211,7 +207,6 @@ Until then, `autodebug doctor` reports every IDE adapter as "mock-only".
 | `serve` waits and prints nothing | That is normal: it waits for an MCP client on stdin. Press Ctrl+C. |
 | `APPROVAL_EXPIRED` | The 30-minute demo approval ended; restart the server. |
 | `NOT_APPROVED` | Expected without `--demo`; real approvals don't exist yet. |
-| `--demo needs evidence storage` | You're on native Windows, where evidence storage is not built yet (see [Install](#1-install)). |
 | `evidence directory must be outside the AutoDebug checkout` | Choose a folder outside the repository. |
 
 ## Command reference

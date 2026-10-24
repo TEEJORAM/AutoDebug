@@ -28,10 +28,8 @@ autodebug config vscode --demo > .vscode/mcp.json   # or claude-code, claude-des
 
 Then start `autodebug` from your client and ask it to investigate the synthetic
 case `AUTODEBUG-DEMO`. **[docs/getting-started.md](docs/getting-started.md)**
-gives exact steps for Linux, macOS and Windows, and explains what works today:
-clients can connect now, but AutoDebug cannot yet drive your real IDE debugger,
-and on native Windows the demo cannot run until Windows evidence storage is
-built.
+gives exact steps for Windows, macOS and Linux, and explains what works today:
+clients can connect now, but AutoDebug cannot yet drive your real IDE debugger.
 
 ## How it works
 
