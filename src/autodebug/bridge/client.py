@@ -116,6 +116,9 @@ def select(infos: tuple[ConnectionInfo, ...], workspace_folder: str, ide: str) -
     wanted = normalize_folder(workspace_folder)
     matches = [i for i in infos if i.ide == ide and wanted in {normalize_folder(f) for f in i.workspace_folders}]
     if not matches:
+        other = sorted({i.ide for i in infos if i.ide != ide and wanted in {normalize_folder(f) for f in i.workspace_folders}})
+        if other:
+            raise _unavailable(f"{workspace_folder} is open in {other[0]}, not {ide}; create the case with target ide '{other[0]}'")
         raise _unavailable(
             f"no AutoDebug Bridge is running for {workspace_folder} in {ide}; open that folder with the "
             "AutoDebug Bridge extension installed (autodebug bridge install)"

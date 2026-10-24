@@ -134,6 +134,12 @@ shown as `***REDACTED***`.
 stages; it uses `D:\Projects\AutoDebug\...` as the folder, so the agent
 replaces that with yours.
 
+**In Cursor** the steps are the same with `cursor` in place of `vscode`:
+`bridge install cursor` and `config cursor --write examples\AutoDebugDemo`
+(writes `.cursor/mcp.json`). Install the **Python** and **Python Debugger**
+extensions in Cursor, enable `autodebug` in **Cursor Settings → MCP**, and ask in
+Agent chat, adding: *"We are in Cursor, so use target ide cursor."*
+
 **Practice debugger.** `config vscode --demo --write examples/AutoDebugDemo`
 instead connects AutoDebug's built-in synthetic debugger (case
 `AUTODEBUG-DEMO`, not this app), which needs no extension and no approval.

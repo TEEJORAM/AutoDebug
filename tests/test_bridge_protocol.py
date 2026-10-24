@@ -105,6 +105,11 @@ class Selection(unittest.TestCase):
                 select(infos, WORKSPACE, "vscode")
             self.assertIs(caught.exception.detail.code, ErrorCode.BACKEND_UNAVAILABLE)
 
+    def test_folder_open_in_the_other_ide_names_it(self):
+        with self.assertRaises(AutoDebugError) as caught:
+            select((self.info(ide="cursor"),), WORKSPACE, "vscode")
+        self.assertIn("create the case with target ide 'cursor'", caught.exception.detail.message)
+
     def test_two_windows_are_ambiguous(self):
         with self.assertRaises(AutoDebugError) as caught:
             select((self.info("w1"), self.info("w2")), WORKSPACE, "vscode")
