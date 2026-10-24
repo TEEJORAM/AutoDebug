@@ -176,7 +176,14 @@ autodebug config claude-code --demo</pre>
     <p>Quit and restart Claude Desktop after <code>--write</code>. For Claude Code, run the <code>claude mcp add</code> command that <code>config claude-code</code> prints, in the project folder.</p>
   </div>
 
-  <h2>Ask this</h2>
+  <h2>Debug the example</h2>
+  <p>Open the AutoDebug folder, or <code>examples/AutoDebugDemo</code>, then paste this into Agent chat. The tool <code>autodebug_debug_example</code> loads <code>geometry.py</code>, stops on the area line, records <code>i</code>, <code>len(points)</code> and <code>total</code>, and writes <code>investigation.md</code> beside that file.</p>
+  <pre>Help to debug AutoDebugExample.
+Use the AutoDebug tool autodebug_debug_example.
+Read investigation.md and quote the root cause and the solution.
+AUTODEBUG-DEMO is a different synthetic session. Do not describe it as geometry.py.
+AutoDebug does not set a breakpoint in the IDE and does not press Debug.</pre>
+  <h2>Ask this for the synthetic demo</h2>
   <pre>Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its status, the stack, and the variables local_var and password.</pre>
   <p>You should see a synthetic stack, <code>local_var = 42</code> and <code>password = ***REDACTED***</code>. Case <code>AUTODEBUG-DEMO</code> is the built-in demo, not your application. The demo approval lasts 30 minutes; restart the MCP server after that.</p>
 

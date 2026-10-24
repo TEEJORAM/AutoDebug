@@ -8,7 +8,7 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 ## What works
 
 - Native Windows, macOS and Linux, including evidence storage.
-- `autodebug` CLI: `serve` (dependency-free MCP 2025-11-25 stdio server with 15
+- `autodebug` CLI: `serve` (dependency-free MCP 2025-11-25 stdio server with 16
   tools), `doctor`, `guide` and `config` for VS Code, Claude Code, Claude
   Desktop and Cursor; installable with `pip install .` / `-e .` / `pipx`.
   Setup steps for Windows, macOS and Linux are in `site/index.html`.
@@ -39,6 +39,7 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 | 2026-10-24 | GitHub Actions run 40078110989: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 518 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
 | 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 518 tests, OK (9 skipped) |
 | 2026-10-24 | Linux, Python 3.12.3 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 523 tests, OK (9 skipped) |
+| 2026-10-24 | Linux, Python 3.12.3 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 528 tests, OK (9 skipped) |
 
 All tests use fake or mock backends.
 
@@ -64,6 +65,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — example trace.** `autodebug_debug_example` runs `geometry.py`
+  locally, records stops on the area line, and writes `investigation.md`. It
+  does not start an IDE debugger.
 - **2026-10-24 — user guide.** `autodebug guide`, `site/index.html`, and
   `.github/workflows/pages.yml` (`openspec/changes/user-guide/`). Setup steps
   for Windows, macOS and Linux. Real debugger control stays disabled.

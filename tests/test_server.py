@@ -78,8 +78,8 @@ INITIALIZE = {
 class TestBinding(unittest.TestCase):
     def test_exact_tool_surface_schemas_and_no_approval_channel(self):
         tools = _dispatcher().list_tools()
-        self.assertEqual(len(tools), 15)
-        self.assertEqual(len({t["name"] for t in tools}), 15)
+        self.assertEqual(len(tools), 16)
+        self.assertEqual(len({t["name"] for t in tools}), 16)
         for tool in tools:
             schema = tool["inputSchema"]
             self.assertEqual(schema["type"], "object")
@@ -316,7 +316,7 @@ class TestSubprocess(_WorkspaceTest):
         result = process.initialize("2099-01-01")["result"]
         self.assertEqual(result["protocolVersion"], PROTOCOL_VERSION)
         self.assertEqual(result["capabilities"], {"tools": {"listChanged": False}})
-        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 15)
+        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 16)
         self.assertEqual(process.request("initialize", INITIALIZE)["error"]["code"], -32600)
         self.assertEqual(process.request("unknown")["error"]["code"], -32601)
         health = process.tool("autodebug_health")["result"]

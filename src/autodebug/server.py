@@ -154,6 +154,7 @@ class _Tool:
     optional: frozenset[str] = frozenset()
     #: Extra JSON-schema bounds per parameter; published and enforced.
     limits: dict[str, dict] = field(default_factory=dict)
+    description: str = ""
 
 
 def _check_limits(value: object, limits: dict) -> None:
@@ -208,6 +209,14 @@ TOOLS = {
         "uncertainties": tuple[str, ...], "next_steps": tuple[str, ...], "causal_validation": str | None,
     }, frozenset({"uncertainties", "next_steps", "causal_validation"})),
     "autodebug_cancel_case": _Tool(_CASE),
+    "autodebug_debug_example": _Tool(
+        {},
+        description=(
+            "Trace examples/AutoDebugDemo/geometry.py, stop on the area line, record i, "
+            "len(points) and total, and write investigation.md. Does not set an IDE breakpoint, "
+            "build, or press Debug."
+        ),
+    ),
 }
 
 
@@ -236,7 +245,9 @@ class ToolDispatcher:
             properties = {key: _schema(value) | tool.limits.get(key, {}) for key, value in tool.parameters.items()}
             result.append({
                 "name": name,
-                "description": name.removeprefix("autodebug_").replace("_", " ") + " (fake-only gateway)",
+                "description": tool.description or (
+                    name.removeprefix("autodebug_").replace("_", " ") + " (fake-only gateway)"
+                ),
                 "inputSchema": _object_schema(properties, [k for k in tool.parameters if k not in tool.optional]),
             })
         return result
@@ -255,6 +266,10 @@ class ToolDispatcher:
         return decoded
 
     def call(self, name: str, arguments: dict) -> dict:
+        if name == "autodebug_debug_example":
+            from autodebug.example_debug import debug_example
+
+            return debug_example(Path.cwd())
         kwargs = dict(arguments)
         if name == "autodebug_probe_adapters":
             kwargs["adapters"] = self.adapter_probes
