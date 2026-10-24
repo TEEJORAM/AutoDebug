@@ -4,6 +4,15 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — copy-and-paste setup
+
+- `autodebug config <client> --write [PROJECT_FOLDER]` writes the client
+  configuration file directly (UTF-8, keeps other servers). This replaces
+  shell redirection, which produced UTF-16 files in Windows PowerShell 5.1.
+- `doctor` and `config` hints show the exact command form you used
+  (`py -m autodebug` on Windows).
+- README and getting-started list only commands that can be pasted as-is.
+
 ## 2026-10-24 — native Windows support
 
 - Evidence storage now works on Windows with the same protections as macOS

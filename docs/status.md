@@ -60,6 +60,8 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — copy-and-paste setup.** `config --write`, invocation-aware
+  hints, README rewritten with pasteable Windows/macOS/Linux commands.
 - **2026-10-24 — native Windows evidence storage**
   (`openspec/changes/windows-evidence-storage/`). Handle-based backend with the
   POSIX guarantees; full suite now runs on Windows CI.

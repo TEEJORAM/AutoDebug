@@ -12,24 +12,67 @@ plan-bound human approval.
 
 ## Quick start
 
-AutoDebug is a command-line MCP server: your AI client starts it for you.
-Requires Python 3.11+.
+Requires **Python 3.11 or newer** and **Git**. AutoDebug is a command-line MCP
+server: you install it once, and your AI client starts it for you.
 
-```sh
-# 1. In your AutoDebug folder (the one containing pyproject.toml):
-pip install -e .                                    # Windows: py -m pip install -e .
+### 1. Install
 
-# 2. Anywhere:
-autodebug doctor                                    # Windows: py -m autodebug doctor
+**Windows (PowerShell):**
 
-# 3. In the project folder you open in VS Code:
-autodebug config vscode --demo > .vscode/mcp.json   # or claude-code, claude-desktop, cursor
+```powershell
+git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
+py -m pip install -e .
+py -m autodebug doctor
 ```
 
-Then start `autodebug` from your client and ask it to investigate the synthetic
-case `AUTODEBUG-DEMO`. **[docs/getting-started.md](docs/getting-started.md)**
-gives exact steps for Windows, macOS and Linux, and explains what works today:
-clients can connect now, but AutoDebug cannot yet drive your real IDE debugger.
+**macOS / Linux:**
+
+```sh
+git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+autodebug doctor
+```
+
+`doctor` should show `✔` for Python, Evidence storage and Evidence folder, and
+end with `Ready`.
+
+### 2. Connect VS Code
+
+Run this from the AutoDebug folder. Replace the last part with the project
+folder you open in VS Code; AutoDebug writes `.vscode\mcp.json` there and keeps
+any other servers already in it.
+
+**Windows (PowerShell):**
+
+```powershell
+py -m autodebug config vscode --demo --write D:\Projects\MyApp
+```
+
+**macOS / Linux:**
+
+```sh
+autodebug config vscode --demo --write ~/Projects/MyApp
+```
+
+### 3. Try it
+
+1. Open that project folder in VS Code.
+2. Command Palette (`Ctrl+Shift+P`, macOS `Cmd+Shift+P`) → **MCP: List Servers**
+   → **autodebug** → **Start Server**.
+3. Open Copilot Chat in **Agent** mode and ask:
+
+   > Use the autodebug tools to investigate case AUTODEBUG-DEMO: show its
+   > status, the stack, and the variables local_var and password.
+
+You should see a synthetic stack, `local_var = 42` and `password =
+***REDACTED***`. This is a built-in demo debugger: AutoDebug cannot yet drive
+your real IDE debugger. **[docs/getting-started.md](docs/getting-started.md)**
+covers Cursor, Claude Desktop and Claude Code, the full demo walkthrough and
+troubleshooting.
 
 ## How it works
 

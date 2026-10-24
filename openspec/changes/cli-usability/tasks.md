@@ -9,3 +9,5 @@
 - [x] C5 — PEP 660 `build_editable` hook (CLI-05).
 - [x] C6 — Tests for C1–C5; getting-started guide; README, installation and
   status updates.
+- [x] C7 — `config --write` and invocation-aware hints (CLI-06); README with
+  copy-and-paste commands for Windows, macOS and Linux.

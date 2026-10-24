@@ -168,6 +168,71 @@ class TestConfig(unittest.TestCase):
         self.assertIn("warning", err)
 
 
+class TestConfigWrite(_TempDir):
+    def test_vscode_writes_utf8_json_in_project_folder(self):
+        code, out, err = run_cli("config", "vscode", "--demo", "--write", str(self.tmp))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        path = self.tmp / ".vscode" / "mcp.json"
+        raw = path.read_bytes()
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))  # no BOM
+        entry = json.loads(raw.decode("utf-8"))["servers"]["autodebug"]
+        self.assertEqual(entry["type"], "stdio")
+        self.assertEqual(entry["args"], ["-m", "autodebug", "serve", "--demo"])
+        self.assertIn(str(path), err)
+
+    def test_merges_keeps_other_servers_and_converts_utf16(self):
+        path = self.tmp / ".cursor" / "mcp.json"
+        path.parent.mkdir()
+        path.write_bytes(json.dumps({"mcpServers": {"other": {"command": "x"}, "autodebug": {"command": "old"}},
+                                     "extra": 1}).encode("utf-16"))
+        code, _, err = run_cli("config", "cursor", "--write", str(self.tmp))
+        self.assertEqual(code, 0, err)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(data["extra"], 1)
+        self.assertEqual(data["mcpServers"]["other"], {"command": "x"})
+        self.assertNotEqual(data["mcpServers"]["autodebug"]["command"], "old")
+        self.assertEqual([p.name for p in path.parent.iterdir()], ["mcp.json"])  # no temp left
+
+    def test_refuses_to_overwrite_unparseable_file(self):
+        path = self.tmp / ".vscode" / "mcp.json"
+        path.parent.mkdir()
+        path.write_text('{ // comment\n "servers": {} }', encoding="utf-8")
+        code, _, err = run_cli("config", "vscode", "--write", str(self.tmp))
+        self.assertEqual(code, 1)
+        self.assertIn("not plain JSON", err)
+        self.assertEqual(path.read_text(encoding="utf-8"), '{ // comment\n "servers": {} }')
+
+    def test_write_errors(self):
+        for argv, message in (
+            (("config", "vscode", "--write", str(self.tmp / "missing")), "project folder not found"),
+            (("config", "claude-code", "--write"), "claude mcp add"),
+            (("config", "claude-desktop", "--write", str(self.tmp)), "without a folder"),
+        ):
+            with self.subTest(argv=argv):
+                code, _, err = run_cli(*argv)
+                self.assertEqual(code, 1)
+                self.assertIn(message, err)
+
+    def test_claude_desktop_locations(self):
+        with patch.object(cli.platform, "system", return_value="Windows"), \
+                patch.dict(os.environ, {"APPDATA": str(self.tmp)}):
+            self.assertEqual(cli.config_path("claude-desktop", ""), self.tmp / "Claude" / "claude_desktop_config.json")
+        with patch.object(cli.platform, "system", return_value="Darwin"), patch.object(cli.Path, "home", return_value=self.tmp):
+            self.assertEqual(cli.config_path("claude-desktop", ""),
+                             self.tmp / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json")
+        with patch.object(cli.platform, "system", return_value="Linux"), self.assertRaises(ValueError):
+            cli.config_path("claude-desktop", "")
+
+    def test_hints_match_how_autodebug_was_started(self):
+        with patch.object(cli.sys, "argv", ["C:/x/autodebug/__main__.py"]), patch.object(cli.os, "name", "nt"):
+            self.assertEqual(cli.invocation(), "py -m autodebug")
+        with patch.object(cli.sys, "argv", ["/x/autodebug/__main__.py"]), patch.object(cli.os, "name", "posix"):
+            self.assertEqual(cli.invocation(), "python3 -m autodebug")
+        with patch.object(cli.sys, "argv", ["/usr/bin/autodebug"]):
+            self.assertEqual(cli.invocation(), "autodebug")
+
+
 class TestServeGuards(_TempDir):
     def test_demo_refused_without_secure_storage(self):
         with patch.object(cli, "secure_storage_supported", return_value=False):
