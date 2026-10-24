@@ -469,6 +469,8 @@ class TestOfflinePackaging(_WorkspaceTest):
         with zipfile.ZipFile(wheel_path) as wheel:
             self.assertIn("autodebug/server.py", wheel.namelist())
             self.assertIn("autodebug/__main__.py", wheel.namelist())
+            self.assertIn("autodebug/bridge/extension/bridge-core.js", wheel.namelist())
+            self.assertIn("autodebug/bridge/extension/package.json", wheel.namelist())
             self.assertFalse(any(name.startswith("tests/") or "__pycache__" in name for name in wheel.namelist()))
             dist_info = "autodebug-0.1.0.dist-info"
             self.assertIn(b"autodebug = autodebug.cli:main", wheel.read(f"{dist_info}/entry_points.txt"))

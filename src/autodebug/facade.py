@@ -779,6 +779,7 @@ class AutoDebugFacade:
                             self._broker.revoke_for_case(case_id)
                             if ctx.case.state not in (CaseState.FAILED, CaseState.CANCELLED):
                                 ctx.case.fail()
+                        self._close_adapter(ctx)
                         raise
                     finally:
                         if existing is not None and ctx.approval is None:
@@ -1068,6 +1069,8 @@ class AutoDebugFacade:
                 try:
                     ctx.case.cancel()
                 except AutoDebugError as exc:
+                    if not ctx.backend_active.is_set():
+                        self._close_adapter(ctx)  # an already-finished case still releases its bridge
                     return _err(case_id, exc.detail)
             ctx.cancel_event.set()
             if ctx.backend_active.is_set():

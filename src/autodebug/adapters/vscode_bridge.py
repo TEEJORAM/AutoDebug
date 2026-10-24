@@ -146,6 +146,13 @@ class VSCodeBridgeAdapter(BaseAdapter):
         result = self._request("request_approval", {
             "case_id": case_id, "digest": plan.digest_sha256, "summary": summary,
             "expires_in_seconds": min(plan.policy.max_inspection_seconds, 3600),
+            # What the bridge shows in its dialog and then enforces.
+            "plan": {
+                "workspace_folder": plan.workspace_folder, "launch_configuration_name": plan.launch_configuration_name,
+                "build_task": plan.build_task, "files": sorted({bp.file for bp in plan.breakpoints}),
+                "breakpoints": [{"file": bp.file, "line": bp.line} for bp in plan.breakpoints],
+                "max_steps": plan.policy.max_steps, "report_to_workspace": plan.report_to_workspace,
+            },
         }, approved=False)
         request_id = result.get("request_id")
         if type(request_id) is not str or not request_id:
