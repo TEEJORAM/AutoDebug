@@ -5,13 +5,18 @@ Let your AI agent debug for real. AutoDebug gives the agent in **Cursor** or
 through the code, reads variables, and writes a root-cause report into your
 project. Nothing runs until you click **Approve**.
 
+It is built for large C++ applications, where the core and the user interface
+are mostly C++: long builds, big binaries, many threads, deep call stacks, and
+code spread across shared libraries. Python works too, including Python
+embedded in a C++ application.
+
 **Documentation:** [teejoram.github.io/AutoDebug](https://teejoram.github.io/AutoDebug/)
 
 ```text
 You: "Help me debug this: moving a shape changes its area."
 
-Agent: reads the code → start_session (you click Approve) → paused at geometry.py:15
-       → step: total 0.0 → -1.0 → trace line 15: i = 0, 1, 2 → loop ends at i = 2
+Agent: reads the code → start_session (you click Approve) → builds, paused at cpp/geometry.cpp:16
+       → inspect points[3] → trace line 16: i = 0, 1, 2 → loop ends before the last edge
        → root cause: the closing edge is never added → autodebug-reports/…-area-bug.md
 ```
 
@@ -28,12 +33,17 @@ Agent: reads the code → start_session (you click Approve) → paused at geomet
 - **Local and locked.** The extension listens on 127.0.0.1 only, behind a
   random token. No accounts, no cloud service, no dependencies.
 - **Your existing setup.** It uses the launch configurations and tasks in your
-  `.vscode` folder and works with any language your IDE can debug.
+  `.vscode` folder: CodeLLDB, the C/C++ debugger, gdb, debugpy, or any other
+  debugger your IDE runs.
 
 ## Set up (once)
 
-You need **Python 3.11+**, **Git**, and Cursor or VS Code with the debugger
-extension for your language (for Python: **Python** and **Python Debugger**).
+You need **Python 3.11+** (AutoDebug's server runs on it), **Git**, and Cursor
+or VS Code with a debugger extension:
+
+- **C++ in Cursor:** **CodeLLDB**. Microsoft's C/C++ debugger does not run in Cursor.
+- **C++ in VS Code:** **C/C++** (Visual Studio debugger or gdb) or **CodeLLDB**.
+- **Python:** **Python** and **Python Debugger**.
 
 **Windows (PowerShell):**
 
@@ -69,11 +79,13 @@ what to do next:
 
 Open your project in the IDE and ask the agent (Agent mode), for example:
 
-> Help me debug AutoDebugDemo: moving a shape changes its area. Use the
-> autodebug tools to find the root cause and write a report.
+> The app crashes when I delete the last item in a list. Use the autodebug
+> tools: build the Debug configuration, stop where the item is removed, find
+> the root cause and write a report.
 
 Click **Approve** when the IDE asks. Try it on the sample project first:
-[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md).
+[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) has the same bug in
+C++ (**Debug C++ (CodeLLDB)**) and Python (**Debug tests**).
 
 ## Agent tools
 
@@ -91,14 +103,68 @@ Click **Approve** when the IDE asks. Try it on the sample project first:
 
 How it works, the protocol and the limits: [docs/design.md](docs/design.md).
 
-## Big projects (Blender, FreeCAD)
+## Large C++ applications
 
-- Attach to embedded Python with debugpy listening, for example **Attach to Python (port 5678)** in the sample, and pass `process_id` when the configuration asks you to pick a process. Ending the session detaches; the program keeps running.
-- Build through `preLaunchTask` or `build_task`. `build_minutes` (default 30) is the limit for a long compile.
-- In Cursor, use a CodeLLDB configuration (`"type": "lldb"`). The Microsoft C/C++ debugger does not run there.
-- Pass `source_folders` for add-ons that live outside the workspace.
-- Pass `ask_developer` to `wait` when the bug needs a click in the application's own window.
-- Values the agent reads are sent to the AI model, the same as any other tool result. Debug only programs and data you can share with it.
+**Build with symbols.** Debug the `Debug` or `RelWithDebInfo` build; optimised
+builds without debug info show wrong lines and missing variables. Let the
+build run first through the launch configuration's `preLaunchTask` or the
+agent's `build_task`. A long compile gets `build_minutes` (default 30, up to
+600), separate from the debugging time limit.
+
+**Launch configurations.** For example, in `.vscode/launch.json`:
+
+```json
+{
+  "name": "Debug app (CodeLLDB)",
+  "type": "lldb",
+  "request": "launch",
+  "program": "${workspaceFolder}/build/bin/app",
+  "cwd": "${workspaceFolder}",
+  "preLaunchTask": "build",
+  "windows": { "program": "${workspaceFolder}/build/bin/Debug/app.exe" }
+},
+{
+  "name": "Attach to app (CodeLLDB)",
+  "type": "lldb",
+  "request": "attach",
+  "pid": "${command:pickMyProcess}"
+}
+```
+
+The Approve dialog shows the whole configuration, the build commands with
+everything they depend on, and the environment. Configurations that prompt for
+input or debug another computer are refused.
+
+**Attach to a running application.** Start the app yourself, get to the state
+just before the bug, and have the agent attach with `process_id`. When the
+session ends the debugger detaches and the app keeps running.
+
+**What helps in a big codebase:**
+
+- **Slow starts.** Loading symbols for a large binary can take minutes; the
+  agent keeps calling `wait`.
+- **Shared libraries and plugins.** Breakpoints in them bind when the library
+  loads; until then they show as not bound yet, with the debugger's reason.
+- **Code outside the workspace.** Pass `source_folders` for third-party
+  libraries or an SDK that live outside the project folder.
+- **Threads.** `threads` lists them and selects one for `stack`, `inspect` and
+  `step`.
+- **Deep stacks.** `stack` pages through up to 200 frames at a time.
+- **Objects and containers.** `inspect` with `depth` 1–3 opens structs, pointers
+  and containers. Names can be paths: `scene->objects[2].transform`.
+- **Exceptions.** `exceptions` lists the debugger's exception filters (CodeLLDB
+  offers C++ throw and catch) and turns them on. A stop on an exception reports
+  which one.
+- **GUI reproduction.** `wait` with `ask_developer` shows you a note such as
+  "Click Delete on the last item". You do it, and the program stops at the
+  breakpoint.
+- **Embedded Python.** If the application embeds Python, start debugpy inside
+  it and attach with a debugpy configuration (the sample has
+  **Attach to Python (port 5678)**).
+- **Function breakpoints.** Break on `Document::removeItem` without knowing the file.
+
+Values the agent reads are sent to the AI model, like any other tool result.
+Debug only programs and data you are allowed to share with it.
 
 ## Develop
 
@@ -106,5 +172,5 @@ How it works, the protocol and the limits: [docs/design.md](docs/design.md).
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-The extension tests need Node.js; the real-debugger test also needs
-`pip install debugpy`. See [CLAUDE.md](CLAUDE.md) for the rules.
+The extension tests need Node.js. The real-debugger tests also need
+`pip install debugpy` (Python) and gdb 14 or later with g++ (C++, Linux and macOS). See [CLAUDE.md](CLAUDE.md) for the rules.
