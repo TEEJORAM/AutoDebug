@@ -2,7 +2,10 @@
 
 AutoDebug's own tool API, **not** the Microsoft DebugMCP API. Tool names and
 fields are stable at the gateway; each adapter translates them to real backend
-operations. `server.py` binds all 15 tools to MCP 2025-11-25 stdio. There is no
+operations. `server.py` binds 16 tools to MCP 2025-11-25 stdio. Fifteen are the
+facade methods below. `autodebug_debug_example` is a local trace of the bundled
+geometry sample: it records stops on the area line and writes `investigation.md`.
+It does not set an IDE breakpoint, build, or press Debug. There is no
 SDK dependency or HTTP listener, and real backends are refused. Output schema
 is `0.2-draft`; `0.1-draft` plan input is accepted under current integrity
 rules.
@@ -26,6 +29,7 @@ rules.
 | `autodebug_continue` | **Privileged** | Resume within approved scope; explicit current target check |
 | `autodebug_complete_case` | Local write | Finish, persist JSONL + Markdown artifacts; no auto-Jira update |
 | `autodebug_cancel_case` | Control | Per `DE-09`: stop AutoDebug operations, interrupt pending waits, revoke approval scope, retain partial evidence; idempotent on repeat; does not implicitly terminate app/IDE |
+| `autodebug_debug_example` | Local sample trace | Load `geometry.py` from the project folder, stop on `total +=`, record `i`, `len(points)` and `total`, and write `investigation.md` beside that file. No IDE debugger is attached. |
 
 **Trust boundary:** `autodebug_stage_plan` is **not approval**, and no MCP tool lets the agent approve a plan. Approval must come from a separate trusted local CLI/UI controlled by the developer; that interface is not built yet (only the `--demo` fixture issues a synthetic approval).
 

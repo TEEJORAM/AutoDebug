@@ -21,7 +21,7 @@ There are two separate connections:
 
 | Connection | Status |
 |---|---|
-| **(1) AI client → AutoDebug** | **Works.** Any MCP client can start AutoDebug and call its 15 tools. |
+| **(1) AI client → AutoDebug** | **Works.** Any MCP client can start AutoDebug and call its tools. |
 | **(2) AutoDebug → a real IDE debugger** | **Not available yet.** Only a built-in *synthetic* debugger works. AutoDebug cannot yet attach to the debugger in your VS Code window. |
 
 So today you can install AutoDebug, connect your AI client, and walk through a
@@ -174,7 +174,22 @@ autodebug config claude-code --demo
 This prints a `claude mcp add ...` command. Run that command in your project
 folder, then check with `claude mcp list` (or `/mcp` inside a session).
 
-## 4. Try the demo investigation
+## 4. Debug the example
+
+Open the AutoDebug folder, or `examples/AutoDebugDemo`, with the server started.
+Paste this into Agent chat:
+
+> Help to debug AutoDebugExample. Use the AutoDebug tool
+> `autodebug_debug_example`. Read `investigation.md` and quote the root cause
+> and the solution.
+
+That tool loads `geometry.py`, stops on the area line, records `i`,
+`len(points)` and `total`, and writes `investigation.md` next to `geometry.py`.
+It does not set a breakpoint in VS Code, Cursor, CLion, Visual Studio, or
+Xcode, and it does not press Debug. Case `AUTODEBUG-DEMO` is a separate
+synthetic session.
+
+## 5. Try the synthetic demo
 
 Ask your AI client, for example:
 
@@ -199,7 +214,7 @@ server (VS Code: **MCP: List Servers** → **Restart**).
 Without `--demo`, the AI client can create cases and stage plans, but every
 debugger action is refused with `NOT_APPROVED`: no tool can approve a plan.
 
-## 5. Find the evidence
+## 6. Find the evidence
 
 Each server start writes to a new private folder:
 

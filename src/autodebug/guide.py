@@ -43,6 +43,8 @@ SITE_MUST_CONTAIN = (
     "examples/AutoDebugDemo",
     "geometry.py",
     "T05",
+    "autodebug_debug_example",
+    "investigation.md",
     "does not write CLion, Visual Studio or Xcode",
 )
 
