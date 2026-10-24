@@ -33,7 +33,12 @@ requirement IDs, tests and the observed test result.
   `BUILD_FAILED`, build evidence; arming waits for a successful build.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 599, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B6 — Report sections and workspace export (BR-09).
+- [x] B6 — Report sections and workspace export (BR-09). `ReportContext`,
+  structured `report.md` for bridge cases (legacy format unchanged),
+  `write_workspace_report` (never overwrites, refuses links), `problem`,
+  `solution` and `verification` on `autodebug_complete_case`.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 606, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B7 — MCP instructions and tool descriptions; `list_variables` (BR-07, BR-10).
 - [ ] B8 — Bridge extension and `autodebug bridge install` (BR-01, BR-12).
 - [ ] B9 — AutoDebugDemo: plan 0.3; manual run on Windows VS Code; ledger entry
