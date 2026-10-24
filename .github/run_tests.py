@@ -10,9 +10,8 @@ names = sys.argv[1:]
 loader = unittest.defaultTestLoader
 suite = loader.loadTestsFromNames(names) if names else loader.discover("tests")
 result = unittest.TextTestRunner(verbosity=1).run(suite)
-# Annotations are capped at 10 per step: report the most specific modules first.
-problems = sorted(result.failures + result.errors, key=lambda item: ("windows" not in item[0].id(), "evidence" not in item[0].id()))
-for test, trace in problems[:10]:
+# Annotations are capped at 10 per step.
+for test, trace in (result.failures + result.errors)[:10]:
     message = trace[-3000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
     print(f"::error title={test.id()}::{message}")
 skipped = sorted({reason for _, reason in result.skipped})

@@ -1,7 +1,7 @@
 [project]
 name = "autodebug"
-version = "0.1.0"
-description = "AutoDebug — fake-only MCP stdio debugging gateway"
+version = "0.2.0"
+description = "Let an AI agent debug your program with VS Code's or Cursor's own debugger"
 requires-python = ">=3.11"
 dependencies = []
 

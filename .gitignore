@@ -2,19 +2,12 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
+build/
+dist/
+*.vsix
 .DS_Store
-
-# Defense in depth only: keep sensitive case data outside the checkout.
-/.autodebug/
-/cases/
-/evidence/
-/captures/
 .env
 .env.*
-!.env.example
-*.log
-*.dmp
-*.core
 
 # Files AutoDebug writes into example projects
 examples/**/.vscode/mcp.json

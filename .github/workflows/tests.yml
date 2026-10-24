@@ -1,6 +1,6 @@
 name: AutoDebug test suite
 
-# Fake/mock tests only; this workflow does not authorize real debugger control.
+# Python tests, the extension core through the Node harness (Node is on the runners).
 on:
   push:
   pull_request:
