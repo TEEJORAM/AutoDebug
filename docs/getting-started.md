@@ -4,6 +4,11 @@ AutoDebug is a **command-line MCP server**. You don't run it as an app; your AI
 client (VS Code Copilot, Claude Code, Claude Desktop or Cursor) starts it in the
 background and talks to it over stdin/stdout.
 
+The same steps, with a Windows / macOS / Linux switch, are on
+[GitHub Pages](https://teejoram.github.io/AutoDebug/) (`site/index.html` in
+this repository). On your machine, `autodebug guide` prints the commands for
+the OS you are using.
+
 ## First, what works today
 
 There are two separate connections:
@@ -78,7 +83,8 @@ AutoDebug doctor (autodebug 0.1.0)
   · IDE adapters      vscode, cursor, clion, visual_studio target this OS; mock-only, no native debugger client yet
   · Real debuggers    disabled until the T05 security gate is approved
 
-Ready. Next: `py -m autodebug config vscode --demo --write PROJECT_FOLDER` to connect VS Code.
+Ready. Guide: https://teejoram.github.io/AutoDebug/
+Next: `py -m autodebug config vscode --demo --write PROJECT_FOLDER` to connect VS Code.
 ```
 
 Fix anything marked `✘` before continuing. `doctor` never creates files.
@@ -249,6 +255,7 @@ Until then, `autodebug doctor` reports every IDE adapter as "mock-only".
 | `autodebug serve [--demo] [--evidence-dir DIR] [--log-level LEVEL]` | Run the MCP stdio server (clients run this for you) |
 | `autodebug doctor [--evidence-dir DIR] [--json]` | Check the machine; exit 0 when ready |
 | `autodebug config {vscode,claude-code,claude-desktop,cursor} [--demo] [--write [PROJECT_FOLDER]] [--evidence-dir DIR] [--name NAME]` | Print client configuration, or write it into the client's config file |
+| `autodebug guide` | Print setup steps for this OS and the GitHub Pages URL |
 | `autodebug --version` / `autodebug --help` | Version and help |
 
 `python -m autodebug ...` works the same without installing the command.

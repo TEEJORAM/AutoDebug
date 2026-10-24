@@ -40,7 +40,7 @@ class TestCommands(unittest.TestCase):
         code, out, err = run_cli()
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
-        self.assertIn("serve, doctor or config", err)
+        self.assertIn("serve, doctor, config or guide", err)
 
     def test_version(self):
         code, out, _ = run_cli("--version")

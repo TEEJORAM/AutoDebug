@@ -38,7 +38,9 @@ autodebug doctor
 ```
 
 `doctor` should show `✔` for Python, Evidence storage and Evidence folder, and
-end with `Ready`.
+end with `Ready`. The same steps, switched by operating system, are at
+<https://teejoram.github.io/AutoDebug/> (`site/index.html`). `autodebug guide`
+prints them for the machine you are on.
 
 ### 2. Connect VS Code
 
@@ -172,6 +174,7 @@ These are design targets. None is certified yet; current results are in the
 
 | Read | For |
 |---|---|
+| [site/index.html](site/index.html) | Setup page for Windows, macOS and Linux (published to GitHub Pages) |
 | [docs/getting-started.md](docs/getting-started.md) | Install, connect a client, run the demo |
 | [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) | Sample buggy app (Python and C++) to practise on |
 | [docs/status.md](docs/status.md) | What works, open blockers, verification |
