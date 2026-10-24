@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.DS_Store
+
+# Defense in depth only: keep sensitive case data outside the checkout.
+/.autodebug/
+/cases/
+/evidence/
+/captures/
+.env
+.env.*
+!.env.example
+*.log
+*.dmp
+*.core

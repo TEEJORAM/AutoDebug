@@ -1,0 +1,14 @@
+[project]
+name = "autodebug"
+version = "0.1.0"
+description = "AutoDebug — fake-only MCP stdio debugging gateway"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+autodebug = "autodebug.server:main"
+
+[build-system]
+requires = []
+build-backend = "build_backend"
+backend-path = ["."]
