@@ -1,48 +1,30 @@
-"""MCP tool facade (T07) — GW-01, GW-06, RP-04, DE-01, DE-03, DE-09.
+"""MCP tool facade: the `autodebug_*` tools from docs/mcp-contract.md.
 
-Composes T01-T06 components (`Case`, `Router`, `SessionRegistry`,
-`ApprovalBroker`, `EvidenceStore`) behind the documented `autodebug_*` tool
-surface from `docs/mcp-contract.md`. This module exposes those tools as
-plain Python callables — there is **no MCP SDK dependency anywhere in this
-file**, by explicit developer instruction overriding `tasks.md`'s literal
-T07 text; a real MCP transport binding is deferred until a separate
-dependency-approval step is granted.
+Composes `Case`, `Router`, `SessionRegistry`, `ApprovalBroker` and
+`EvidenceStore` behind plain Python methods; `server.py` binds them to MCP
+stdio.
 
-**Fake backend only.** Every `AutoDebugFacade` method here operates purely
-against caller-supplied fake adapters/backends (see `tests/fixtures/`); the
-real-debugger security gate from T05 remains OPEN / NOT APPROVED and
-nothing in this module changes that — `approvals.verify_approval` still
-unconditionally refuses any `backend_kind` other than `"fake"`.
-
-**Trust boundary (binding, not advisory).** There is deliberately no method
-here that calls `ApprovalBroker.issue_approval` — per `docs/mcp-contract.md`,
-"AutoDebug must not expose an MCP tool that lets the agent self-approve a
-plan." An `ApprovalRecord` must always arrive from a separate, already-
-trusted local process that called `issue_approval` directly; this facade
-only ever *verifies* an approval it is handed (`autodebug_arm_case`,
-`autodebug_step`, `autodebug_continue`), never issues one.
-
-Every privileged operation that actually arms a session routes exclusively
-through `approvals.authorize_and_arm` — never through `Router.arm_target`
-directly — per T05's binding requirement recorded in `tasks.md`. `step`/
-`continue` have no `Router` operation to perform, so they call
-`ApprovalBroker.verify_approval` directly (the same enforced check
-`authorize_and_arm` itself calls first); no tool anywhere in this file
-calls `self._router.arm_target(...)` on its own.
-
-**This module is NOT an MCP server.** `AutoDebugFacade` is a plain Python
-class; the dependency-free MCP stdio binding lives in `server.py`.
+Trust boundary:
+- The facade only *verifies* approvals; it never issues one. Approval
+  records come from a separate trusted local process.
+- Arming goes exclusively through `approvals.authorize_and_arm`, never
+  `Router.arm_target`.
+- `verify_approval` refuses every backend except the fake one, so real
+  debugger control stays disabled (T05 gate OPEN / NOT APPROVED).
+- Every privileged call re-checks cancellation, session identity, plan
+  digest, approval and budgets before and after each backend call.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import math
 import threading
 import time
-from collections.abc import Callable
-from contextlib import nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import ParamSpec, TypeVar
@@ -55,13 +37,10 @@ from autodebug.models import ApprovalRecord, CasePlan, CaseState, ExecutionConfi
 from autodebug.operations import call_bounded
 from autodebug.router import Router
 from autodebug.sessions import SessionLease, SessionRegistry
-from autodebug.workflow import Case
+from autodebug.workflow import INCOMPLETE_STATES, TERMINAL_STATES, Case
 
-#: Approval-scope component conventions. A separate trusted process issuing
-#: an `ApprovalRecord` (via `ApprovalBroker.issue_approval`, never called
-#: from this module) MUST use these exact scope strings and the
-#: `target_identity_for` format below — the agent has no ability to choose
-#: or influence either value itself; this facade only verifies, never sets.
+#: Approval scopes. The trusted issuer must use these exact strings and the
+#: `target_identity_for` format; the agent cannot choose either.
 SCOPE_ARM = "op:arm_case"
 SCOPE_STEP = "op:step"
 SCOPE_CONTINUE = "op:continue"
@@ -69,15 +48,14 @@ SCOPE_WAIT = "op:wait_for_stop"
 SCOPE_STACK = "op:get_stack"
 SCOPE_VARIABLES = "op:get_variables"
 MAX_SELECTION = 50
+STEP_KINDS = ("step_over", "step_in", "step_out")
 _LOG = logging.getLogger(__name__)
 P = ParamSpec("P")
 T = TypeVar("T")
 
 
 def target_identity_for(target: TargetRef) -> str:
-    """Canonical `target_identity` string used as the approval scope's
-    `target:` component (RP-05). Must match exactly what the separate
-    trusted approval-issuing process used when calling `issue_approval`."""
+    """Canonical `target:` scope component bound into approvals (RP-05)."""
     discriminator = target.pid if target.pid is not None else target.debug_session_id
     return f"{target.host_id}/{target.ide}/{discriminator}"
 
@@ -88,6 +66,27 @@ def _execution_confidence(plan: CasePlan) -> ExecutionConfidence:
     if plan.reproduction.mode == "api_script":
         return ExecutionConfidence.DEVELOPER_REPORTED
     return ExecutionConfidence.NOT_APPLICABLE
+
+
+def _positive_finite(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value > 0
+
+
+def _session_tool(method: Callable[..., dict]) -> Callable[..., dict]:
+    """Map a session tool's errors to the uniform result envelope:
+    operational errors may mark the case incomplete (DE-08); storage
+    failures are reported without detail."""
+
+    @functools.wraps(method)
+    def wrapper(self: AutoDebugFacade, *, case_id: str, **kwargs: object) -> dict:
+        try:
+            return method(self, case_id=case_id, **kwargs)
+        except AutoDebugError as exc:
+            return self._operation_error(case_id, exc)
+        except (OSError, ValueError):
+            return self._storage_error(case_id)
+
+    return wrapper
 
 
 def _ok(case_id: str | None, result: object = None) -> dict:
@@ -125,11 +124,8 @@ class _CaseContext:
 
 
 class AutoDebugFacade:
-    """Owns one process's in-memory case contexts and exposes the
-    documented `autodebug_*` tools. `now`/`sleep` are injected (same
-    determinism convention as `ApprovalBroker`) so `autodebug_wait_for_stop`
-    stays testable without a real wall-clock dependency; production callers
-    pass `time.monotonic`/`time.sleep`.
+    """Owns one process's in-memory cases and exposes the `autodebug_*`
+    tools. `now`/`sleep`/`event_factory` are injected for deterministic tests.
     """
 
     def __init__(
@@ -272,23 +268,10 @@ class AutoDebugFacade:
             self._registry.unregister(session)
 
     def _verify_session(self, ctx: _CaseContext) -> None:
-        """GW-03-B, re-applied at the facade layer: re-check PID,
-        generation, and IDE instance identity immediately before *any*
-        operation that reads from or mutates a live session — not just
-        `autodebug_wait_for_stop`. A session that exited, or whose identity
-        was reassigned (PID reuse, a new generation, a different IDE
-        window) since it was armed, fails closed here (`SESSION_STALE` /
-        `TARGET_MISMATCH`) before the adapter is ever called again.
-
-        `SESSION_STALE` specifically — the session has disappeared, the
-        fake-world equivalent of `DE-08`'s "IDE exits mid-investigation" —
-        additionally labels the case honestly `INCOMPLETE` and retains
-        whatever partial evidence already exists, per `DE-08`: "stop
-        additional privileged actions, preserve sanitized partial evidence
-        and label the case incomplete." `TARGET_MISMATCH` (a reused PID or
-        reassigned identity — a security concern, not a disconnect) does
-        not trigger this; it is simply refused.
-        """
+        """GW-03-B: re-check PID, generation and IDE instance before any
+        session read or mutation. A vanished session (`SESSION_STALE`) also
+        marks the case incomplete per DE-08; a reassigned identity
+        (`TARGET_MISMATCH`) is only refused."""
         if ctx.session is None:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case has no armed session yet"))
         try:
@@ -306,15 +289,29 @@ class AutoDebugFacade:
     def _mark_incomplete(self, ctx: _CaseContext) -> None:
         """DE-08: retain partial evidence once without changing terminal cases."""
         with ctx.state_lock:
-            if ctx.case.state not in (
-                CaseState.FINALIZED, CaseState.CANCELLED, CaseState.FAILED,
-                CaseState.TIMED_OUT, CaseState.INCOMPLETE,
-            ):
+            if ctx.case.state not in TERMINAL_STATES:
                 ctx.case.mark_incomplete()
                 if ctx.session is not None:
                     self._registry.release_owner(ctx.session, ctx)
                 if ctx.evidence_store is not None:
                     ctx.evidence_store.finalize(case_state=ctx.case.state.value, report=None)
+
+    @contextmanager
+    def _exclusive(self, ctx: _CaseContext) -> Iterator[None]:
+        """GW-05: one operation per case and per session; contention fails
+        closed with `POLICY_LIMIT` instead of waiting."""
+        session_lease = self._registry.lease(ctx.session) if ctx.session is not None else nullcontext()
+        with SessionLease(ctx.operation_lock), session_lease:
+            yield
+
+    def _recheck(self, ctx: _CaseContext, approval: ApprovalRecord | None, scope: str) -> None:
+        """After a backend call: re-verify everything, then the stop."""
+        self._check_active(ctx, approval, scope)
+        self._ensure_inspecting(ctx)
+
+    def _require_paused(self, ctx: _CaseContext, action: str) -> None:
+        if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING):
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_PAUSED, message=f"case must be paused to {action}"))
 
     def _check_binding(self, ctx: _CaseContext) -> None:
         if ctx.case.plan is None:
@@ -333,7 +330,7 @@ class AutoDebugFacade:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case has no approval"))
         ctx.case.check_plan_unchanged()
         self._verify_approval(ctx, approval, scope)
-        if ctx.case.state in (CaseState.FINALIZED, CaseState.FAILED, CaseState.INCOMPLETE, CaseState.TIMED_OUT):
+        if ctx.case.state in TERMINAL_STATES:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case is no longer active"))
         self._registry.verify_owner(ctx.session, ctx)
         if (
@@ -383,21 +380,9 @@ class AutoDebugFacade:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="arming time budget exhausted"))
 
     def _verify_approval(self, ctx: _CaseContext, approval: ApprovalRecord, required_scope: str) -> None:
-        """`DE-08` (T15 gap closure): approval expiration discovered
-        mid-investigation (`autodebug_step`/`autodebug_continue`) is a
-        recovery trigger exactly like a session disconnect — DE-08 names
-        "debugger disconnect, user cancellation, or **approval
-        expiration**" as the three triggers. `APPROVAL_EXPIRED` here
-        mirrors `_verify_session`'s `SESSION_STALE` handling: it labels the
-        case `INCOMPLETE` and preserves partial evidence. Every other
-        `verify_approval` refusal (`PERMISSION_DENIED`, `PLAN_CHANGED`,
-        `CANCELLED`, `NOT_APPROVED`) is a distinct authorization/trust
-        failure, not a recovery condition, and is simply refused — it must
-        never mark a valid case incomplete. This helper is not used by
-        `autodebug_arm_case`'s `authorize_and_arm` call: at arm time there
-        is no session or evidence yet, so "incomplete" would be
-        meaningless; an expired approval there is just refused, unchanged.
-        """
+        """Verify `approval` for `required_scope`. Expiry discovered mid-case
+        is a DE-08 recovery trigger and marks the case incomplete; every other
+        refusal is a plain authorization failure."""
         try:
             self._broker.verify_approval(
                 approval,
@@ -412,18 +397,9 @@ class AutoDebugFacade:
             raise
 
     def _rollback_failed_arming(self, ctx: _CaseContext, session: SessionRef, *, newly_created: bool = True) -> None:
-        """Best-effort cleanup when arming succeeds (a session is live and
-        authorized) but a later step in the same `autodebug_arm_case` call
-        — breakpoint binding, most likely (`RP-06`/`BREAKPOINT_UNBOUND`) —
-        fails. Without this, the case was previously left stuck at
-        `SESSION_VERIFIED` holding a live, registered, still-authorized
-        session and a still-valid approval with no tool able to move it
-        forward or clean it up — a resource leak and a lingering armed
-        session with no supervising case. This does not retry binding (no
-        retry tool exists) and does not invent a new `Case` state; it uses
-        only existing primitives: disconnect + unregister the session,
-        revoke the approval (DE-09's revocation mechanism, reused here),
-        and move the case to the existing terminal `FAILED` state."""
+        """Undo a partially armed case (e.g. RP-06 `BREAKPOINT_UNBOUND`):
+        disconnect and unregister a session this call created, release
+        ownership, revoke the case's approvals and mark the case `FAILED`."""
         ctx.session = session
         if newly_created:
             try:
@@ -434,7 +410,7 @@ class AutoDebugFacade:
         self._registry.release_owner(session, ctx)
         self._broker.revoke_for_case(ctx.case.case_id)
         ctx.session = None
-        if ctx.case.state not in (CaseState.FAILED, CaseState.CANCELLED, CaseState.INCOMPLETE, CaseState.TIMED_OUT):
+        if ctx.case.state not in INCOMPLETE_STATES:
             ctx.case.fail()
         if ctx.evidence_store is not None:
             try:
@@ -455,10 +431,8 @@ class AutoDebugFacade:
         )
 
     def autodebug_probe_adapters(self, *, adapters) -> dict:
-        """`adapters` is an iterable of `(adapter, backend, host_os)`
-        triples the caller already holds. This facade owns no adapter
-        instances of its own and performs no IDE discovery — real adapter
-        wiring is T08-T12."""
+        """Report capabilities for caller-supplied `(adapter, backend, host_os)`
+        triples. The facade performs no IDE discovery itself."""
         reports = []
         for adapter, backend, host_os in adapters:
             report: CapabilityReport = adapter.probe_capabilities(backend, host_os)
@@ -605,182 +579,133 @@ class AutoDebugFacade:
             }),
         )
 
+    @_session_tool
     def autodebug_wait_for_stop(self, *, case_id: str, timeout_seconds: float) -> dict:
-        try:
-            ctx = self._lookup(case_id)
-            if (
-                isinstance(timeout_seconds, bool)
-                or not isinstance(timeout_seconds, (float, int))
-                or not math.isfinite(timeout_seconds)
-                or timeout_seconds <= 0
-            ):
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="wait timeout must be positive and finite"))
-            start = self._now()
-            while True:
-                # DE-09: checked first, every iteration, so a cancellation
-                # requested from another thread is observed within one
-                # `poll_interval` tick rather than only after a timeout.
-                if ctx.cancel_event.is_set():
-                    raise AutoDebugError(
-                        ErrorDetail(code=ErrorCode.CANCELLED, message="case was cancelled while waiting for a pause")
-                    )
-                with SessionLease(ctx.operation_lock), self._registry.lease(ctx.session) if ctx.session is not None else nullcontext():
-                    self._check_active(ctx, ctx.approval, SCOPE_WAIT)
-                    stop = self._get_stop(ctx)
-                    self._check_active(ctx, ctx.approval, SCOPE_WAIT)
-                    if stop is not None:
-                        if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING):
-                            ctx.case.pause()
-                        ctx.has_confirmed_stop = True
-                        ctx.stop = stop
-                        with ctx.state_lock:
-                            self._check_active(ctx, ctx.approval, SCOPE_WAIT)
-                            if stop.stop_id not in ctx.recorded_stops:
-                                self._record(ctx, "stop_observed", "stop_reason", stop.reason)
-                                ctx.recorded_stops.add(stop.stop_id)
-                        break
-                if self._now() - start >= timeout_seconds:
-                    self._mark_incomplete(ctx)
-                    raise AutoDebugError(
-                        ErrorDetail(code=ErrorCode.TIMEOUT, message="timed out waiting for a real pause event (DE-01)")
-                    )
-                self._sleep(self._poll_interval)
-        except AutoDebugError as exc:
-            return self._operation_error(case_id, exc)
-        except (OSError, ValueError):
-            return self._storage_error(case_id)
-        return _ok(case_id, {"state": ctx.case.state.value})
+        ctx = self._lookup(case_id)
+        if not _positive_finite(timeout_seconds):
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="wait timeout must be positive and finite"))
+        start = self._now()
+        while True:
+            # DE-09: observe cancellation within one poll interval.
+            if ctx.cancel_event.is_set():
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.CANCELLED, message="case was cancelled while waiting for a pause"))
+            with self._exclusive(ctx):
+                self._check_active(ctx, ctx.approval, SCOPE_WAIT)
+                stop = self._get_stop(ctx)
+                self._check_active(ctx, ctx.approval, SCOPE_WAIT)
+                if stop is not None:
+                    if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING):
+                        ctx.case.pause()
+                    ctx.has_confirmed_stop = True
+                    ctx.stop = stop
+                    with ctx.state_lock:
+                        self._check_active(ctx, ctx.approval, SCOPE_WAIT)
+                        if stop.stop_id not in ctx.recorded_stops:
+                            self._record(ctx, "stop_observed", "stop_reason", stop.reason)
+                            ctx.recorded_stops.add(stop.stop_id)
+                    return _ok(case_id, {"state": ctx.case.state.value})
+            if self._now() - start >= timeout_seconds:
+                self._mark_incomplete(ctx)
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.TIMEOUT, message="timed out waiting for a real pause event (DE-01)"))
+            self._sleep(self._poll_interval)
 
+    @_session_tool
     def autodebug_get_stack(self, *, case_id: str, frame_limit: int) -> dict:
-        try:
-            ctx = self._lookup(case_id)
-            if isinstance(frame_limit, bool) or not isinstance(frame_limit, int) or not 1 <= frame_limit <= MAX_SELECTION:
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="frame_limit must be between 1 and 50"))
-            with SessionLease(ctx.operation_lock), self._registry.lease(ctx.session) if ctx.session is not None else nullcontext():
+        ctx = self._lookup(case_id)
+        if isinstance(frame_limit, bool) or not isinstance(frame_limit, int) or not 1 <= frame_limit <= MAX_SELECTION:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="frame_limit must be between 1 and 50"))
+        with self._exclusive(ctx):
+            self._check_active(ctx, ctx.approval, SCOPE_STACK)
+            ctx.evidence_store.require_capacity(1)
+            self._ensure_inspecting(ctx)
+            self._check_active(ctx, ctx.approval, SCOPE_STACK)
+            frames = self._call(ctx, ctx.adapter.get_stack, ctx.session, frame_limit)
+            self._recheck(ctx, ctx.approval, SCOPE_STACK)
+            frames = self._call(ctx, sanitize_output, frames[:frame_limit])
+            self._recheck(ctx, ctx.approval, SCOPE_STACK)
+            with ctx.state_lock:
                 self._check_active(ctx, ctx.approval, SCOPE_STACK)
-                ctx.evidence_store.require_capacity(1)
-                self._ensure_inspecting(ctx)
-                self._check_active(ctx, ctx.approval, SCOPE_STACK)
-                frames = self._call(ctx, ctx.adapter.get_stack, ctx.session, frame_limit)
-                self._check_active(ctx, ctx.approval, SCOPE_STACK)
-                self._ensure_inspecting(ctx)
-                frames = self._call(ctx, sanitize_output, frames[:frame_limit])
-                self._check_active(ctx, ctx.approval, SCOPE_STACK)
-                self._ensure_inspecting(ctx)
-                with ctx.state_lock:
-                    self._check_active(ctx, ctx.approval, SCOPE_STACK)
-                    self._record(ctx, "stack_observed", "stack", json.dumps(frames, sort_keys=True))
-        except AutoDebugError as exc:
-            return self._operation_error(case_id, exc)
-        except (OSError, ValueError):
-            return self._storage_error(case_id)
+                self._record(ctx, "stack_observed", "stack", json.dumps(frames, sort_keys=True))
         return _ok(case_id, {"frames": frames})
 
+    @_session_tool
     def autodebug_get_variables(self, *, case_id: str, frame_id: str, selected_names: tuple[str, ...]) -> dict:
-        try:
-            ctx = self._lookup(case_id)
-            if (
-                not isinstance(selected_names, tuple) or not 1 <= len(selected_names) <= MAX_SELECTION
-                or any(not isinstance(name, str) or not name or len(name) > 500 for name in selected_names)
-                or not isinstance(frame_id, str) or not frame_id or len(frame_id) > 500
-            ):
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="bounded frame and named variable selection required"))
-            with SessionLease(ctx.operation_lock), self._registry.lease(ctx.session) if ctx.session is not None else nullcontext():
+        ctx = self._lookup(case_id)
+        if (
+            not isinstance(selected_names, tuple) or not 1 <= len(selected_names) <= MAX_SELECTION
+            or any(not isinstance(name, str) or not name or len(name) > 500 for name in selected_names)
+            or not isinstance(frame_id, str) or not frame_id or len(frame_id) > 500
+        ):
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="bounded frame and named variable selection required"))
+        with self._exclusive(ctx):
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+            ctx.evidence_store.require_capacity(len(set(selected_names)))
+            self._ensure_inspecting(ctx)
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+            raw = self._call(ctx, ctx.adapter.get_variables, ctx.session, frame_id, selected_names)
+            self._recheck(ctx, ctx.approval, SCOPE_VARIABLES)
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
+            sanitized: dict[str, str] = {}
+            observations: list[tuple[str, str]] = []
+            for name in dict.fromkeys(selected_names):
+                if name not in raw:
+                    continue
+                bounded = self._call(ctx, sanitize_output, raw[name])
+                text = json.dumps(bounded, sort_keys=True) if isinstance(bounded, (dict, list)) else str(bounded)
+                value, _note = sanitize_observation(name, text)
+                safe_name = sanitize_text(name)
+                if safe_name in sanitized:
+                    raise AutoDebugError(ErrorDetail(code=ErrorCode.SENSITIVE_OUTPUT_BLOCKED, message="redacted variable names collide"))
+                sanitized[safe_name] = value
+                observations.append((name, value))
                 self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                ctx.evidence_store.require_capacity(len(set(selected_names)))
-                self._ensure_inspecting(ctx)
-                self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                raw = self._call(ctx, ctx.adapter.get_variables, ctx.session, frame_id, selected_names)
-                self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                self._ensure_inspecting(ctx)
-                self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                sanitized: dict[str, str] = {}
-                observations: list[tuple[str, str]] = []
-                for name in dict.fromkeys(selected_names):
-                    if name not in raw:
-                        continue
-                    value = raw[name]
-                    bounded_value = self._call(ctx, sanitize_output, value)
-                    text_value = json.dumps(bounded_value, sort_keys=True) if isinstance(bounded_value, (dict, list)) else str(bounded_value)
-                    sanitized_value, _note = sanitize_observation(name, text_value)
-                    safe_name = sanitize_text(name)
-                    if safe_name in sanitized:
-                        raise AutoDebugError(ErrorDetail(code=ErrorCode.SENSITIVE_OUTPUT_BLOCKED, message="redacted variable names collide"))
-                    sanitized[safe_name] = sanitized_value
-                    observations.append((name, sanitized_value))
+            self._ensure_inspecting(ctx)
+            with ctx.state_lock:
+                for name, value in observations:
                     self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                self._ensure_inspecting(ctx)
-                with ctx.state_lock:
-                    for name, sanitized_value in observations:
-                        self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                        self._record(ctx, "variable_observed", name, sanitized_value, frame=f"frame:{frame_id}")
-                self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-        except AutoDebugError as exc:
-            return self._operation_error(case_id, exc)
-        except (OSError, ValueError):
-            return self._storage_error(case_id)
+                    self._record(ctx, "variable_observed", name, value, frame=f"frame:{frame_id}")
+            self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
         return _ok(case_id, {
             "variables": sanitize_output(sanitized),
             "unavailable_names": [sanitize_text(name) for name in selected_names if name not in raw],
         })
 
+    @_session_tool
     def autodebug_step(self, *, case_id: str, approval: ApprovalRecord, kind: str) -> dict:
-        try:
-            ctx = self._lookup(case_id)
-            if kind not in ("step_over", "step_in", "step_out"):
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.CAPABILITY_UNSUPPORTED, message="unsupported step kind"))
-            if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING):
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_PAUSED, message="case must be paused to step"))
-            max_steps = ctx.case.plan.policy.max_steps
-            # GW-05 (T15 gap closure): `SessionRegistry.lease` was built in
-            # T03 and unit-tested there, but no facade tool ever acquired it
-            # — two concurrent `step`/`continue` calls on the same session
-            # could race through the adapter with no serialization at all.
-            # A second concurrent attempt now fails closed with
-            # `POLICY_LIMIT` rather than racing or queuing silently.
-            with self._registry.lease(ctx.session), SessionLease(ctx.operation_lock):
-                self._check_active(ctx, approval, SCOPE_STEP)
-                self._ensure_inspecting(ctx)
-                self._check_active(ctx, approval, SCOPE_STEP)
-                if ctx.steps_taken >= max_steps:
-                    raise AutoDebugError(
-                        ErrorDetail(
-                            code=ErrorCode.POLICY_LIMIT,
-                            message=f"case reached its {max_steps}-step budget (DE-03)",
-                        )
-                    )
-                self._call(ctx, ctx.adapter.step, ctx.session, kind)
-                ctx.steps_taken += 1
-                self._check_active(ctx, approval, SCOPE_STEP)
-                stop = self._get_stop(ctx)
-                self._check_active(ctx, approval, SCOPE_STEP)
-                ctx.stop = stop
-                if stop is None:
-                    ctx.case.resume()
-                self._check_active(ctx, approval, SCOPE_STEP)
-        except AutoDebugError as exc:
-            return self._operation_error(case_id, exc)
-        except (OSError, ValueError):
-            return self._storage_error(case_id)
+        ctx = self._lookup(case_id)
+        if kind not in STEP_KINDS:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.CAPABILITY_UNSUPPORTED, message="unsupported step kind"))
+        self._require_paused(ctx, "step")
+        max_steps = ctx.case.plan.policy.max_steps
+        with self._exclusive(ctx):  # GW-05: concurrent mutations fail closed
+            self._check_active(ctx, approval, SCOPE_STEP)
+            self._ensure_inspecting(ctx)
+            self._check_active(ctx, approval, SCOPE_STEP)
+            if ctx.steps_taken >= max_steps:
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message=f"case reached its {max_steps}-step budget (DE-03)"))
+            self._call(ctx, ctx.adapter.step, ctx.session, kind)
+            ctx.steps_taken += 1
+            self._check_active(ctx, approval, SCOPE_STEP)
+            stop = self._get_stop(ctx)
+            self._check_active(ctx, approval, SCOPE_STEP)
+            ctx.stop = stop
+            if stop is None:
+                ctx.case.resume()
+            self._check_active(ctx, approval, SCOPE_STEP)
         return _ok(case_id, {"steps_taken": ctx.steps_taken})
 
+    @_session_tool
     def autodebug_continue(self, *, case_id: str, approval: ApprovalRecord) -> dict:
-        try:
-            ctx = self._lookup(case_id)
-            if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING):
-                raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_PAUSED, message="case must be paused to continue"))
-            with self._registry.lease(ctx.session), SessionLease(ctx.operation_lock):
-                self._check_active(ctx, approval, SCOPE_CONTINUE)
-                self._ensure_inspecting(ctx)
-                self._check_active(ctx, approval, SCOPE_CONTINUE)
-                self._call(ctx, ctx.adapter.continue_execution, ctx.session)
-                self._check_active(ctx, approval, SCOPE_CONTINUE)
-                ctx.case.resume()
-                ctx.stop = None
-        except AutoDebugError as exc:
-            return self._operation_error(case_id, exc)
-        except (OSError, ValueError):
-            return self._storage_error(case_id)
+        ctx = self._lookup(case_id)
+        self._require_paused(ctx, "continue")
+        with self._exclusive(ctx):
+            self._check_active(ctx, approval, SCOPE_CONTINUE)
+            self._ensure_inspecting(ctx)
+            self._check_active(ctx, approval, SCOPE_CONTINUE)
+            self._call(ctx, ctx.adapter.continue_execution, ctx.session)
+            self._check_active(ctx, approval, SCOPE_CONTINUE)
+            ctx.case.resume()
+            ctx.stop = None
         return _ok(case_id, {"state": ctx.case.state.value})
 
     def autodebug_complete_case(
@@ -798,8 +723,8 @@ class AutoDebugFacade:
         try:
             ctx = self._lookup(case_id)
             with SessionLease(ctx.operation_lock), ctx.state_lock:
-                incomplete_states = (CaseState.CANCELLED, CaseState.FAILED, CaseState.TIMED_OUT, CaseState.INCOMPLETE)
-                if ctx.case.state not in (CaseState.PAUSED, CaseState.INSPECTING, CaseState.AWAITING_DEVELOPER_REPRODUCTION, *incomplete_states):
+                completable = {CaseState.PAUSED, CaseState.INSPECTING, CaseState.AWAITING_DEVELOPER_REPRODUCTION}
+                if ctx.case.state not in completable | INCOMPLETE_STATES:
                     raise AutoDebugError(
                         ErrorDetail(code=ErrorCode.NOT_PAUSED, message="case must be inspecting or awaiting reproduction")
                     )
@@ -847,7 +772,7 @@ class AutoDebugFacade:
                 if ctx.backend_active.is_set():
                     raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="backend call is still retiring"))
                 self._disconnect(ctx)
-                final_state = ctx.case.state if ctx.case.state in incomplete_states else CaseState.FINALIZED
+                final_state = ctx.case.state if ctx.case.state in INCOMPLETE_STATES else CaseState.FINALIZED
                 ctx.evidence_store.finalize(case_state=final_state.value, report=report)
                 if final_state is CaseState.FINALIZED:
                     if ctx.case.state is CaseState.PAUSED:
@@ -869,10 +794,9 @@ class AutoDebugFacade:
         })
 
     def autodebug_cancel_case(self, *, case_id: str) -> dict:
-        """DE-09, tool-facade scope: idempotent, interrupts a pending
-        `autodebug_wait_for_stop` promptly, revokes the case's approval, and
-        retains partial evidence. Detaches AutoDebug's adapter connection,
-        without terminating the target application or IDE."""
+        """DE-09: idempotent cancel. Interrupts waits, revokes approvals,
+        detaches the adapter (never the target app or IDE) and keeps partial
+        evidence."""
         try:
             ctx = self._lookup(case_id)
         except AutoDebugError as exc:

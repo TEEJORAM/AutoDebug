@@ -1,10 +1,7 @@
-"""Session registry (T03) — GW-03: explicit native session identity, and
-GW-05: safe per-session operation serialization.
+"""Session registry (GW-03 identity, GW-05 serialization).
 
-Session identity is never process-name-based. This registry is the single
-source of truth for which `SessionRef` instances AutoDebug currently considers
-live; a target that doesn't resolve to exactly one registered session is a
-reason to stop, not to guess.
+The single source of truth for live sessions. Identity is never
+process-name based; an ambiguous or unknown target stops the operation.
 """
 
 from __future__ import annotations

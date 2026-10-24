@@ -1,19 +1,9 @@
-"""Case state machine (T04) — RP-01, RP-06, RP-08 workflow gating.
+"""Case state machine (RP-01, RP-06, RP-08).
 
-`Case` tracks one investigation's lifecycle end to end. Every transition is
-checked against an explicit legal-transition graph (design.md's "Case
-workflow states"); an attempted transition outside that graph fails closed
-rather than silently happening. Operating on an already-`CANCELLED` or
-`TIMED_OUT` case reuses those states' own error codes (`CANCELLED`,
-`TIMEOUT`) since they're a precise semantic match; every other illegal
-transition — including `FAILED`/`INCOMPLETE`/`FINALIZED` terminal states,
-which have no corresponding existing code — falls back to `INTERNAL_ERROR`.
-Nothing here verifies
-*who* approved a plan or whether that approval is trustworthy — that is
-T05's approvals.py. This module only enforces that the steps happen in the
-right order, that a changed plan invalidates a stale approval (RP-05's
-mechanism, not its trust decision), and that breakpoints are confirmed bound
-before reproduction is ever requested (RP-06).
+Every transition is checked against `_LEGAL_TRANSITIONS` (design.md "Case
+workflow states") and fails closed otherwise. A changed plan invalidates
+its approval; breakpoints must be confirmed bound before reproduction.
+Who approved a plan is verified in approvals.py, not here.
 """
 
 from __future__ import annotations
@@ -25,9 +15,10 @@ from autodebug import plans
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.models import CasePlan, CaseState, IntakeSource
 
-_TERMINAL_RECOVERY = frozenset(
-    {CaseState.CANCELLED, CaseState.FAILED, CaseState.TIMED_OUT, CaseState.INCOMPLETE}
-)
+#: Terminal states reachable from any active state (cancel/fail/time out/incomplete).
+INCOMPLETE_STATES = frozenset({CaseState.CANCELLED, CaseState.FAILED, CaseState.TIMED_OUT, CaseState.INCOMPLETE})
+#: Every state from which no further transition is legal.
+TERMINAL_STATES = INCOMPLETE_STATES | {CaseState.FINALIZED}
 
 #: Legal transitions, per design.md's "Case workflow states". Every
 #: non-terminal state can additionally fall through to any terminal/recovery
@@ -50,8 +41,8 @@ _LEGAL_TRANSITIONS: dict[CaseState, frozenset[CaseState]] = {
     CaseState.INCOMPLETE: frozenset(),
 }
 for _state, _targets in list(_LEGAL_TRANSITIONS.items()):
-    if _state not in _TERMINAL_RECOVERY and _state is not CaseState.FINALIZED:
-        _LEGAL_TRANSITIONS[_state] = _targets | _TERMINAL_RECOVERY
+    if _state not in TERMINAL_STATES:
+        _LEGAL_TRANSITIONS[_state] = _targets | INCOMPLETE_STATES
 
 #: Two of the five terminal states already have a semantically precise
 #: existing error code for "you tried to operate on a case that's already
@@ -140,10 +131,8 @@ class Case:
         self.approved_digest = None
 
     def mark_approved(self, approved_digest: str) -> None:
-        """RP-08's 'approved' moment. This only checks the approved digest
-        still matches the currently staged plan — it does not verify *who*
-        approved it or that the approval is trustworthy; that verification
-        is T05's approvals.py, which calls this once it has done so."""
+        """RP-08 "approved": record a digest that matches the staged plan. Who
+        approved it is verified by approvals.py before this is called."""
         if self.plan is None:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="no plan staged"))
         if approved_digest != self.plan.digest_sha256:

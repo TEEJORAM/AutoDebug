@@ -1,11 +1,8 @@
-"""Router (T03) — GW-04: native session ownership, and GW-06: AI-initiated
-launch/attach scenarios.
+"""Router (GW-04, GW-06): resolve a target to exactly one session.
 
-The router makes exactly one decision per call: reuse an existing session
-(GW-06-C), attach to a running process (GW-06-B), launch a new one
-(GW-06-A), or decline because the adapter can't do what's asked (GW-06-D /
-GW-04-A). It never launches a second debugger behind an existing one's back,
-and it never silently defaults to "whichever adapter/session seems closest."
+Reuses an existing session (GW-06-C), otherwise attaches or launches only
+when the adapter supports it (GW-06-A/B), and declines otherwise
+(GW-06-D). Never starts a second debugger or guesses a session.
 """
 
 from __future__ import annotations

@@ -1,27 +1,12 @@
-"""Human-approval broker — design and prototype (T05) — RP-04, RP-05, DE-09.
+"""Approval broker prototype (RP-04, RP-05, DE-09).
 
-**SECURITY GATE — read before touching this module.** This is a prototype of
-the *mechanism* (digest/target/expiry/scope binding, revocation, one-time
-tokens) tested only against the fake debugger backend. It is explicitly NOT
-the OS-enforced, trusted-local-user-presence mechanism `design.md`'s threat
-model requires before any real debugger is touched:
+Binds approvals to a plan digest, target identity, scope and expiry, with
+revocation and one-time tokens. Tested only against the fake backend.
 
-    "A boolean approved=true from an agent or a file editable by the same
-    unrestricted agent is not a security boundary."
-
-`issue_approval()`'s `human_presence_confirmed` flag is a design placeholder
-for where that real OS-level check would plug in — this code has no way to
-verify a human actually clicked anything, and `test_approvals.py` includes a
-test that proves exactly that, rather than hiding it. `verify_approval()`
-additionally refuses any `backend_kind` other than `"fake"`, so even a
-perfectly-formed, correctly-issued approval can never authorize a real
-adapter operation until a dedicated security review approves real-backend
-enablement (tracked as an explicit, unresolved blocker in `tasks.md` T05).
-
-There is no MCP tool anywhere in this codebase that calls `issue_approval()`
-— that entrypoint does not exist until T07, and when it does, it must be
-reachable only from a separate trusted local process, never from the AI
-agent's own tool-calling path.
+SECURITY GATE (OPEN / NOT APPROVED): `human_presence_confirmed` is a
+placeholder for a real OS-level user-presence check that this code cannot
+perform, and `verify_approval` refuses every backend except `"fake"`. No MCP
+tool issues approvals; only a separate trusted local process may.
 """
 
 from __future__ import annotations
@@ -45,18 +30,10 @@ FAKE_BACKEND_KIND = "fake"
 
 
 def reject_prohibited_target(host_id: str) -> None:
-    """DE-07 (authorization scope, assigned to T05): deny a prohibited
-    (remote/production-looking) target before any debugger call, as a
-    defense-in-depth check independent of the `backend_kind` gate above.
+    """DE-07: deny remote/production-looking hosts before any debugger call.
 
-    This is a naming-convention heuristic — `host_id` must look like a local
-    developer machine (the "local-..." convention used throughout
-    docs/architecture.md), and must not contain "prod"/"remote" markers. It
-    is NOT a verified machine-identity check. A real implementation needs a
-    reviewed local-machine-identity policy (e.g. tied to enterprise device
-    enrollment); this exists so DE-07's *mechanism* has a concrete, testable
-    home now, not because the heuristic itself is considered sufficient.
-    """
+    A naming heuristic, not verified machine identity: `host_id` must start with
+    "local" and must not contain "prod" or "remote"."""
     lowered = host_id.lower()
     if "prod" in lowered or "remote" in lowered:
         raise AutoDebugError(
@@ -76,7 +53,7 @@ def reject_prohibited_target(host_id: str) -> None:
 
 @dataclass
 class ApprovalBroker:
-    """A trusted local approval broker prototype (T05).
+    """A trusted local approval broker prototype.
 
     `now` and `make_token` are injected on purpose: this keeps tests fully
     deterministic, and it forces every construction site to make an explicit
@@ -103,15 +80,9 @@ class ApprovalBroker:
         ttl_seconds: float,
         human_presence_confirmed: bool,
     ) -> ApprovalRecord:
-        """Issue an approval bound to `plan`'s exact digest, a target
-        identity, a scope, and an expiration.
-
-        `human_presence_confirmed` must be explicitly `True` — this
-        prototype cannot itself perform that check, so it refuses to issue
-        anything without the caller asserting it happened. It CANNOT verify
-        the assertion is true; that is precisely the unresolved security
-        gate (see module docstring and `test_approvals.py`).
-        """
+        """Issue an approval bound to `plan`'s digest, a target identity, a
+        scope and an expiry. The caller must assert `human_presence_confirmed`;
+        this prototype cannot verify that assertion (see module docstring)."""
         reject_prohibited_target(plan.target.host_id)
         validate_case_plan(plan)
         if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, (float, int)) or not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
@@ -162,9 +133,8 @@ class ApprovalBroker:
 
     def revoke_for_case(self, case_id: str) -> None:
         """DE-09: cancellation revokes the case's approval/permission
-        record. Scoped here to authorization only — evidence retention for a
-        cancelled case is T06's job, interrupting any in-flight blocking
-        call is T07's."""
+        record (authorization only; evidence and in-flight calls are handled
+        by the facade)."""
         with self._lock:
             self._closed_cases.add(case_id)
             for token, record in list(self._issued.items()):
@@ -266,29 +236,12 @@ def authorize_and_arm(
     process_running: bool,
     launch: Callable[[TargetRef, object], SessionRef] | None = None,
 ) -> SessionRef:
-    """Bypass-path fix (security review): `Router.arm_target` has no
-    built-in coupling to `ApprovalBroker` — nothing stops calling it
-    directly without ever checking an approval. This function is the ONLY
-    approval-gated path this codebase provides to `Router.arm_target`;
-    `broker.verify_approval` runs first and its exception propagates before
-    `router.arm_target` is ever reached, so authorization cannot be skipped
-    by using this entrypoint.
+    """The only approval-gated path to `Router.arm_target`.
 
-    This does not make the bypass structurally impossible — Python has no
-    module-private enforcement, and `router.arm_target` remains directly
-    callable. The residual requirement (recorded in `tasks.md` T05) is that
-    any future MCP facade (T07) must call `authorize_and_arm` exclusively
-    and must never expose bare `Router.arm_target` to agent-reachable code.
-
-    **RP-05-C regression fix (second security review pass):** there is
-    deliberately no `backend_kind` parameter here. An earlier version took
-    one as a free-standing string, which let a caller pass a real adapter
-    (e.g. `VSCodeAdapter()`) while separately claiming `backend_kind="fake"`
-    — the approval check and the adapter actually armed could silently
-    diverge. Backend identity is now derived exclusively from
-    `adapter.ide_id`, so there is no second, spoofable channel to disagree
-    with it.
-    """
+    Verifies the approval first, then that the launch configuration and
+    running/launch scenario match the reviewed plan. Backend identity comes
+    from `adapter.ide_id`, so the approval check and the armed adapter cannot
+    diverge. Agent-reachable code must never call `Router.arm_target` directly."""
     if target != plan.target:
         raise AutoDebugError(ErrorDetail(code=ErrorCode.TARGET_MISMATCH, message="routed target differs from plan"))
     broker.verify_approval(

@@ -29,7 +29,7 @@ class CapabilityState(str, Enum):
 class CaseState(str, Enum):
     """Case workflow states (see design.md "Case workflow states").
 
-    Enumerated here as a stable contract; workflow.py (T04) enforces the
+    Enumerated here as a stable contract; workflow.py enforces the
     actual transitions and invalidation rules.
     """
 
@@ -153,7 +153,7 @@ class CasePolicy:
 @dataclass(frozen=True)
 class CasePlan:
     """RP-04/RP-05 — the complete, hashable plan a developer approves. Digest
-    computation and immutability enforcement belong to plans.py (T04)."""
+    computation lives in plans.py."""
 
     schema_version: str
     case_id: str
@@ -170,7 +170,7 @@ class CasePlan:
 @dataclass(frozen=True)
 class ApprovalRecord:
     """RP-05 — proof of developer approval, bound to a plan digest and target
-    identity. Issuance/verification logic belongs to approvals.py (T05)."""
+    identity. Issuance and verification live in approvals.py."""
 
     case_id: str
     plan_digest: str
@@ -184,7 +184,7 @@ class ApprovalRecord:
 @dataclass(frozen=True)
 class EvidenceRecord:
     """DE-05/RP-08 — one sanitized observation. Persistence belongs to
-    evidence.py (T06)."""
+    evidence.py."""
 
     schema_version: str
     case_id: str

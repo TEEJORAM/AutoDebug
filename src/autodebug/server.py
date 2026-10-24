@@ -21,7 +21,7 @@ import sys
 import threading
 import time
 import types
-from dataclasses import MISSING, dataclass, fields, is_dataclass, replace
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Union, get_args, get_origin, get_type_hints
@@ -30,7 +30,7 @@ from autodebug import __version__
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker
 from autodebug.facade import (
-    SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STACK, SCOPE_STEP, SCOPE_VARIABLES, SCOPE_WAIT,
+    MAX_SELECTION, SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STACK, SCOPE_STEP, SCOPE_VARIABLES, SCOPE_WAIT, STEP_KINDS,
     AutoDebugFacade, target_identity_for,
 )
 from autodebug.models import (
@@ -150,6 +150,25 @@ def _decode(value: object, annotation: object) -> object:
 class _Tool:
     parameters: dict[str, object]
     optional: frozenset[str] = frozenset()
+    #: Extra JSON-schema bounds per parameter; published and enforced.
+    limits: dict[str, dict] = field(default_factory=dict)
+
+
+def _check_limits(value: object, limits: dict) -> None:
+    """Enforce the subset of JSON-schema keywords used in `TOOLS`."""
+    checks = {
+        "enum": lambda bound: value in bound,
+        "minimum": lambda bound: value >= bound,
+        "exclusiveMinimum": lambda bound: value > bound,
+        "maximum": lambda bound: value <= bound,
+        "minItems": lambda bound: len(value) >= bound,
+        "maxItems": lambda bound: len(value) <= bound,
+        "items": lambda bound: all(
+            bound.get("minLength", 0) <= len(item) <= bound.get("maxLength", len(item)) for item in value
+        ),
+    }
+    if not all(check(limits[key]) for key, check in checks.items() if key in limits):
+        raise InvalidParams("Value out of bounds")
 
 
 _CASE = {"case_id": str}
@@ -166,10 +185,20 @@ TOOLS = {
         **_CASE, "reviewed_configuration": dict[str, str], "process_running": bool,
     }),
     "autodebug_case_status": _Tool(_CASE),
-    "autodebug_wait_for_stop": _Tool({**_CASE, "timeout_seconds": float}),
-    "autodebug_get_stack": _Tool({**_CASE, "frame_limit": int}),
-    "autodebug_get_variables": _Tool({**_CASE, "frame_id": str, "selected_names": tuple[str, ...]}),
-    "autodebug_step": _Tool({**_CASE, "kind": str}),
+    "autodebug_wait_for_stop": _Tool(
+        {**_CASE, "timeout_seconds": float},
+        limits={"timeout_seconds": {"exclusiveMinimum": 0, "maximum": 300}},
+    ),
+    "autodebug_get_stack": _Tool(
+        {**_CASE, "frame_limit": int}, limits={"frame_limit": {"minimum": 1, "maximum": MAX_SELECTION}},
+    ),
+    "autodebug_get_variables": _Tool(
+        {**_CASE, "frame_id": str, "selected_names": tuple[str, ...]},
+        limits={"selected_names": {
+            "minItems": 1, "maxItems": MAX_SELECTION, "items": {"type": "string", "minLength": 1, "maxLength": 500},
+        }},
+    ),
+    "autodebug_step": _Tool({**_CASE, "kind": str}, limits={"kind": {"enum": list(STEP_KINDS)}}),
     "autodebug_continue": _Tool(_CASE),
     "autodebug_complete_case": _Tool({
         **_CASE, "root_cause_statement": str, "confidence": RootCauseConfidence,
@@ -202,17 +231,7 @@ class ToolDispatcher:
     def list_tools(self) -> list[dict]:
         result = []
         for name, tool in TOOLS.items():
-            properties = {key: _schema(value) for key, value in tool.parameters.items()}
-            if name == "autodebug_wait_for_stop":
-                properties["timeout_seconds"].update(exclusiveMinimum=0, maximum=300)
-            elif name == "autodebug_get_stack":
-                properties["frame_limit"].update(minimum=1, maximum=50)
-            elif name == "autodebug_get_variables":
-                properties["selected_names"].update(
-                    minItems=1, maxItems=50, items={"type": "string", "minLength": 1, "maxLength": 500},
-                )
-            elif name == "autodebug_step":
-                properties["kind"]["enum"] = ["step_over", "step_in", "step_out"]
+            properties = {key: _schema(value) | tool.limits.get(key, {}) for key, value in tool.parameters.items()}
             result.append({
                 "name": name,
                 "description": name.removeprefix("autodebug_").replace("_", " ") + " (fake-only gateway)",
@@ -229,16 +248,8 @@ class ToolDispatcher:
         if tool.parameters.keys() - tool.optional - arguments.keys():
             raise InvalidParams("Missing tool argument")
         decoded = {k: _decode(v, tool.parameters[k]) for k, v in arguments.items()}
-        if name == "autodebug_wait_for_stop" and not 0 < decoded["timeout_seconds"] <= 300:
-            raise InvalidParams("timeout_seconds must be in (0, 300]")
-        if name == "autodebug_get_stack" and not 1 <= decoded["frame_limit"] <= 50:
-            raise InvalidParams("frame_limit must be in [1, 50]")
-        if name == "autodebug_get_variables":
-            selected = decoded["selected_names"]
-            if not 1 <= len(selected) <= 50 or any(not n or len(n) > 500 for n in selected):
-                raise InvalidParams("Select 1-50 variable names of 1-500 characters")
-        if name == "autodebug_step" and decoded["kind"] not in ("step_over", "step_in", "step_out"):
-            raise InvalidParams("Unknown step kind")
+        for key, limits in tool.limits.items():
+            _check_limits(decoded[key], limits)
         return decoded
 
     def call(self, name: str, arguments: dict) -> dict:

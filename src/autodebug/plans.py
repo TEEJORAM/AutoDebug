@@ -1,17 +1,8 @@
-"""Case plan validation and canonical digest (T04) — RP-03, RP-06 support.
+"""Plan validation and canonical digest (RP-03, RP-05, RP-06).
 
-Immutability itself is structural: `CasePlan` and its nested types are all
-`@dataclass(frozen=True)` (T01). This module adds the two things T01
-deliberately deferred: validating a plan's *content* is well-formed, and
-computing a canonical digest over it so a later field change is detectable.
-That detectability is what RP-05's "a modified field SHALL invalidate
-approval" depends on — the trust decision over *who* approved a digest is
-T05's job (approvals.py), not this one.
-
-Malformed-input validation raises `ValueError` (a caller/construction-time
-contract violation, no dedicated spec error code exists for it). Operational,
-spec-named rejections (`PLAN_CHANGED`, `BREAKPOINT_UNBOUND`, ...) are raised
-as `AutoDebugError` from `workflow.py` instead, not from here.
+Plans are frozen dataclasses; this module validates their content and
+computes the digest that later detects any change. Malformed input raises
+`ValueError`; operational refusals are `AutoDebugError`s raised elsewhere.
 """
 
 from __future__ import annotations

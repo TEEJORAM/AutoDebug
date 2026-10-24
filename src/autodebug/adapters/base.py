@@ -1,11 +1,8 @@
-"""BaseAdapter: the common protocol every IDE adapter implements.
+"""Adapter protocol, capability probing and the shared client-backed adapter.
 
-`probe()` (T01) only determines OS-applicability. `probe_capabilities()` (T02)
-goes one level deeper: given a backend description (a real adapter connection
-in later tasks, a `FakeBackend` fixture until then — see
-`tests/fixtures/fake_backend.py`), it reports a per-operation capability state
-so `UNKNOWN`, `UNAVAILABLE`, `UNSUPPORTED` and `NOT_APPLICABLE` stay distinct
-(GW-02). Nothing here contacts a real IDE, process, or network.
+`probe_capabilities` (GW-02) keeps UNKNOWN, UNAVAILABLE, UNSUPPORTED and
+NOT_APPLICABLE distinct. Nothing here contacts a real IDE, process or
+network.
 """
 
 from __future__ import annotations
@@ -40,7 +37,7 @@ CORE_OPERATIONS: tuple[str, ...] = (
 
 
 class BackendDescription(Protocol):
-    """Shape a backend (fake today, real from T08) must expose to be probed."""
+    """Shape a backend description must expose to be probed."""
 
     installed: bool
     reachable: bool
@@ -51,19 +48,10 @@ class BackendDescription(Protocol):
 
 @dataclass(frozen=True)
 class RemoteSessionInfo:
-    """What a real adapter's injected debug client reports about one remote
-    session (T08, generalized for reuse across adapters at T09). This shape
-    is AutoDebug's own, adapter-agnostic abstraction — never a transcription
-    of any specific IDE's real wire protocol (see each adapter module's own
-    docstring for what remains unverified about its particular backend).
+    """One remote session as reported by an adapter's injected client.
 
-    `generation` is `None` whenever the client cannot report a stable
-    per-attach generation/start-time marker. When `None`, the adapter
-    assigns and tracks its own generation counter per `remote_session_id`
-    as a fallback, so `GW-03`'s stale-session/PID-reuse checks still have
-    *something* to compare — an AutoDebug-side safety net, not a claim that
-    any specific backend tracks generations itself.
-    """
+    AutoDebug's own IDE-agnostic shape. `generation` is `None` when the client
+    cannot report one; the adapter then tracks its own per-session counter."""
 
     remote_session_id: str
     pid: int
@@ -127,10 +115,8 @@ class BaseAdapter:
         backend: BackendDescription | None = None,
         host_os: str | None = None,
     ) -> CapabilityReport:
-        """GW-02 — report IDE/backend version, reachability and per-operation
-        support. `backend` stands in for a real IDE connection; until T08–T12
-        only a `FakeBackend` fixture is ever passed here (see tests/fixtures).
-        """
+        """GW-02: report versions, reachability and per-operation support.
+        `backend` describes the IDE connection (a `FakeBackend` in tests)."""
         host_os = host_os or platform.system()
 
         if host_os not in self.supported_os:
@@ -230,11 +216,7 @@ class BaseAdapter:
         self._not_implemented("wait_for_stop")
 
     def is_paused(self, debug_session_id):
-        """Non-blocking, single-check poll: is this session currently
-        paused? `wait_for_stop` is the single-call, bounded variant named in
-        `CORE_OPERATIONS`/`GW-06`; concrete adapters typically implement it
-        as a loop over this check. The facade itself polls `get_stop`, which
-        additionally carries a verified stop identity."""
+        """Non-blocking check whether a session is paused."""
         self._not_implemented("is_paused")
 
     def get_stack(self, session, frame_limit):

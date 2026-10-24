@@ -318,6 +318,30 @@ class StrictFinalSecurityTests(unittest.TestCase):
                 self.assertEqual(result["error"]["code"], "CANCELLED")
                 self.assertEqual(helper.ctx.case.state.value, "cancelled")
 
+    def test_revocation_during_inspection_records_nothing(self):
+        # Every inspection re-verifies approval after each backend call, so
+        # a revocation that lands mid-call must refuse the result and record
+        # no evidence for it.
+        for method in ("get_stack", "get_variables"):
+            with self.subTest(method=method):
+                helper = self.fixture()
+                original = getattr(helper.adapter, method)
+                recorded_before = len(helper.ctx.evidence_store.read_events())
+
+                def revoke_then_answer(*args, helper=helper, original=original):
+                    helper.facade._broker.revoke(helper.approval.token)
+                    return original(*args)
+
+                with patch.object(helper.adapter, method, side_effect=revoke_then_answer):
+                    if method == "get_stack":
+                        result = helper.facade.autodebug_get_stack(case_id=helper.case_id, frame_limit=1)
+                    else:
+                        result = helper.facade.autodebug_get_variables(
+                            case_id=helper.case_id, frame_id="frame-0", selected_names=("local_var",),
+                        )
+                self.assertEqual(result["error"]["code"], "CANCELLED", result)
+                self.assertEqual(len(helper.ctx.evidence_store.read_events()), recorded_before)
+
     def test_completion_cannot_race_an_inflight_inspection(self):
         helper = self.fixture()
         entered, release = threading.Event(), threading.Event()

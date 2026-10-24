@@ -1,16 +1,9 @@
-"""Evidence persistence and redaction (T06) — DE-02, DE-05, DE-06, DE-07, DE-08, DE-09.
+"""Evidence redaction and persistence (DE-02, DE-05, DE-06, DE-07, DE-08).
 
-Redaction and bounding happen *before* anything is ever written to disk or
-handed back to a caller — nothing downstream can "undo" a decision not to
-redact. `EvidenceStore` never chooses a default on-disk location inside this
-repository; the caller supplies `base_dir`, which per docs/security.md must
-be "a private, access-restricted directory outside the Git repo." This
-module does not enforce that base-directory policy; it does ensure each
-case stays within the supplied directory.
-
-This module does not verify *who* approved a case (T05) or enforce session
-identity (T03) — it only records what was observed, sanitizes it, and writes
-it down honestly, including when a case ends cancelled or incomplete.
+Values are redacted and bounded before they are written or returned. The
+caller supplies the private base directory (outside the repository); each
+case directory is created exclusively and opened without following
+symlinks. Cancelled and incomplete cases are recorded honestly.
 """
 
 from __future__ import annotations
@@ -34,10 +27,8 @@ from autodebug.models import SCHEMA_VERSION, EvidenceRecord, ExecutionConfidence
 
 REDACTED_PLACEHOLDER = "***REDACTED***"
 MAX_VALUE_LENGTH = 500
-#: A prudent default cap on total evidence per case, so storage stays
-#: bounded even across a long investigation. This is storage hygiene, not an
-#: implementation of DE-03's step budget (that remains CasePolicy.max_steps
-#: from T01/T04) — the two are independent limits.
+#: Default cap on evidence records per case (storage bound; independent of
+#: the DE-03 step budget in `CasePolicy.max_steps`).
 DEFAULT_MAX_EVIDENCE_PER_CASE = 200
 MAX_OUTPUT_BYTES = 65536
 MAX_OUTPUT_NODES = 4096
@@ -69,10 +60,8 @@ _SENSITIVE_VALUE_PATTERNS = (
 
 
 def redact_value(name: str, value: str) -> tuple[str, bool]:
-    """DE-07 — return `(sanitized_value, was_redacted)`. Name-based and
-    value-pattern-based detection are independent layers; either alone
-    triggers redaction (defense in depth, same pattern used in T05's
-    `reject_prohibited_target`)."""
+    """DE-07: return `(value_or_placeholder, was_redacted)`. A sensitive
+    name or a secret-shaped value independently triggers redaction."""
     lowered_name = name.lower()
     if any(marker in lowered_name for marker in _SENSITIVE_NAME_MARKERS):
         return REDACTED_PLACEHOLDER, True
@@ -106,20 +95,8 @@ def sanitize_observation(name: str, value: str, *, max_length: int = MAX_VALUE_L
 
 
 def redact_text(text: str) -> tuple[str, bool]:
-    """DE-07 — scan free-form prose (report statements, causal-validation
-    justifications, uncertainties, next steps) for the same sensitive
-    value-shape patterns `redact_value` uses, masking only the matching
-    substrings in place.
-
-    Unlike `redact_value` (used for a single name/value observation, where
-    the *entire* value is replaced once any marker matches), prose keeps its
-    surrounding narrative — only the matched secret-shaped substring is
-    replaced, since there is no separate "name" to key off of here. This
-    closes a bypass where a raw secret embedded directly in
-    `root_cause_statement`/`causal_validation`/`uncertainties`/`next_steps`
-    would otherwise skip `record_evidence`'s redaction pipeline entirely and
-    reach `report.md` unredacted.
-    """
+    """DE-07: mask secret-shaped substrings in free-form prose, keeping the
+    surrounding text. Returns `(text, was_redacted)`."""
     redacted_any = False
 
     def _mask(match: re.Match) -> str:
@@ -206,20 +183,10 @@ def build_investigation_report(
     causal_validation: str | None = None,
     execution_confidence: ExecutionConfidence = ExecutionConfidence.NOT_APPLICABLE,
 ) -> InvestigationReport:
-    """DE-06 — structurally enforce the confidence bar rather than trusting
-    the caller's say-so. `CONFIRMED` requires at least one cited evidence ID
-    **and** a non-empty `causal_validation` justification (a controlled
-    reproduction, a verified fix, or equivalent) — a single breakpoint hit
-    alone can never satisfy this function's `CONFIRMED` path. `LIKELY` still
-    requires at least one evidence ID; `INCONCLUSIVE` does not (evidence may
-    be genuinely insufficient).
+    """DE-06: enforce the confidence bar and redact every prose field.
 
-    DE-07: every free-text field here (`root_cause_statement`,
-    `causal_validation`, `uncertainties`, `next_steps`) is scanned with
-    `redact_text` before this function returns — this is a distinct redaction
-    pass from `EvidenceStore.record_evidence`'s, since prose can carry a raw
-    secret that never went through that pipeline at all.
-    """
+    `CONFIRMED` needs cited evidence and a `causal_validation` justification;
+    `LIKELY` needs cited evidence; `INCONCLUSIVE` needs neither."""
     confidence = RootCauseConfidence(confidence)
     if not isinstance(reproduced, bool) or not isinstance(root_cause_statement, str) or not root_cause_statement.strip():
         raise ValueError("report requires a nonempty statement and boolean reproduced")
@@ -253,18 +220,8 @@ def build_investigation_report(
 
 
 def render_report(report: InvestigationReport, *, case_state: str) -> str:
-    """DE-05/DE-06 — the Markdown report template. Cites evidence IDs rather
-    than embedding raw data (see docs/mcp-contract.md: "report.md cites
-    evidence IDs instead of copy-pasting raw memory dumps").
-
-    DE-07 defense in depth: this function re-applies `redact_text` to every
-    free-text field immediately before writing, independent of whether the
-    `InvestigationReport` passed in was built through
-    `build_investigation_report` (which already redacts) or constructed by
-    hand (nothing stops that — `InvestigationReport` is a plain dataclass).
-    This is the actual disk-writing boundary, so it is the last line of
-    defense, not the only one.
-    """
+    """Render `report.md`, citing evidence IDs instead of raw data. Prose is
+    redacted again here because this is the disk-writing boundary."""
     statement = sanitize_text(report.root_cause_statement)
     uncertainties = [sanitize_text(u) for u in report.uncertainties]
     next_steps = [sanitize_text(n) for n in report.next_steps]
@@ -419,18 +376,9 @@ class EvidenceStore:
         process_start_id: str | None = None,
         plan_digest: str | None = None,
     ) -> EvidenceRecord:
-        """DE-02/DE-05/DE-07: sanitize, bound, assign a stable monotonic
-        evidence ID, and append to `events.jsonl`. The raw `observation_value`
-        is never written anywhere once this returns — only the sanitized
-        form exists in the returned record and on disk.
-
-        The `max_events` cap (default `DEFAULT_MAX_EVIDENCE_PER_CASE`) is
-        checked *before* any write for this call — exceeding it raises
-        `POLICY_LIMIT` and writes nothing new, but every evidence record
-        already recorded and already on disk is untouched and remains fully
-        readable via `read_events()`. The cap rejects the next write; it
-        never discards or truncates prior history.
-        """
+        """Sanitize, assign the next stable ID (`E0001`, ...) and append to
+        `events.jsonl`. Raw values are never written. Exceeding `max_events` raises
+        `POLICY_LIMIT` without touching earlier records."""
         with self._lock:
             if self._next_sequence > self.max_events:
                 raise AutoDebugError(
