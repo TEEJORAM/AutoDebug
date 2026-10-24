@@ -60,6 +60,7 @@ class Debugger:
         self.sessions = 0
         self._last_status: str | None = None
         self._last_build: dict | None = None
+        self._last_exception: str | None = None
 
     # -- helpers ------------------------------------------------------------
 
@@ -109,11 +110,11 @@ class Debugger:
         if raw.get("exception"):
             result["exception"] = {"id": clean_text(raw["exception"].get("id"), 200),
                                    "description": clean_text(raw["exception"].get("description"), 500)}
-            if result["exception"]["id"] != getattr(self, "_last_exception", None):
+            if result["exception"]["id"] != self._last_exception:
                 self._last_exception = result["exception"]["id"]
                 self._log("exception", result["exception"]["id"], result["exception"]["description"])
-        if raw.get("hint"):
-            result["hint"] = raw["hint"]
+        if raw.get("hint") and "hint" not in result:
+            result["next"] = raw["hint"]
         build = raw.get("build")
         if build and build.get("status") != "running" and build != self._last_build:
             self._last_build = build
@@ -352,6 +353,10 @@ class Debugger:
                                          "add_functions": add_functions or [], "remove_functions": remove_functions or []})["state"]
         changes = [f"{verb} " + ", ".join(f"{b.get('file')}:{b.get('line')}" for b in items)
                    for verb, items in (("added", add), ("removed", remove)) if items]
+        if add_functions:
+            changes.append("added functions " + ", ".join(add_functions))
+        if remove_functions:
+            changes.append("removed functions " + ", ".join(remove_functions))
         if changes:
             self._log("breakpoints", "", "; ".join(changes))
         return {"breakpoints": self._state(raw).get("breakpoints", [])}

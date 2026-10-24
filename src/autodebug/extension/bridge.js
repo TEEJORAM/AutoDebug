@@ -126,6 +126,17 @@ function describeTask(label, tasks, seen = new Set()) {
   return `${self} (first: ${deps.map((dep) => describeTask(dep, tasks, seen)).join('; ')})`;
 }
 
+function tasksInChain(label, tasks, seen = new Set()) {
+  if (!label || seen.has(label)) return [];
+  seen.add(label);
+  const task = (tasks || []).find((item) => item.label === label);
+  const found = task ? [task] : [];
+  const deps = task
+    ? [].concat(task.dependsOn || []).map((dep) => (typeof dep === 'string' ? dep : dep && dep.task)).filter(Boolean)
+    : [];
+  return found.concat(deps.flatMap((dep) => tasksInChain(dep, tasks, seen)));
+}
+
 function splitPath(name) {
   const parts = [];
   String(name).replace(/->/g, '.').split('.').forEach((piece) => {
@@ -356,10 +367,13 @@ class Bridge {
     if (args.ask_developer != null) {
       const text = String(args.ask_developer);
       if (text.length > 300) fail('BAD_REQUEST', 'ask_developer is at most 300 characters');
-      const s = this.current();
-      await this.vscode.window.showInformationMessage(`AutoDebug: the AI agent asks you to: ${text}`);
-      s.asked = text;
-      this.log(`asked the developer: ${text}`);
+      const active = this.current();
+      if (active.asked !== text) {
+        active.asked = text;
+        this.log(`asked the developer: ${text}`);
+        const shown = this.vscode.window.showInformationMessage(`AutoDebug: the AI agent asks you to: ${text}`);
+        if (shown && typeof shown.then === 'function') shown.then(() => {}, () => {});
+      }
     }
     const since = Number(args.since) || 0;
     const ms = Math.max(0, Math.min(Number(args.wait_ms) || 0, 60000));
@@ -410,6 +424,13 @@ class Bridge {
       }
       launch[field] = pid;
     }
+    if (launch.request === 'attach' && args.process_id == null) {
+      const placeholders = [];
+      walkValues(launch, (text, leaf) => {
+        if ((leaf === 'processId' || leaf === 'pid') && /\$\{command:[^}]+\}/.test(text)) placeholders.push(text);
+      });
+      if (placeholders.length) fail('BAD_REQUEST', 'pass process_id');
+    }
     const tokens = substitutionTokens(launch, launch.request === 'attach');
     if (tokens.length) fail('BAD_REQUEST', `refuses ${tokens.join(', ')}`);
     const remote = remoteProblem(launch);
@@ -452,14 +473,18 @@ class Bridge {
         + `Ask the developer to install ${extension ? `the ${extension} extension` : 'the extension for it'} and reload the window.`);
     }
     const tasks = this.taskDefinitions(folder).map((task) => applyPlatform(task, this.platform));
-    const tokens = [];
-    for (const task of tasks) tokens.push(...substitutionTokens(task, false));
-    if (tokens.length) fail('BAD_REQUEST', `refuses ${tokens.join(', ')}`);
     let task = null;
     if (args.task) {
       task = tasks.find((t) => t.label === args.task);
       if (!task) fail('NOT_FOUND', `no task labelled "${args.task}" in .vscode/tasks.json`);
     }
+    const used = [
+      ...tasksInChain(args.task, tasks),
+      ...tasksInChain(launch.preLaunchTask, tasks),
+      ...tasksInChain(launch.postDebugTask, tasks),
+    ];
+    const tokens = used.flatMap((item) => substitutionTokens(item, false));
+    if (tokens.length) fail('BAD_REQUEST', `refuses ${[...new Set(tokens)].join(', ')}`);
     const extras = this.sourceFolders(args);
     const breakpoints = (args.breakpoints || []).map((b) => this.breakpoint(folder, b, extras));
     const functions = (args.function_breakpoints || []).map((name) => ({ name: String(name), handle: null }));
@@ -525,7 +550,7 @@ class Bridge {
       s.goal ? `Goal: ${s.goal}` : null,
       `Folder: ${s.folder.uri.fsPath}`,
       l.request === 'attach' ? this.attachTarget(l, s.processLabel) : null,
-      s.task ? `Build first: ${taskCommand(s.task)}` : 'Build: none',
+      s.task ? `Build first: ${describeTask(s.task.label, tasks)}` : 'Build: none',
       l.preLaunchTask ? `Before the debugger starts (preLaunchTask): ${describeTask(l.preLaunchTask, tasks)}` : null,
       l.postDebugTask ? `After the session (postDebugTask): ${describeTask(l.postDebugTask, tasks)}` : null,
       `Run: "${l.name}" (${l.type}) ${program}`.trim(),
@@ -676,12 +701,12 @@ class Bridge {
     if (s.output.length > 60) s.output.splice(0, s.output.length - 60);
   }
 
-  event(m) {
+  async event(m) {
     const s = this.session;
     if (m.event === 'stopped') {
       s.threadId = m.body.threadId;
-      this.locate(s, m.body.reason, m.body.threadId);
-      if (m.body.reason === 'exception') this.exceptionInfo(s, m.body.threadId);
+      const exception = m.body.reason === 'exception' ? await this.readException(s, m.body.threadId) : null;
+      await this.locate(s, m.body.reason, m.body.threadId, exception);
     } else if (m.event === 'continued') {
       this.update({ status: 'running', location: null, reason: null, exception: null });
     } else if (m.event === 'exited') {
@@ -691,14 +716,17 @@ class Bridge {
     }
   }
 
-  async locate(s, reason, threadId) {
+  async locate(s, reason, threadId, exception = null) {
     let location = null;
     try {
       const trace = await s.dap.customRequest('stackTrace', { threadId, startFrame: 0, levels: 1 });
       const frame = trace.stackFrames && trace.stackFrames[0];
       if (frame) location = { file: this.relative(frame.source && frame.source.path), line: frame.line };
     } catch (_) { /* location stays unknown */ }
-    if (this.session === s) this.update({ status: 'paused', reason, location });
+    if (this.session !== s) return;
+    const changes = { status: 'paused', reason, location };
+    if (exception) changes.exception = exception;
+    this.update(changes);
   }
 
   verified(b) {
@@ -714,10 +742,13 @@ class Bridge {
     const bp = info && info.verified.get(`${this.key(b.full)}:${b.line}`);
     if (!bp) return s && s.dap ? 'not confirmed by the debugger yet' : 'set when the program starts';
     if (bp.verified) return bp.line && bp.line !== b.line ? `moved to line ${bp.line}` : '';
+    const adapterMessage = bp.message ? String(bp.message) : '';
     if (s && s.dap && ['starting', 'running', 'paused'].includes(s.status)) {
-      return 'not bound yet; it may bind when its module or library loads';
+      return adapterMessage
+        ? `not bound yet (${adapterMessage}); it may bind when its module loads`
+        : 'not bound yet; it may bind when its module loads';
     }
-    return bp.message || 'not bound';
+    return adapterMessage || 'not bound';
   }
 
   functionVerified(name) {
@@ -727,13 +758,15 @@ class Bridge {
     return Boolean(bp && bp.verified);
   }
 
-  async exceptionInfo(s, threadId) {
+  async readException(s, threadId) {
     const info = s.dap && this.trackers.get(s.dap.id);
-    if (!info || !info.capabilities.supportsExceptionInfoRequest) return;
+    if (!info || !info.capabilities.supportsExceptionInfoRequest) return null;
     try {
       const body = await s.dap.customRequest('exceptionInfo', { threadId });
-      if (this.session === s) this.update({ exception: { id: body.exceptionId, description: body.description || '' } });
-    } catch (_) { /* the stop is already recorded */ }
+      return { id: body.exceptionId, description: body.description || '' };
+    } catch (_) {
+      return null;
+    }
   }
 
   sessionStarted(dap) {
@@ -758,6 +791,7 @@ class Bridge {
     const handles = [...s.breakpoints, ...(s.functions || [])].map((b) => b.handle).filter(Boolean);
     if (handles.length) this.vscode.debug.removeBreakpoints(handles);
     s.breakpoints.forEach((b) => { b.handle = null; });
+    (s.functions || []).forEach((b) => { b.handle = null; });
   }
 
   relative(file) {
@@ -801,8 +835,9 @@ class Bridge {
   }
 
   async exceptions(args) {
-    const s = this.current('paused', 'running', 'starting');
-    const info = s.dap && this.trackers.get(s.dap.id);
+    const s = this.current();
+    if (!s.dap) fail('NOT_FOUND', 'the debugger is not connected yet');
+    const info = this.trackers.get(s.dap.id);
     const filters = (info && info.capabilities && info.capabilities.exceptionBreakpointFilters) || [];
     const offered = filters.map((filter) => ({ id: filter.filter, label: filter.label, default: Boolean(filter.default) }));
     if (Array.isArray(args.enable)) {
@@ -894,13 +929,19 @@ class Bridge {
     if (s.stepsUsed >= s.maxSteps) fail('LIMIT', `the approved limit of ${s.maxSteps} steps is used up`);
     const waitMs = Math.max(0, Math.min(Number(args.wait_ms) || 15000, 60000));
     const before = s.version;
+    const stepsBefore = s.stepsUsed;
+    const pausedAt = { location: s.location, reason: s.reason };
     s.stepsUsed += 1;
     this.update({ status: 'running', location: null, reason: null });
-    await s.dap.customRequest(command, { threadId: s.threadId });
+    try {
+      await s.dap.customRequest(command, { threadId: s.threadId });
+    } catch (error) {
+      s.stepsUsed = stepsBefore;
+      if (this.session === s) this.update({ status: 'paused', location: pausedAt.location, reason: pausedAt.reason });
+      throw error;
+    }
     await this.waitFor(s, () => s.version > before && s.status !== 'running', waitMs);
-    const state = this.snapshot();
-    if (state.status === 'running') state.hint = "it's a slow function: call wait or pause";
-    return { state };
+    return { state: this.snapshot() };
   }
 
   waitFor(s, condition, ms) {

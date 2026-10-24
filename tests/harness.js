@@ -39,6 +39,7 @@ const taskListeners = [];
 const byFile = () => {
   const files = new Map();
   for (const b of breakpoints) {
+    if (!b.location || !b.location.uri) continue;
     const file = b.location.uri.fsPath;
     files.set(file, [...(files.get(file) || []), b.location.range.start.line + 1]);
   }
@@ -74,7 +75,10 @@ class ScriptedSession {
     for (const [file, lines] of byFile()) {
       const seq = this.seq++;
       tracker.onWillReceiveMessage({ type: 'request', seq, command: 'setBreakpoints', arguments: { source: { path: file }, breakpoints: lines.map((line) => ({ line })) } });
-      const breakpoints = lines.map((line, index) => ({ verified: !late, line, id: 100 + placed.length + index }));
+      const message = process.env.HARNESS_BP_MESSAGE || '';
+      const breakpoints = lines.map((line, index) => ({
+        verified: !late && !message, line, id: 100 + placed.length + index, ...(message ? { message } : {}),
+      }));
       placed.push(...breakpoints.map((bp, index) => ({ ...bp, file, line: lines[index] })));
       this.send({ type: 'response', request_seq: seq, command: 'setBreakpoints', success: true, body: { breakpoints } });
     }
@@ -91,7 +95,12 @@ class ScriptedSession {
   lines() { return (byFile().get(this.file()) || []); }
   run() {
     for (this.pos += 1; this.pos < TRACE.length; this.pos += 1) {
-      if (this.lines().includes(TRACE[this.pos].line)) { this.event('stopped', { reason: 'breakpoint', threadId: 1 }); return; }
+      if (this.lines().includes(TRACE[this.pos].line)) {
+        const reason = process.env.HARNESS_EXCEPTION === '1' && !this.exceptionSent ? 'exception' : 'breakpoint';
+        this.exceptionSent = true;
+        this.event('stopped', { reason, threadId: 1 });
+        return;
+      }
     }
     this.event('output', { category: 'stderr', output: 'FAIL: test_area_does_not_change_when_moved\nAssertionError: 2.0 != 1.0\n' });
     this.event('exited', { exitCode: 1 });
@@ -124,6 +133,7 @@ class ScriptedSession {
           { name: 'mesh', value: 'Mesh', type: 'Mesh', variablesReference: 30 },
         ] };
       case 'next': case 'stepIn': case 'stepOut':
+        if (process.env.HARNESS_STEP_FAIL === '1') throw new Error('adapter rejected the step');
         setTimeout(() => {
           this.pos += 1;
           if (this.pos >= TRACE.length) { this.event('exited', { exitCode: 1 }); this.event('terminated'); } else this.event('stopped', { reason: 'step', threadId: 1 });
@@ -193,7 +203,9 @@ class DebugpySession {
       for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
       await this.request('setFunctionBreakpoints', { breakpoints: [] });
       await this.request('configurationDone', {});
-      await this.request('launch', { program: this.configuration.program, cwd: this.configuration.cwd, args: this.configuration.args || [] });
+      await this.request('launch', {
+        request: 'launch', program: this.configuration.program, cwd: this.configuration.cwd, args: this.configuration.args || [],
+      });
       this.started = true;
       return;
     }
@@ -211,7 +223,7 @@ class DebugpySession {
 // Like VS Code: breakpoint changes during a live session are sent to the debug adapter.
 function sync(changed) {
   if (!(session instanceof DebugpySession) || !session.started) return;
-  const files = new Set(changed.map((b) => b.location.uri.fsPath));
+  const files = new Set(changed.filter((b) => b.location && b.location.uri).map((b) => b.location.uri.fsPath));
   const current = byFile();
   for (const file of files) {
     session.request('setBreakpoints', { source: { path: file }, breakpoints: (current.get(file) || []).map((line) => ({ line })) }).catch(() => {});
@@ -241,7 +253,7 @@ const vscode = {
       say(`DIALOG ${JSON.stringify({ message, detail: options.detail, modal: options.modal, items })}`);
       dialogs.push(resolve);
     }),
-    showInformationMessage: (message) => { say(`INFO ${message}`); return Promise.resolve(); },
+    showInformationMessage: (message) => { say(`INFO ${message}`); return new Promise(() => {}); },
   },
   tasks: {
     fetchTasks: async () => (readJson('tasks.json').tasks || []).map((t) => ({ name: t.label, scope: { uri: { fsPath: workspace } } })),

@@ -28,20 +28,23 @@ class RealCpp(HarnessTest):
         os.environ["HARNESS_GDB"] = "1"
         self.addCleanup(os.environ.pop, "HARNESS_GDB", None)
         super().setUp()
-        binary = self.workspace / "build" / "cpp" / "geometry"
-        binary.parent.mkdir(parents=True)
+        workspace = self.workspace.resolve()
+        source = (workspace / "cpp" / "geometry.cpp").resolve()
+        binary = (workspace / "build" / "cpp" / "geometry").resolve()
+        binary.parent.mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
-            ["g++", "-g", "-O0", "-o", str(binary), str(self.workspace / "cpp" / "geometry.cpp")],
-            cwd=self.workspace, timeout=60,
+            ["g++", "-g", "-O0", "-o", str(binary), str(source)],
+            cwd=str(workspace), timeout=60,
         )
+        program = binary if binary.exists() else binary.with_suffix(".exe")
         launch = {
             "version": "0.2.0",
             "configurations": [{
                 "name": "Debug C++ direct",
                 "type": "cppdbg",
                 "request": "launch",
-                "program": str(binary),
-                "cwd": str(self.workspace),
+                "program": str(program.resolve()),
+                "cwd": str(workspace),
             }],
         }
         (self.workspace / ".vscode" / "launch.json").write_text(__import__("json").dumps(launch), encoding="utf-8")
@@ -53,9 +56,10 @@ class RealCpp(HarnessTest):
         self.assertEqual(stopped["status"], "paused", stopped)
         self.assertEqual(stopped["location"], "cpp/geometry.cpp:16")
         points = self.debugger.inspect(names=["points"], depth=1)["variables"][0]
-        self.assertTrue(points.get("children") or points.get("expandable"))
+        self.assertTrue(points.get("children"), points)
+        self.assertGreaterEqual(len(points["children"]), 1)
         traced = self.debugger.trace("cpp/geometry.cpp", 16, ["total"], hits=3, timeout_seconds=20)
         self.assertGreaterEqual(len(traced["rows"]), 1)
-        self.assertIn("total", traced["rows"][0])
+        self.assertTrue(all("total" in row and row["total"] not in ("", "(not defined)") for row in traced["rows"]), traced["rows"])
         threads = self.debugger.threads()
         self.assertGreaterEqual(len(threads["threads"]), 1)
