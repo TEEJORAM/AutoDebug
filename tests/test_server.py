@@ -448,6 +448,7 @@ StdioServer(_dispatcher()).serve()
             process.responses.get(timeout=0.1)
 
 
+@unittest.skipIf(sys.version_info < (3, 11), "build_backend uses tomllib; AutoDebug requires Python 3.11+")
 class TestOfflinePackaging(_WorkspaceTest):
     def test_stdlib_wheel_records_metadata_entrypoint_and_isolated_import(self):
         import build_backend

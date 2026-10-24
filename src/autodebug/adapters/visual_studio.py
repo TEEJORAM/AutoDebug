@@ -72,5 +72,6 @@ class VisualStudioDebugClient(RemoteDebugClient, Protocol):
 class VisualStudioAdapter(ClientBackedAdapter):
     ide_id = "visual_studio"
     supported_os = ("Windows",)
+    default_host_id = "local-windows"
     proof_task_id = "T12"
     missing_client_message = "no Visual Studio debug client is attached; no bridge/extension is connected"

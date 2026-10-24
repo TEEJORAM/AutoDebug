@@ -1,6 +1,6 @@
 # Technical design — AutoDebug foundation
 
-**Status:** DRAFT; do not implement before approval.  
+**Status:** DRAFT; do not implement before approval.\
 **Related:** `docs/architecture.md`, `docs/mcp-contract.md`, `docs/security.md`.
 
 ## G00 correction log (revision 2)

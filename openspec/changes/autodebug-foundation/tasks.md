@@ -1,6 +1,6 @@
 # AutoDebug implementation tasks — foundation
 
-**Status: G00 APPROVED by the developer — T01–T04 committed; T05 complete, awaiting developer code review.**  
+**Status: G00 APPROVED by the developer — T01–T04 committed; T05 complete, awaiting developer code review.**\
 **Principle:** One bounded task + tests + review + commit per cycle. The five IDE adapters are included in the architecture from the start, **but** native integrations are validated incrementally; no invented full support.
 
 ## Gate 0 — sign off before source code

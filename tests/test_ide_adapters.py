@@ -24,7 +24,7 @@ from autodebug.adapters.cursor import CursorAdapter, CursorDebugClient
 from autodebug.adapters.visual_studio import VisualStudioAdapter, VisualStudioDebugClient
 from autodebug.adapters.vscode import DebugMCPClient, VSCodeAdapter
 from autodebug.adapters.xcode import XcodeAdapter, XcodeDebugClient
-from autodebug.approvals import ApprovalBroker, authorize_and_arm
+from autodebug.approvals import ApprovalBroker, authorize_and_arm, reject_prohibited_target
 from autodebug.errors import AutoDebugError, ErrorCode
 from autodebug.evidence import REDACTED_PLACEHOLDER, EvidenceStore
 from autodebug.facade import AutoDebugFacade
@@ -70,15 +70,19 @@ class _AdapterSuite:
         return self.adapter_cls.ide_id
 
     @property
+    def host_id(self) -> str:
+        return self.adapter_cls.default_host_id
+
+    @property
     def host_os(self) -> str:
         return "Darwin" if "Darwin" in self.adapter_cls.supported_os else self.adapter_cls.supported_os[0]
 
     def target(self, pid: int | None = None) -> TargetRef:
-        return TargetRef(host_id="local-mac", ide=self.ide, debug_session_id=None, pid=pid)
+        return TargetRef(host_id=self.host_id, ide=self.ide, debug_session_id=None, pid=pid)
 
     @property
     def identity(self) -> str:
-        return f"local-mac/{self.ide}/None"
+        return f"{self.host_id}/{self.ide}/None"
 
     def capable_report(self, adapter, *, can_launch: bool = True):
         backend = FULL_SUPPORT if can_launch else FakeBackend(
@@ -141,6 +145,12 @@ class _AdapterSuite:
         self.assertEqual(adapter.ide_id, self.ide)
         self.assertTrue(adapter.supported_os)
 
+    def test_default_host_is_local_and_overridable(self):
+        # DE-07 only accepts "local..." hosts; the default must pass it.
+        reject_prohibited_target(self.adapter_cls.default_host_id)
+        session = self.adapter_cls(client=self.client_cls(), host_id="local-dev-box").launch_or_attach(self.target(), None)
+        self.assertEqual(session.host_id, "local-dev-box")
+
     def test_every_operation_reports_backend_unavailable_without_a_client(self):
         adapter = self.adapter_cls()
         for op in (
@@ -166,7 +176,7 @@ class _AdapterSuite:
     def test_launch_or_attach_translates_remote_info_to_a_session_ref(self):
         adapter = self.adapter_cls(client=self.client_cls())
         session = adapter.launch_or_attach(self.target(pid=4242), reviewed_configuration=None)
-        self.assertEqual(session.host_id, "local-mac")
+        self.assertEqual(session.host_id, self.host_id)
         self.assertEqual(session.ide, self.ide)
         self.assertEqual(session.pid, 4242)
         self.assertTrue(session.ide_instance_id)
@@ -363,7 +373,7 @@ class _AdapterSuite:
         adapter = self.adapter_cls(client=self.client_cls())
         plan = self.make_plan()
         approval = broker.issue_approval(
-            plan, reviewer="dev", backend_kind="fake", target_identity=f"local-mac/{other}/None",
+            plan, reviewer="dev", backend_kind="fake", target_identity=f"{self.host_id}/{other}/None",
             scope=("op:arm_case",), ttl_seconds=60.0, human_presence_confirmed=True,
         )
         with self.assertRaises(AutoDebugError) as ctx:
@@ -524,6 +534,13 @@ class TestXcodeAdapter(_AdapterSuite, unittest.TestCase):
 
 class TestVisualStudioAdapter(_AdapterSuite, unittest.TestCase):
     adapter_cls, client_cls, breakpoint_file = VisualStudioAdapter, FakeVisualStudioDebugClient, "/repo/src/app.cs"
+
+
+class TestAdapterHosts(unittest.TestCase):
+    def test_windows_only_adapter_does_not_default_to_a_mac_host(self):
+        target = TargetRef(host_id="local-windows", ide="visual_studio", debug_session_id=None, pid=None)
+        session = VisualStudioAdapter(client=FakeVisualStudioDebugClient()).launch_or_attach(target, None)
+        self.assertEqual(session.host_id, "local-windows")
 
 
 class TestAdaptersStayIndependent(unittest.TestCase):

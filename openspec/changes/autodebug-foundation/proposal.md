@@ -1,8 +1,8 @@
 # Foundation proposal — AutoDebug
 
-**Change:** `autodebug-foundation`  
-**Status:** DRAFT — needs developer review / approval before coding  
-**Owner:** Developer  
+**Change:** `autodebug-foundation`\
+**Status:** DRAFT — needs developer review / approval before coding\
+**Owner:** Developer\
 **Updated:** 2026-10-22
 
 ## Problem

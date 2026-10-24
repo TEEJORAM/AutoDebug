@@ -277,10 +277,13 @@ class ClientBackedAdapter(BaseAdapter):
 
     #: Shown when no client is attached; each subclass names its bridge.
     missing_client_message: str = "no debug client is attached"
+    #: Host identity used when the caller passes none; must satisfy DE-07's
+    #: local-host check (`approvals.reject_prohibited_target`).
+    default_host_id: str = "local-mac"
 
-    def __init__(self, client: RemoteDebugClient | None = None, *, host_id: str = "local-mac") -> None:
+    def __init__(self, client: RemoteDebugClient | None = None, *, host_id: str | None = None) -> None:
         self._client = client
-        self._host_id = host_id
+        self._host_id = host_id if host_id is not None else self.default_host_id
         self._generations: dict[str, int] = {}
         self._generation_counter = itertools.count(1)
 
