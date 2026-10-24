@@ -93,7 +93,7 @@ class Session(ToolsTest):
         self.assertEqual(values["i"], "0")
         self.assertEqual(values["password"], "***REDACTED***")
         self.assertNotIn("hunter2", json.dumps(result))
-        self.assertEqual(result["breakpoints"], [{"at": "geometry.py:15", "verified": True}])
+        self.assertEqual(result["breakpoints"], [{"at": "geometry.py:15", "source": "session", "verified": True}])
 
     def test_step_reports_changed_variables(self):
         self.start_paused()
@@ -127,11 +127,38 @@ class Session(ToolsTest):
         self.assertEqual(frames[0], {"index": 0, "function": "polygon_area", "location": "geometry.py:15"})
         self.assertEqual(self.debugger.inspect(frame_index=1)["variables"][0]["name"], "self")
 
-    def test_trace_collects_every_pass_through_a_line(self):
+    def test_trace_shows_before_and_after_each_pass(self):
         self.start_paused(breakpoints=[{"file": "geometry.py", "line": 12}])
         result = self.debugger.trace("geometry.py", 15, ["i", "total"], hits=5)
-        self.assertEqual([r["i"] for r in result["rows"]], ["0", "1", "2"])
+        self.assertEqual([(r["i"], r["total"]) for r in result["rows"]],
+                         [("0", "0.0 → -1.0"), ("1", "-1.0 → 2.0"), ("2", "2.0 → 4.0")])
+        self.assertEqual(result["rows"][0]["caller"], "test_geometry.py:18")
         self.assertIn("3 of 5 hits", result["note"])
+
+    def test_trace_stops_at_other_breakpoints(self):
+        self.fake.editor_breakpoints = [("geometry.py", 12)]
+        self.assertEqual(self.start_paused()["location"], "geometry.py:12")  # the editor breakpoint stops it first
+        result = self.debugger.trace("geometry.py", 15, ["i"], hits=5, after=False)
+        self.assertEqual(len(result["rows"]), 1)
+        self.assertEqual(result["location"], "geometry.py:12")
+        self.assertIn("another breakpoint", result["note"])
+
+    def test_continue_until_runs_past_other_breakpoints(self):
+        self.fake.editor_breakpoints = [("geometry.py", 12)]
+        result = self.start_paused()
+        self.assertIn({"at": "geometry.py:12", "source": "editor", "verified": True}, result["breakpoints"])
+        reached = self.debugger.continue_(10, until={"file": "geometry.py", "line": 16})
+        self.assertEqual(reached["location"], "geometry.py:16")
+        self.assertEqual(reached["skipped_stops"], ["geometry.py:15", "geometry.py:12", "geometry.py:15", "geometry.py:12",
+                                                    "geometry.py:15"])
+
+    def test_program_output_arrives_when_it_ends(self):
+        self.start_paused()
+        for _ in range(3):
+            ended = self.debugger.continue_(5)
+        self.assertEqual(ended["status"], "ended")
+        self.assertIn("AssertionError: 2.0 != 1.0", ended["output"])
+        self.assertIn("AssertionError: 2.0 != 1.0", self.debugger.timeline[-1].detail)
 
     def test_breakpoints_can_change_during_the_session(self):
         self.start_paused()
@@ -161,7 +188,7 @@ class Report(ToolsTest):
     def test_report_has_the_whole_story(self):
         self.start_paused()
         self.debugger.step()
-        self.debugger.trace("geometry.py", 15, ["i"], hits=2)
+        self.debugger.trace("geometry.py", 15, ["i"], hits=2, after=False)
         self.debugger.stop_session()
         path = Path(self.debugger.write_report(
             title="Area changes when a shape moves", problem="Moving a square changes its area from 1 to 2.",

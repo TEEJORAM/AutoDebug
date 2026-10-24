@@ -26,6 +26,7 @@ class HarnessTest(unittest.TestCase):
     debugpy: str | None = None
     build_exit = 0
     debuggers = "debugpy"
+    editor_bp = ""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -35,7 +36,8 @@ class HarnessTest(unittest.TestCase):
         tasks = {"version": "2.0.0", "tasks": [{"label": "check", "type": "shell", "command": "python", "args": ["-m", "py_compile", "geometry.py"]}]}
         (self.workspace / ".vscode" / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
         self.bridges = Path(tmp.name) / "state" / "bridges"
-        env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers)
+        env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers,
+                   HARNESS_EDITOR_BP=self.editor_bp)
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -114,11 +116,26 @@ class Extension(HarnessTest):
         self.assertIn({"name": "total", "before": "0.0", "after": "-1.0"}, step["changed"])
         self.assertEqual(self.debugger.stack()["frames"][1]["location"], "test_geometry.py:18")
         trace = self.debugger.trace("geometry.py", 15, ["i", "total"], hits=5)
-        self.assertEqual([r["i"] for r in trace["rows"]], ["1", "2"])
+        self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1.0 → 2.0"), ("2", "2.0 → 4.0")])
         report = Path(self.debugger.write_report(title="Area bug", problem="p", root_cause="r", solution="s",
                                                  confidence="likely")["report_file"])
         self.assertIn("| trace | geometry.py:15 |", report.read_text(encoding="utf-8"))
         self.assertIn("| session 1 |", report.read_text(encoding="utf-8"))
+
+    def test_targets_and_locals(self):
+        (window,) = self.debugger.list_targets()["windows"]
+        tests = next(c for c in window["folders"][0]["launch"] if c["name"] == "Debug tests")
+        self.assertEqual((tests["program"], tests["module"], tests["console"]), (None, "unittest", "internalConsole"))
+        _, result = self.approved()
+        self.assertNotIn("Point", [v["name"] for v in result["variables"]])  # module globals are left out
+        self.assertEqual(self.debugger.inspect(names=["Point"])["variables"][0]["value"], "tuple[float, float]")
+
+    def test_output_when_the_program_ends(self):
+        self.approved()
+        self.debugger.breakpoints(remove=[{"file": "geometry.py", "line": 15}])
+        ended = self.debugger.continue_(10)
+        self.assertEqual((ended["status"], ended["exit_code"]), ("ended", 1))
+        self.assertEqual(ended["output"][-1], "AssertionError: 2.0 != 1.0")
 
     def test_denied(self):
         self.start()
@@ -164,6 +181,17 @@ class Extension(HarnessTest):
         self.send("exit")
         self.node.wait(10)
         self.assertEqual(discover(self.bridges), [])
+
+
+class EditorBreakpoint(HarnessTest):
+    editor_bp = "geometry.py:12"
+
+    def test_editor_breakpoints_are_listed_and_can_be_run_past(self):
+        _, result = self.approved()
+        self.assertIn({"at": "geometry.py:12", "source": "editor", "verified": True}, result["breakpoints"])
+        reached = self.debugger.continue_(10, until={"file": "geometry.py", "line": 16})
+        self.assertEqual(reached["location"], "geometry.py:16")
+        self.assertIn("geometry.py:12", reached["skipped_stops"])
 
 
 class MissingDebugger(HarnessTest):

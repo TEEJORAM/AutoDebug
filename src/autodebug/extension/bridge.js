@@ -177,7 +177,8 @@ class Bridge {
     return {
       folder: folder.uri.fsPath,
       launch: this.launchConfigs(folder).map((c) => ({
-        name: c.name, type: c.type, request: c.request, program: c.program || c.module || null, args: c.args || [],
+        name: c.name, type: c.type, request: c.request, program: c.program || null, module: c.module || null,
+        args: c.args || [], console: c.console || null,
       })),
       tasks: this.taskDefinitions(folder).map((t) => ({ label: t.label, command: [t.command, ...(t.args || [])].filter(Boolean).join(' ') })),
     };
@@ -191,8 +192,27 @@ class Bridge {
     return {
       version: s.version, status: s.status, reason: s.reason, location: s.location, exit_code: s.exitCode,
       message: s.message, steps_used: s.stepsUsed, max_steps: s.maxSteps, build: s.build,
-      breakpoints: s.breakpoints.map((b) => ({ file: b.file, line: b.line, verified: this.verified(b), message: this.verifyMessage(b) })),
+      breakpoints: [
+        ...s.breakpoints.map((b) => ({ file: b.file, line: b.line, source: 'session', verified: this.verified(b), message: this.verifyMessage(b) })),
+        ...this.editorBreakpoints(s).map((b) => ({ ...b, source: 'editor', verified: this.verified(b), message: this.verifyMessage(b) })),
+      ].map(({ full, ...rest }) => rest),
+      output: s.status === 'ended' || s.status === 'paused' ? s.output.slice(-20) : [],
+      output_note: s.status === 'ended' && !s.output.length && /Terminal$/.test(s.launch.console || '')
+        ? 'program output went to the IDE terminal; set "console": "internalConsole" in the launch configuration to capture it' : null,
     };
+  }
+
+  // Breakpoints the developer set in the editor: they stop the program too.
+  editorBreakpoints(s) {
+    const mine = new Set(s.breakpoints.map((b) => b.handle).filter(Boolean));
+    return (this.vscode.debug.breakpoints || [])
+      .filter((b) => !mine.has(b) && b.enabled !== false && b.location && b.location.uri)
+      .map((b) => {
+        const full = b.location.uri.fsPath;
+        const rel = path.relative(s.folder.uri.fsPath, full);
+        const file = !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : full;
+        return { file, line: b.location.range.start.line + 1, full };
+      });
   }
 
   update(changes) {
@@ -253,6 +273,7 @@ class Bridge {
       version: 0, status: 'awaiting_approval', reason: null, location: null, exitCode: null, message: null,
       folder, launch: JSON.parse(JSON.stringify(launch)), task, breakpoints, stepsUsed: 0, maxSteps, minutes,
       goal: String(args.goal || '').slice(0, 500), threadId: null, dap: null, waiters: [], timer: null, build: null,
+      output: [], partial: '',
     };
     this.update({});
     this.ask(this.session);
@@ -373,12 +394,24 @@ class Bridge {
           info.pending.delete(m.request_seq);
           ((m.body && m.body.breakpoints) || []).forEach((bp, i) => info.verified.set(`${this.key(sent.file)}:${sent.lines[i]}`, bp));
           if (mine()) this.update({});
+        } else if (m.type === 'event' && m.event === 'output' && mine()) {
+          this.capture(m.body);
         } else if (m.type === 'event' && mine()) {
           this.event(m);
         }
       },
       onExit: (code) => { if (mine() && this.session.status !== 'ended') this.finish('the program exited', code); },
     };
+  }
+
+  // Keep the last lines the program printed (stdout, stderr, debug console).
+  capture(body) {
+    if (!body || body.category === 'telemetry' || typeof body.output !== 'string') return;
+    const s = this.session;
+    const lines = (s.partial + body.output).split(/\r?\n/);
+    s.partial = lines.pop();
+    s.output.push(...lines.filter((l) => l.trim()).map((l) => l.slice(0, 500)));
+    if (s.output.length > 60) s.output.splice(0, s.output.length - 60);
   }
 
   event(m) {
@@ -432,6 +465,7 @@ class Bridge {
 
   finish(reason, exitCode) {
     const s = this.session;
+    if (s.partial && s.partial.trim()) { s.output.push(s.partial.slice(0, 500)); s.partial = ''; }
     clearTimeout(s.timer);
     this.removeBreakpoints(s);
     this.update({ status: 'ended', reason, location: null, exitCode: exitCode === undefined ? null : exitCode });
@@ -471,15 +505,16 @@ class Bridge {
       frame = top.stackFrames[0].id;
     }
     const scopes = await s.dap.customRequest('scopes', { frameId: frame });
+    const wanted = Array.isArray(args.names) ? args.names.map(String) : null;
+    // Without names: the frame's own (first) scope only, not module globals.
+    const searched = (scopes.scopes || []).filter((scope) => !scope.expensive && scope.variablesReference);
     const found = new Map();
-    for (const scope of scopes.scopes || []) {
-      if (scope.expensive || !scope.variablesReference) continue;
+    for (const scope of wanted ? searched : searched.slice(0, 1)) {
       const result = await s.dap.customRequest('variables', { variablesReference: scope.variablesReference });
       for (const v of (result.variables || []).slice(0, 200)) {
         if (!found.has(v.name) && !/^(special|function) variables$/.test(v.name)) found.set(v.name, v);
       }
     }
-    const wanted = Array.isArray(args.names) ? args.names.map(String) : null;
     const list = wanted ? wanted.filter((n) => found.has(n)).map((n) => found.get(n)) : [...found.values()];
     return { frame, variables: list.map((v) => ({ name: v.name, type: v.type || '', value: String(v.value) })) };
   }

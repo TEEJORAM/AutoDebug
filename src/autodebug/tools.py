@@ -6,6 +6,7 @@ timeline for the report, and applies redaction to everything it returns.
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -27,6 +28,16 @@ _NEXT = {
     "paused": "Paused. Use inspect, stack, step, continue, trace or breakpoints.",
     "ended": "The debug session ended. Call write_report with your findings.",
 }
+
+
+_ERROR_LINE = re.compile(r"error|exception|fail|traceback|assert|panic|fatal", re.IGNORECASE)
+
+
+def _telling_lines(output: list[str], count: int = 3) -> list[str]:
+    """The output lines that explain an exit: errors and failures first, else the last lines."""
+    lines = [line.strip() for line in output if line.strip() and set(line.strip()) - set("-=_*")]
+    errors = [line for line in lines if _ERROR_LINE.search(line)]
+    return (errors or lines)[-count:]
 
 
 @dataclass
@@ -83,10 +94,16 @@ class Debugger:
             result["steps"] = f"{raw['steps_used']} of {raw['max_steps']} used"
         if raw.get("breakpoints"):
             result["breakpoints"] = [
-                {"at": f"{b['file']}:{b['line']}", "verified": b.get("verified", False),
+                {"at": clean_text(f"{b['file']}:{b['line']}", 300), "source": b.get("source", "session"),
+                 "verified": b.get("verified", False),
                  **({"note": clean_text(b["message"], 200)} if b.get("message") else {})}
                 for b in raw["breakpoints"]
             ]
+        output = [clean_text(line, 500) for line in raw.get("output") or []]
+        if output and status == "ended":
+            result["output"] = output
+        if raw.get("output_note"):
+            result["output_note"] = raw["output_note"]
         build = raw.get("build")
         if build and build.get("status") != "running" and build != self._last_build:
             self._last_build = build
@@ -102,7 +119,9 @@ class Debugger:
                 self._log("stopped", where, str(raw.get("reason") or ""))
             elif status == "ended":
                 code = raw.get("exit_code")
-                self._log("ended", "", f"{raw.get('reason') or ''}" + (f", exit code {code}" if code is not None else ""))
+                last = _telling_lines(output)
+                self._log("ended", "", f"{raw.get('reason') or ''}" + (f", exit code {code}" if code is not None else "")
+                          + (f"; output: {' / '.join(last)}" if last else ""))
             elif status in ("denied", "build_failed", "running"):
                 self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
         ide = self.connection.window.ide if self.connection else "IDE"
@@ -212,10 +231,39 @@ class Debugger:
             result["path"] = path
         return result
 
-    def continue_(self, timeout_seconds: float = 30) -> dict:
-        raw = self._call("continue")["state"]
-        self.version = max(self.version, int(raw.get("version") or 0))
-        return self._state(self._wait(min(max(timeout_seconds, 0), 55)))
+    def continue_(self, timeout_seconds: float = 30, until: dict | None = None) -> dict:
+        """Run to the next stop, or with `until` run past other breakpoints to that line."""
+        timeout = min(max(timeout_seconds, 0), 55)
+        if until is None:
+            self._call("continue")
+            return self._state(self._wait(timeout))
+        target = f"{until['file']}:{until['line']}"
+        existing = {b["file"] + ":" + str(b["line"]) for b in self._call("breakpoints", {})["state"].get("breakpoints", [])}
+        if target not in existing:
+            self._call("breakpoints", {"add": [{"file": until["file"], "line": until["line"]}]})
+        skipped: list[str] = []
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                self._call("continue")
+                raw = self._wait(max(deadline - time.monotonic(), 0), until=("paused", "ended"))
+                location = raw.get("location")
+                where = f"{location['file']}:{location['line']}" if location else ""
+                if raw.get("status") != "paused" or where == target or len(skipped) >= 50 or time.monotonic() >= deadline:
+                    break
+                skipped.append(where)
+        finally:
+            if target not in existing and self.connection is not None:
+                try:
+                    self._call("breakpoints", {"remove": [{"file": until["file"], "line": until["line"]}]})
+                except DebugError:
+                    pass
+        if skipped:
+            self._log("continued past", ", ".join(skipped[:5]), f"to reach {target}")
+        result = self._state(raw)
+        if skipped:
+            result["skipped_stops"] = skipped
+        return result
 
     def pause(self) -> dict:
         self._call("pause")
@@ -246,56 +294,86 @@ class Debugger:
 
     def breakpoints(self, add: list[dict] | None = None, remove: list[dict] | None = None) -> dict:
         raw = self._call("breakpoints", {"add": add or [], "remove": remove or []})["state"]
-        if add or remove:
-            self._log("breakpoints", "", "added " + ", ".join(f"{b.get('file')}:{b.get('line')}" for b in add or [])
-                      + ("; removed " + ", ".join(f"{b.get('file')}:{b.get('line')}" for b in remove) if remove else ""))
+        changes = [f"{verb} " + ", ".join(f"{b.get('file')}:{b.get('line')}" for b in items)
+                   for verb, items in (("added", add), ("removed", remove)) if items]
+        if changes:
+            self._log("breakpoints", "", "; ".join(changes))
         return {"breakpoints": self._state(raw).get("breakpoints", [])}
 
-    def trace(self, file: str, line: int, variables: list[str], hits: int = 10, timeout_seconds: float = 20) -> dict:
-        """Run to `file:line` up to `hits` times, collecting `variables` each time."""
+    def trace(self, file: str, line: int, variables: list[str], hits: int = 10, after: bool = True,
+              timeout_seconds: float = 20) -> dict:
+        """Run to `file:line` up to `hits` times. Each row has the caller and each variable as
+        `before → after` the line runs (one step over per hit when `after`). Stops early,
+        and returns the rows so far, when another breakpoint pauses the program."""
         hits = max(1, min(int(hits), 50))
         target = f"{file}:{line}"
-        existing = self._call("breakpoints", {})["state"].get("breakpoints", [])
-        had_breakpoint = any(f"{b['file']}:{b['line']}" == target for b in existing)
+        existing = {f"{b['file']}:{b['line']}" for b in self._call("breakpoints", {})["state"].get("breakpoints", [])}
         raw = self._call("breakpoints", {"add": [{"file": file, "line": line}]})["state"]
-
-        def here(state: dict) -> bool:
-            location = state.get("location")
-            return state.get("status") == "paused" and bool(location) and f"{location['file']}:{location['line']}" == target
-
         rows: list[dict] = []
+        notes: list[str] = []
 
-        def record() -> None:
-            values = {v["name"]: clean_value(v["name"], v.get("value"), SHORT_VALUE)
-                      for v in self._raw_variables(names=list(variables))}
-            rows.append({"hit": len(rows) + 1, **{n: values.get(n, "(not defined)") for n in variables}})
+        def where(state: dict) -> str:
+            location = state.get("location")
+            return f"{location['file']}:{location['line']}" if location else ""
 
+        def values() -> dict[str, str]:
+            return {v["name"]: clean_value(v["name"], v.get("value"), SHORT_VALUE)
+                    for v in self._raw_variables(names=list(variables))}
+
+        def record() -> dict:
+            frames = self._call("stack", {"levels": 2}).get("frames", [])
+            caller = clean_text(f"{frames[1]['file']}:{frames[1]['line']}", 300) if len(frames) > 1 else ""
+            before, after_values, state = values(), None, raw
+            if after:
+                try:
+                    state = self._call("step", {"kind": "over"}, timeout=20)["state"]
+                    after_values = values() if state.get("status") == "paused" else None
+                except DebugError as exc:
+                    notes.append(f"no after-values: {exc.message}")
+            row = {"hit": len(rows) + 1, "caller": caller}
+            for name in variables:
+                old = before.get(name, "(not defined)")
+                new = after_values.get(name, "(not defined)") if after_values is not None else old
+                row[name] = old if new == old else f"{old} → {new}"
+            rows.append(row)
+            return state
+
+        consumed, first = False, True
         try:
-            if here(raw):
-                record()
-            for _ in range(hits * 5):  # other breakpoints may stop the program in between
+            for _ in range(hits * 4 + 4):
                 if len(rows) >= hits:
                     break
-                if raw.get("status") == "paused":
+                status = raw.get("status")
+                if status == "paused" and where(raw) == target and not consumed:
+                    raw = record()
+                    consumed = not after
+                    continue
+                if status == "paused" and not first and raw.get("reason") == "breakpoint" and where(raw) != target:
+                    notes.append(f"stopped at {where(raw)} (another breakpoint); returning the rows so far")
+                    break
+                if status == "paused":
                     self._call("continue")
-                elif raw.get("status") != "running":
+                elif status != "running":
                     break
+                first, consumed = False, False
                 raw = self._wait(timeout_seconds, until=("paused", "ended"))
-                if raw.get("status") != "paused":
+                if raw.get("status") == "running":
+                    notes.append(f"{target} was not reached within {timeout_seconds:g} s")
                     break
-                if here(raw):
-                    record()
         finally:
-            if not had_breakpoint and raw.get("status") != "ended":
+            if target not in existing and raw.get("status") != "ended":
                 try:
                     raw = self._call("breakpoints", {"remove": [{"file": file, "line": line}]})["state"]
                 except DebugError:
                     pass
-        self._log("trace", target, "; ".join(", ".join(f"{k}={v}" for k, v in row.items()) for row in rows[:10]))
+        self._log("trace", target, "; ".join(
+            ", ".join(f"{k}={v}" for k, v in row.items() if k not in ("hit", "caller")) for row in rows[:10]))
         result = self._state(raw, quiet=True)
         result.update({"trace": target, "rows": rows})
-        if len(rows) < hits:
-            result["note"] = f"{len(rows)} of {hits} hits: the program ended or did not reach {target} in time"
+        if len(rows) < hits and not notes:
+            notes.append(f"{len(rows)} of {hits} hits: the program ended first")
+        if notes:
+            result["note"] = "; ".join(notes)
         return result
 
     def stop_session(self) -> dict:

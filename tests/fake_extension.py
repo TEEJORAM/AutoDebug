@@ -31,14 +31,14 @@ DEMO = (
     Line("geometry.py", 15, {"i": "1", "total": "-1.0"}),
     Line("geometry.py", 12, {"i": "1", "total": "2.0"}),
     Line("geometry.py", 15, {"i": "2", "total": "2.0"}),
-    Line("geometry.py", 16, {"total": "4.0"}),
+    Line("geometry.py", 16, {"i": "2", "total": "4.0"}),
 )
 LAUNCH = [{"name": "Debug tests", "type": "debugpy", "request": "launch", "module": "unittest", "args": ["-v"]}]
 
 
 class FakeExtension:
     def __init__(self, folder: Path, workspace: str, *, ide: str = "cursor", trace=DEMO, build_exit: int = 0,
-                 launch=None, tasks=None, write: bool = True) -> None:
+                 launch=None, tasks=None, write: bool = True, editor_breakpoints=()) -> None:
         self.folder = Path(folder)
         self.workspace = workspace
         self.ide = ide
@@ -48,6 +48,8 @@ class FakeExtension:
         self.build_exit = build_exit
         self.launch = LAUNCH if launch is None else launch
         self.tasks = tasks or [{"label": "build", "command": "make"}]
+        self.editor_breakpoints = list(editor_breakpoints)
+        self.output = ["FAIL: test_area_does_not_change_when_moved", "AssertionError: 2.0 != 1.0"]
         self.calls: list[tuple[str, dict]] = []
         self._cond = threading.Condition()
         self.session: dict | None = None
@@ -137,7 +139,11 @@ class FakeExtension:
                 "location": {"file": here.file, "line": here.line} if here else None,
                 "exit_code": s.get("exit_code"), "message": s.get("message"),
                 "steps_used": s["steps"], "max_steps": s["max_steps"], "build": s.get("build"),
-                "breakpoints": [{"file": f, "line": n, "verified": True, "message": ""} for f, n in s["breakpoints"]]}
+                "output": self.output if s["status"] == "ended" else [],
+                "breakpoints": [{"file": f, "line": n, "source": "session", "verified": True, "message": ""}
+                                for f, n in s["breakpoints"]]
+                + [{"file": f, "line": n, "source": "editor", "verified": True, "message": ""}
+                   for f, n in self.editor_breakpoints]}
 
     def _need(self, *statuses) -> dict:
         if self.session is None:
@@ -167,7 +173,7 @@ class FakeExtension:
         s = self.session
         for pos in range(s["pos"] + 1, len(self.trace)):
             here = self.trace[pos]
-            if (here.file, here.line) in s["breakpoints"]:
+            if (here.file, here.line) in s["breakpoints"] or (here.file, here.line) in self.editor_breakpoints:
                 s["pos"] = pos
                 self._update(status="paused", reason=reason)
                 return
@@ -178,8 +184,8 @@ class FakeExtension:
 
     def op_targets(self, args):
         return {"folder": self.workspace,
-                "launch": [{"name": c["name"], "type": c["type"], "request": c["request"],
-                            "program": c.get("module"), "args": c.get("args", [])} for c in self.launch],
+                "launch": [{"name": c["name"], "type": c["type"], "request": c["request"], "program": c.get("program"),
+                            "module": c.get("module"), "args": c.get("args", [])} for c in self.launch],
                 "tasks": self.tasks}
 
     def op_start(self, args):
