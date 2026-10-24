@@ -27,6 +27,8 @@ rules.
 | `autodebug_complete_case` | Local write | Finish, persist JSONL + Markdown artifacts; no auto-Jira update |
 | `autodebug_request_approval` | Approval | Bridge only (`BR-04`): resolve the staged schema 0.3 plan in the IDE and open the approval dialog there; never approves anything itself |
 | `autodebug_wait_for_approval` | Approval | Bridge only: wait at most 30 s for the developer's answer (`pending`, `approved`, `denied`, `expired`); the trusted host, not the tool, then issues the approval |
+| `autodebug_run_build` | Approved build | Bridge only (`BR-05`): start the plan's `build_task` in the IDE after approval; `not_required` when the plan has none |
+| `autodebug_wait_for_build` | Approved build | Wait at most 30 s per call for the build; `BUILD_FAILED` ends the case without launching; exit code and the last 50 output lines are evidence |
 | `autodebug_cancel_case` | Control | Per `DE-09`: stop AutoDebug operations, interrupt pending waits, revoke approval scope, retain partial evidence; idempotent on repeat; does not implicitly terminate app/IDE |
 
 **Trust boundary:** `autodebug_stage_plan` is **not approval**, and no MCP tool lets the agent approve a plan. Approval must come from a separate trusted local CLI/UI controlled by the developer; that interface is not built yet (only the `--demo` fixture issues a synthetic approval).
@@ -195,7 +197,7 @@ finalization does not inspect a running debugger.
 
 Error codes:
 
-`CAPABILITY_UNSUPPORTED`, `BACKEND_UNAVAILABLE`, `SESSION_AMBIGUOUS`, `SESSION_STALE`, `TARGET_MISMATCH`, `NOT_APPROVED`, `PLAN_CHANGED`, `APPROVAL_EXPIRED`, `BREAKPOINT_UNBOUND`, `NOT_PAUSED`, `TIMEOUT`, `PERMISSION_DENIED`, `POLICY_LIMIT`, `SENSITIVE_OUTPUT_BLOCKED`, `CANCELLED`, `INTERNAL_ERROR`.
+`CAPABILITY_UNSUPPORTED`, `BACKEND_UNAVAILABLE`, `SESSION_AMBIGUOUS`, `SESSION_STALE`, `TARGET_MISMATCH`, `NOT_APPROVED`, `PLAN_CHANGED`, `APPROVAL_EXPIRED`, `BREAKPOINT_UNBOUND`, `NOT_PAUSED`, `TIMEOUT`, `PERMISSION_DENIED`, `POLICY_LIMIT`, `SENSITIVE_OUTPUT_BLOCKED`, `CANCELLED`, `INTERNAL_ERROR`, `BUILD_FAILED` (bridge build task failed or timed out; nothing was launched).
 
 ## Evidence record, append-only JSONL
 

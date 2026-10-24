@@ -167,6 +167,20 @@ class VSCodeBridgeAdapter(BaseAdapter):
             self._approved_digest = self._plan.digest_sha256
         return status
 
+    # -- build (BR-05) ----------------------------------------------------
+
+    def start_build(self) -> None:
+        self._request("build_start")
+
+    def build_status(self) -> tuple[str, int | None, tuple[str, ...]]:
+        """(`running` | `succeeded` | `failed`, exit code, last output lines)."""
+        result = self._request("build_status")
+        status, code, lines = result.get("status"), result.get("exit_code"), result.get("output_tail")
+        if status not in ("running", "succeeded", "failed"):
+            raise _fail(ErrorCode.BACKEND_UNAVAILABLE, "the bridge reported an unknown build status")
+        tail = tuple(str(line)[:500] for line in lines[-50:]) if type(lines) is list else ()
+        return status, code if type(code) is int else None, tail
+
     # -- debugger operations ----------------------------------------------
 
     def list_sessions(self) -> tuple[SessionRef, ...]:
