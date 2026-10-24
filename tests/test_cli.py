@@ -111,7 +111,7 @@ class TestDoctor(_TempDir):
         report = json.loads(out)
         self.assertEqual(code, 0 if report["ready"] else 1)
         names = {check["name"] for check in report["checks"]}
-        self.assertTrue({"Python", "Evidence storage", "Evidence folder", "IDE adapters", "Real debuggers"} <= names)
+        self.assertTrue({"Python", "Evidence storage", "Evidence folder", "IDE bridge", "Other IDEs", "Real debuggers"} <= names)
         self.assertFalse(target.exists())
 
     def test_fails_when_storage_or_python_unsupported(self):

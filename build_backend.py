@@ -65,9 +65,8 @@ def _write_wheel(wheel_directory, *, editable: bool) -> str:
             # PEP 660: point the environment at this checkout's src/ directory.
             add(f"__editable__.{NAME}.pth", f"{ROOT / 'src'}\n".encode())
         else:
-            for path in sorted((ROOT / "src" / "autodebug").rglob("*.py")):
-                if "__pycache__" not in path.parts:
-                    add(path.relative_to(ROOT / "src").as_posix(), path.read_bytes())
+            for path in _package_files():
+                add(path.relative_to(ROOT / "src").as_posix(), path.read_bytes())
         for name, data in _metadata().items():
             add(f"{DIST_INFO}/{name}", data)
         license_path = ROOT / "LICENSE"
@@ -78,6 +77,14 @@ def _write_wheel(wheel_directory, *, editable: bool) -> str:
         writer.writerows([*records, (f"{DIST_INFO}/RECORD", "", "")])
         wheel.writestr(f"{DIST_INFO}/RECORD", record.getvalue().encode("utf-8"))
     return filename
+
+
+def _package_files() -> list[Path]:
+    """Python modules plus the bundled AutoDebug Bridge extension sources."""
+    package = ROOT / "src" / "autodebug"
+    files = [p for p in package.rglob("*.py") if "__pycache__" not in p.parts]
+    files += [p for p in (package / "bridge" / "extension").glob("*") if p.suffix in (".js", ".json", ".md")]
+    return sorted(files)
 
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
@@ -108,7 +115,7 @@ def build_sdist(sdist_directory, config_settings=None):
         info.mode = 0o644
         archive.addfile(info, io.BytesIO(metadata))
         paths = [ROOT / "pyproject.toml", ROOT / "build_backend.py", ROOT / "README.md", ROOT / "LICENSE"]
-        paths.extend(sorted((ROOT / "src" / "autodebug").rglob("*.py")))
+        paths.extend(_package_files())
         for path in paths:
             if path.is_file() and "__pycache__" not in path.parts:
                 archive.add(path, arcname=f"{prefix}/{path.relative_to(ROOT).as_posix()}", recursive=False)

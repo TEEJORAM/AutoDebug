@@ -44,7 +44,16 @@ requirement IDs, tests and the observed test result.
   `autodebug_list_variables`, CLI help describes bridge mode.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 608, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B8 — Bridge extension and `autodebug bridge install` (BR-01, BR-12).
+- [x] B8 — Bridge extension and `autodebug bridge install` (BR-01, BR-12).
+  `src/autodebug/bridge/extension/` (plain JavaScript, no dependencies; shipped
+  in the wheel), stdlib `.vsix` builder in the `vsce` layout, `autodebug bridge
+  install|status`, doctor "IDE bridge" line. The extension core is tested
+  through `tests/fixtures/vscode_harness.js` (stand-in VS Code API and scripted
+  debug session) over the real protocol. **Deviation from BR-05:** the VS Code
+  API cannot read a task's terminal output, so the real bridge records the exit
+  code only and points to the IDE terminal.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 625, failures 0, errors 0, skipped 9 (Linux, Python 3.13, Node 22).
 - [ ] B9 — AutoDebugDemo: plan 0.3; manual run on Windows VS Code; ledger entry
   (BR-11). **Phase 1 done.**
 - [ ] B10 — C++ build task and launch configurations; manual run (phase 2).

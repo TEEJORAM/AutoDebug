@@ -173,14 +173,16 @@ def run_checks(evidence_dir: Path) -> list[Check]:
         else Check("fail", "Evidence storage", f"not available on {system}; cases fail closed"),
         _evidence_check(evidence_dir),
         Check("ok", "Demo debugger", "synthetic, ready for `serve --demo`"),
+        _bridge_check(evidence_dir),
     ]
     targets = [
         cls.ide_id for cls in ALL_ADAPTERS
         if cls().probe_capabilities(backend=None, host_os=system).state is not CapabilityState.NOT_APPLICABLE
     ]
-    checks.append(Check("info", "IDE adapters", f"{', '.join(targets) or 'none'} target this OS; "
-                                                "mock-only, no native debugger client yet"))
-    checks.append(Check("info", "Real debuggers", "disabled until the T05 security gate is approved"))
+    checks.append(Check("info", "Other IDEs", f"{', '.join(t for t in targets if t not in ('vscode', 'cursor')) or 'none'}"
+                                              " target this OS; mock-only, no native debugger client yet"))
+    checks.append(Check("info", "Real debuggers", "VS Code and Cursor through the AutoDebug Bridge; each case needs "
+                                                  "your click on Approve"))
     return checks
 
 
@@ -221,10 +223,59 @@ def _doctor(args: argparse.Namespace) -> int:
     print()
     if ready:
         print(f"Ready. Guide: {GUIDE_URL}")
-        print(f"Next: `{invocation()} config vscode --demo --write PROJECT_FOLDER` to connect VS Code.")
+        print(f"Next: `{invocation()} bridge install vscode`, then "
+              f"`{invocation()} config vscode --write PROJECT_FOLDER` to debug that folder in VS Code.")
     else:
         print("Not ready: fix the failed checks above. See docs/getting-started.md.")
     return 0 if ready else 1
+
+
+# -- bridge -----------------------------------------------------------------
+
+
+def _bridge_check(root: Path) -> Check:
+    """Which IDE windows have the AutoDebug Bridge running. Reads only."""
+    from autodebug.bridge.client import bridges_dir, discover
+
+    try:
+        windows = discover(bridges_dir(root))
+    except Exception as exc:  # noqa: BLE001 — doctor reports, never crashes
+        return Check("warn", "IDE bridge", str(getattr(exc, "detail", exc)))
+    if not windows:
+        return Check("info", "IDE bridge", f"no VS Code or Cursor window is running it; install with "
+                                           f"`{invocation()} bridge install vscode`, then open your project")
+    listed = "; ".join(f"{w.ide}: {', '.join(w.workspace_folders)}" for w in windows)
+    return Check("ok", "IDE bridge", f"{len(windows)} window(s) — {listed}")
+
+
+def _bridge(args: argparse.Namespace) -> int:
+    from autodebug.bridge.package import IDE_COMMANDS, build_vsix, find_ide_command, install
+
+    root = resolve_evidence_dir(args.evidence_dir)
+    if args.action == "status":
+        print(_bridge_check(root).detail)
+        return 0
+    if inside_source_checkout(root):
+        raise ValueError(f"evidence directory must be outside the AutoDebug checkout: {root}")
+    make_private_dir(root, exist_ok=True)
+    bridge_folder(root)
+    vsix = build_vsix(root / "extension")
+    name = {"vscode": "VS Code", "cursor": "Cursor"}[args.ide]
+    command = find_ide_command(args.ide)
+    if command is None or args.vsix_only:
+        print(f"Extension package: {vsix}")
+        if command is None and not args.vsix_only:
+            print(f"The `{IDE_COMMANDS[args.ide]}` command is not on PATH. In {name}: Extensions view "
+                  f"→ ··· menu → Install from VSIX… → choose the file above.")
+        return 0 if args.vsix_only else 1
+    result = install(args.ide, vsix, command=command)
+    if result.returncode != 0:
+        _err(result.stderr.strip() or result.stdout.strip())
+        raise ValueError(f"{name} could not install {vsix}")
+    print(f"Installed the AutoDebug Bridge in {name}.")
+    print(f"Next: in {name}, run Developer: Reload Window. The status bar then shows \"AutoDebug\".")
+    print(f"Then connect the server: `{invocation()} config {args.ide} --write PROJECT_FOLDER`")
+    return 0
 
 
 # -- config -----------------------------------------------------------------
@@ -404,6 +455,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_evidence_option(doctor)
     doctor.add_argument("--json", action="store_true", help="machine-readable output")
     doctor.set_defaults(handler=_doctor)
+
+    bridge = sub.add_parser("bridge", help="install the AutoDebug Bridge extension, or show running bridges",
+                            description="Build the AutoDebug Bridge extension and install it with the IDE's own "
+                                        "command, or list IDE windows that are running it.")
+    bridge_actions = bridge.add_subparsers(dest="action", metavar="<action>", required=True)
+    install_parser = bridge_actions.add_parser("install", help="build and install the extension")
+    install_parser.add_argument("ide", choices=("vscode", "cursor"))
+    install_parser.add_argument("--vsix-only", action="store_true", help="only write the .vsix and print its path")
+    _add_evidence_option(install_parser)
+    status_parser = bridge_actions.add_parser("status", help="list IDE windows running the bridge")
+    _add_evidence_option(status_parser)
+    bridge.set_defaults(handler=_bridge)
 
     guide = sub.add_parser("guide", help="print setup steps for this operating system",
                            description="Print pasteable setup steps and the GitHub Pages guide URL. Creates nothing.")
