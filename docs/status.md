@@ -9,8 +9,9 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 - Native Windows, macOS and Linux, including evidence storage.
 - `autodebug` CLI: `serve` (dependency-free MCP 2025-11-25 stdio server with 15
-  tools), `doctor` and `config` for VS Code, Claude Code, Claude Desktop and
-  Cursor; installable with `pip install .` / `-e .` / `pipx`.
+  tools), `doctor`, `guide` and `config` for VS Code, Claude Code, Claude
+  Desktop and Cursor; installable with `pip install .` / `-e .` / `pipx`.
+  Setup steps for Windows, macOS and Linux are in `site/index.html`.
 - Isolated synthetic demo debugger (`serve --demo`).
 - Case workflow: plan staging and digest, approval verification, arming,
   bounded stop/stack/variable inspection, step/continue, completion and
@@ -37,6 +38,7 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 |---|---|---|---|
 | 2026-10-24 | GitHub Actions run 40078110989: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 518 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
 | 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 518 tests, OK (9 skipped) |
+| 2026-10-24 | Linux, Python 3.12.3 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 523 tests, OK (9 skipped) |
 
 All tests use fake or mock backends.
 
@@ -62,6 +64,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — user guide.** `autodebug guide`, `site/index.html`, and
+  `.github/workflows/pages.yml` (`openspec/changes/user-guide/`). Setup steps
+  for Windows, macOS and Linux. Real debugger control stays disabled.
 - **2026-10-24 — AutoDebugDemo sample project.** `examples/AutoDebugDemo`
   (Python + C++, one deliberate bug, VS Code launch configs, sample plan) and
   `tests/test_examples.py`. Documentation and examples only; no behaviour change.

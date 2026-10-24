@@ -3,6 +3,7 @@
     autodebug serve   [--evidence-dir DIR] [--demo] [--log-level LEVEL]
     autodebug doctor  [--evidence-dir DIR] [--json]
     autodebug config  {vscode,claude-code,claude-desktop,cursor} [--demo] [--evidence-dir DIR] [--name NAME]
+    autodebug guide
     autodebug --version
 
 `serve` speaks MCP over stdio: stdout carries only JSON-RPC, everything else
@@ -27,6 +28,7 @@ from pathlib import Path
 
 from autodebug import __version__
 from autodebug.adapters import ALL_ADAPTERS
+from autodebug.guide import GUIDE_URL, render_guide
 from autodebug.evidence import inside_source_checkout, is_link, is_private_dir, make_private_dir, secure_storage_supported
 from autodebug.models import CapabilityState
 
@@ -46,11 +48,12 @@ debugger control is disabled until the security gate is approved."""
 _EPILOG = """\
 quick start:
   autodebug doctor                 check this machine
+  autodebug guide                  pasteable steps for this OS
   autodebug serve --demo           run the server with the synthetic demo case
   autodebug config vscode --demo --write PROJECT_FOLDER
                                    connect VS Code (writes .vscode/mcp.json)
 
-docs: docs/getting-started.md in the AutoDebug repository"""
+steps for Windows, macOS and Linux: https://teejoram.github.io/AutoDebug/"""
 
 
 # -- evidence location ---------------------------------------------------
@@ -199,7 +202,8 @@ def _doctor(args: argparse.Namespace) -> int:
         print(f"  {symbol} {check.name:<{width}}  {check.detail}")
     print()
     if ready:
-        print(f"Ready. Next: `{invocation()} config vscode --demo --write PROJECT_FOLDER` to connect VS Code.")
+        print(f"Ready. Guide: {GUIDE_URL}")
+        print(f"Next: `{invocation()} config vscode --demo --write PROJECT_FOLDER` to connect VS Code.")
     else:
         print("Not ready: fix the failed checks above. See docs/getting-started.md.")
     return 0 if ready else 1
@@ -332,6 +336,14 @@ def _config(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- guide ------------------------------------------------------------------
+
+
+def _guide(_args: argparse.Namespace) -> int:
+    print(render_guide(platform.system(), invocation()))
+    return 0
+
+
 # -- entry point --------------------------------------------------------------
 
 
@@ -375,6 +387,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true", help="machine-readable output")
     doctor.set_defaults(handler=_doctor)
 
+    guide = sub.add_parser("guide", help="print setup steps for this operating system",
+                           description="Print pasteable setup steps and the GitHub Pages guide URL. Creates nothing.")
+    guide.set_defaults(handler=_guide)
+
     config = sub.add_parser("config", help="print or write MCP client configuration",
                             description="Print a ready-to-use configuration entry for an MCP client, "
                                         "or write it into the client's configuration file with --write.")
@@ -401,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(_legacy_serve_argv(list(sys.argv[1:] if argv is None else argv)))
     if getattr(args, "handler", None) is None:
         parser.print_usage(sys.stderr)
-        _err(f"{PROG}: error: choose a command: serve, doctor or config (see `{PROG} --help`)")
+        _err(f"{PROG}: error: choose a command: serve, doctor, config or guide (see `{PROG} --help`)")
         return 2
     try:
         return args.handler(args)
