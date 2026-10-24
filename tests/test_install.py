@@ -59,6 +59,8 @@ class Config(unittest.TestCase):
 
     def test_project_and_vscode_files(self):
         project = self.home / "MyApp"
+        project.mkdir()
+        project = project.resolve()  # setup writes to the real path (macOS /private, Windows long names)
         self.assertEqual(install.write_config("vscode", str(project)), project / ".vscode" / "mcp.json")
         entry = json.loads((project / ".vscode" / "mcp.json").read_text())["servers"]["autodebug"]
         self.assertEqual(entry["type"], "stdio")
@@ -107,7 +109,7 @@ class Config(unittest.TestCase):
         self.assertIn("old server command", out)
         install.write_config("cursor", str(project))
         code, out = self.run_cli("doctor", str(project))
-        self.assertIn(f"Cursor: {project / '.cursor' / 'mcp.json'}", out)
+        self.assertIn(f"Cursor: {project.resolve() / '.cursor' / 'mcp.json'}", out)
 
 
 if __name__ == "__main__":
