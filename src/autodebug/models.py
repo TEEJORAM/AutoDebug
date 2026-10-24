@@ -123,6 +123,8 @@ class StopSnapshot:
     frame_generation: int
     breakpoint_file: str | None = None
     breakpoint_line: int | None = None
+    #: `file:line` where execution stopped, when the backend reports it.
+    location: str | None = None
 
 
 @dataclass(frozen=True)
