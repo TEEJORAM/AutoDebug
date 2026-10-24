@@ -1,7 +1,7 @@
 # Installation and protocol reference
 
-AutoDebug needs only Python 3.11+ and a POSIX host (Linux or macOS). There are
-no runtime dependencies, and nothing here enables native debugger access.
+AutoDebug needs only Python 3.11+ on Windows, macOS or Linux. There are no
+runtime dependencies, and nothing here enables native debugger access.
 
 Start with [getting-started.md](getting-started.md). This page covers the
 details behind it.
@@ -24,7 +24,8 @@ else `~/.local/state/autodebug` (Linux, or `$XDG_STATE_HOME/autodebug`),
 `~/Library/Application Support/autodebug` (macOS) or `%LOCALAPPDATA%\autodebug`
 (Windows). Each run creates a new private `run-<UTC time>-<random>` folder there,
 so clients can restart the server freely. The base must be outside the
-AutoDebug checkout; folders are created owner-only (`0700`).
+AutoDebug checkout; folders are created owner-only (`0700` on macOS/Linux, a
+protected owner-only access list on Windows).
 
 `--demo` seeds the synthetic case `AUTODEBUG-DEMO` with a local 30-minute
 approval, five steps and a predetermined stop. It never touches a real
@@ -55,11 +56,10 @@ cases without touching any application.
 
 ## Windows
 
-`autodebug doctor` and `config` work. Evidence storage relies on POSIX
-descriptor-relative, no-follow file opens, so cases fail closed on Windows and
-`serve --demo` refuses to start until Windows support is built. Run contract
-tests with `$env:PYTHONPATH = "src"`. Do not replace the storage with ordinary
-path opens.
+Everything works natively: use `py -m autodebug ...` if Python's `Scripts`
+folder is not on your PATH. Evidence storage uses Windows handles instead of
+POSIX file descriptors, with the same protections (see
+[security.md](security.md#case-data-policy)).
 
 ## Build offline packages
 

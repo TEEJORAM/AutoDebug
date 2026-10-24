@@ -4,6 +4,15 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — native Windows support
+
+- Evidence storage now works on Windows with the same protections as macOS
+  and Linux (no links or junctions, pinned case folders, private access lists,
+  atomic snapshots), using only the Python standard library.
+- `autodebug doctor` and `serve --demo` work on Windows.
+- CI runs the full suite on Windows, macOS and Ubuntu with Python 3.11, 3.12
+  and 3.14, and reports failures as annotations.
+
 ## 2026-10-24 — CLI and getting started
 
 - New `autodebug` subcommands: `serve`, `doctor` (machine check, `--json`) and
