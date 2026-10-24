@@ -13,18 +13,25 @@ plan-bound human approval.
 ## Quick start
 
 AutoDebug is a command-line MCP server: your AI client starts it for you.
-Python 3.11+ on Linux or macOS (on Windows, use WSL).
+Requires Python 3.11+.
 
 ```sh
-pip install -e .                                  # installs the `autodebug` command
-autodebug doctor                                  # check this machine
-autodebug config vscode --demo > .vscode/mcp.json # connect VS Code (or claude-code, claude-desktop, cursor)
+# 1. In your AutoDebug folder (the one containing pyproject.toml):
+pip install -e .                                    # Windows: py -m pip install -e .
+
+# 2. Anywhere:
+autodebug doctor                                    # Windows: py -m autodebug doctor
+
+# 3. In the project folder you open in VS Code:
+autodebug config vscode --demo > .vscode/mcp.json   # or claude-code, claude-desktop, cursor
 ```
 
 Then start `autodebug` from your client and ask it to investigate the synthetic
 case `AUTODEBUG-DEMO`. **[docs/getting-started.md](docs/getting-started.md)**
-walks through every step and explains what works today: clients can connect
-now, but AutoDebug cannot yet drive your real IDE debugger.
+gives exact steps for Linux, macOS and Windows, and explains what works today:
+clients can connect now, but AutoDebug cannot yet drive your real IDE debugger,
+and on native Windows the demo cannot run until Windows evidence storage is
+built.
 
 ## How it works
 

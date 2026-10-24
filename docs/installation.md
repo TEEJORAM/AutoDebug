@@ -57,8 +57,9 @@ cases without touching any application.
 
 `autodebug doctor` and `config` work. Evidence storage relies on POSIX
 descriptor-relative, no-follow file opens, so cases fail closed on Windows and
-`serve --demo` refuses to start; use WSL. Run contract tests with
-`$env:PYTHONPATH = "src"`. Do not replace the storage with ordinary path opens.
+`serve --demo` refuses to start until Windows support is built. Run contract
+tests with `$env:PYTHONPATH = "src"`. Do not replace the storage with ordinary
+path opens.
 
 ## Build offline packages
 

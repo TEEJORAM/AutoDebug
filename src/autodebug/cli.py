@@ -94,7 +94,7 @@ def _serve(args: argparse.Namespace) -> int:
     logging.basicConfig(stream=sys.stderr, level=args.log_level.upper(), format=f"{PROG}: %(levelname)s: %(message)s")
     if args.demo and not secure_storage_supported():
         raise ValueError(f"--demo needs evidence storage, which is not supported on {platform.system()}; "
-                         "use Linux, macOS or WSL (see `autodebug doctor`)")
+                         "Windows support is not built yet; run the demo on Linux or macOS")
     run_dir = create_run_dir(resolve_evidence_dir(args.evidence_dir))
     dispatcher = build_dispatcher(run_dir, demo=args.demo)
     mode = "demo case AUTODEBUG-DEMO armed" if args.demo else "no approved cases"
@@ -146,7 +146,7 @@ def run_checks(evidence_dir: Path) -> list[Check]:
         else Check("fail", "Python", f"{version}; AutoDebug needs 3.11 or newer"),
         Check("info", "Platform", f"{system} {platform.release()}"),
         Check("ok", "Evidence storage", "supported") if secure_storage_supported()
-        else Check("fail", "Evidence storage", f"not supported on {system}; cases fail closed (use Linux, macOS or WSL)"),
+        else Check("fail", "Evidence storage", f"not built for {system} yet; cases fail closed (demo runs on Linux or macOS)"),
         _evidence_check(evidence_dir),
         Check("ok", "Demo debugger", "synthetic, ready for `serve --demo`"),
     ]
@@ -264,7 +264,7 @@ def _config(args: argparse.Namespace) -> int:
     _err(f"\n{PROG}: {where}")
     if not secure_storage_supported():
         _err(f"{PROG}: warning: evidence storage is not supported on {platform.system()}; "
-             "the server starts but every case fails. Run AutoDebug on Linux, macOS or WSL.")
+             "the server starts but every case fails until Windows support is built.")
     return 0
 
 

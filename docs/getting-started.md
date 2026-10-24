@@ -26,24 +26,42 @@ application needs the missing pieces listed in
 
 ## 1. Install
 
-Requirements: **Python 3.11+** on **Linux or macOS**.
+Requirements: **Python 3.11+**. There are no dependencies to download.
+
+Where each command runs:
+
+| Command | Run it in | Why |
+|---|---|---|
+| `pip install -e .` | Your **AutoDebug folder** (the one containing `pyproject.toml`) | `.` means "this folder". Run it once. |
+| `autodebug doctor` | Any folder | After installing, `autodebug` is a normal command. |
+| `autodebug config vscode --demo` | The **project folder you open in VS Code** (e.g. `D:\Projects\MyApp`), not the AutoDebug folder | VS Code reads `.vscode/mcp.json` only from the folder it has open. |
+
+### Linux / macOS
 
 ```sh
-git clone https://github.com/TEEJORAM/AutoDebug.git
-cd AutoDebug
+cd ~/Projects/AutoDebug              # your AutoDebug folder
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .            # or, for a tool install outside any venv: pipx install .
-autodebug --version         # autodebug 0.1.0
+pip install -e .                     # or, without a venv: pipx install .
+autodebug --version                  # autodebug 0.1.0
 ```
 
-There are no dependencies to download.
+### Windows (PowerShell)
 
-**Windows:** the install and `autodebug doctor` work, but evidence storage
-relies on Linux/macOS file-system calls, so every debugging case fails on native
-Windows. Install and run AutoDebug inside **WSL** (Ubuntu) with the Linux steps
-above. Connecting a Windows-side client to a server inside WSL has not been
-tested yet.
+```powershell
+py --version                         # must be 3.11 or newer
+cd D:\Projects\AutoDebug             # your AutoDebug folder
+py -m pip install -e .
+py -m autodebug --version            # autodebug 0.1.0
+```
+
+On Windows, use `py -m autodebug ...` in place of `autodebug ...` in the rest
+of this guide; it works even if Python's `Scripts` folder is not on your PATH.
+
+> **Windows today:** `doctor` and `config` work, but the demo case cannot run
+> yet. AutoDebug's evidence storage has not been built for Windows, so `doctor`
+> shows `✘ Evidence storage` and `serve --demo` refuses to start. Native Windows
+> support is the next planned fix; until then the demo runs on Linux or macOS.
 
 ## 2. Check your machine
 
@@ -76,10 +94,26 @@ depend on your shell's `PATH`. `--demo` arms the synthetic case
 
 ### VS Code (GitHub Copilot)
 
+Run these in the **project folder you open in VS Code**.
+
+Linux / macOS:
+
 ```sh
 mkdir -p .vscode
 autodebug config vscode --demo > .vscode/mcp.json
 ```
+
+Windows (PowerShell):
+
+```powershell
+mkdir .vscode                                         # skip if it exists
+py -m autodebug config vscode --demo | Set-Clipboard
+code .vscode\mcp.json                                 # paste, then save
+```
+
+Copying and pasting avoids a Windows PowerShell 5.1 trap: `>` saves files as
+UTF-16, which VS Code may not read as JSON. In PowerShell 7 (`pwsh`), `>` saves
+UTF-8 and the Linux/macOS form works as-is.
 
 If `.vscode/mcp.json` already exists, merge the `autodebug` entry into its
 `servers` object instead of overwriting the file. Then, in VS Code:
@@ -177,7 +211,7 @@ Until then, `autodebug doctor` reports every IDE adapter as "mock-only".
 | `serve` waits and prints nothing | That is normal: it waits for an MCP client on stdin. Press Ctrl+C. |
 | `APPROVAL_EXPIRED` | The 30-minute demo approval ended; restart the server. |
 | `NOT_APPROVED` | Expected without `--demo`; real approvals don't exist yet. |
-| `--demo needs evidence storage` | You're on native Windows; use WSL. |
+| `--demo needs evidence storage` | You're on native Windows, where evidence storage is not built yet (see [Install](#1-install)). |
 | `evidence directory must be outside the AutoDebug checkout` | Choose a folder outside the repository. |
 
 ## Command reference

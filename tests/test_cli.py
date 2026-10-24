@@ -116,7 +116,7 @@ class TestDoctor(_TempDir):
         with patch.object(cli, "secure_storage_supported", return_value=False):
             code, out, _ = run_cli("doctor", "--evidence-dir", str(self.tmp / "e"))
         self.assertEqual(code, 1)
-        self.assertIn("not supported", out)
+        self.assertIn("not built", out)
         with patch.object(cli, "MIN_PYTHON", (99, 0)):
             code, out, _ = run_cli("doctor", "--evidence-dir", str(self.tmp / "e"))
         self.assertEqual(code, 1)
