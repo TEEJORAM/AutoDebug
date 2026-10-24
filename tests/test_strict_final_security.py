@@ -7,6 +7,7 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
+from autodebug import _winfs
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.models import RootCauseConfidence
 from tests import test_publication_security as publication
@@ -381,7 +382,10 @@ class StrictFinalSecurityTests(unittest.TestCase):
                 raise OSError("synthetic interrupted write")
         self.assertEqual(store.case_path.read_bytes(), previous)
         self.assertEqual(list(store.case_dir.glob(".*.tmp")), [])
-        with patch.object(os, "fdopen", side_effect=OSError("synthetic fdopen failure")):
+        # Fail while wrapping the new temporary file in a stream, on either backend.
+        stream_seam = patch.object(_winfs, "_text_stream", side_effect=OSError("synthetic fdopen failure")) \
+            if os.name == "nt" else patch.object(os, "fdopen", side_effect=OSError("synthetic fdopen failure"))
+        with stream_seam:
             with self.assertRaisesRegex(OSError, "synthetic fdopen failure"):
                 with store._open_file("case.json", "w"):
                     self.fail("failed file must not be yielded")

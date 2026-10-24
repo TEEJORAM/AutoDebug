@@ -25,9 +25,6 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Diagnose Windows evidence backend (temporary)
-        if: runner.os == 'Windows'
-        run: python .github/diagnose_windows.py
       - name: Run the full unittest suite
         run: python .github/run_tests.py
       - name: Compile Python sources and tests

@@ -280,6 +280,14 @@ class _HandleIO(io.RawIOBase):
         return count.value
 
 
+def _text_stream(handle: int, *, writable: bool) -> io.TextIOWrapper:
+    """UTF-8 text over `handle`; writes use LF line endings like POSIX."""
+    raw = _HandleIO(handle, writable=writable)
+    if writable:
+        return io.TextIOWrapper(io.BufferedWriter(raw), encoding="utf-8", newline="\n")
+    return io.TextIOWrapper(io.BufferedReader(raw), encoding="utf-8")
+
+
 # -- security ----------------------------------------------------------------
 
 
@@ -468,7 +476,7 @@ def _read(target: str, directory_path: str, name: str) -> Iterator[TextIO]:
     handle = _create(target, GENERIC_READ | FILE_READ_ATTRIBUTES, OPEN_EXISTING)
     try:
         _check_child(handle, directory_path, name, directory=False)
-        with io.TextIOWrapper(io.BufferedReader(_HandleIO(handle, writable=False)), encoding="utf-8") as stream:
+        with _text_stream(handle, writable=False) as stream:
             yield stream
     finally:
         _close(handle)
@@ -485,7 +493,7 @@ def _append(target: str, directory_path: str, name: str) -> Iterator[TextIO]:
             if created:
                 _delete_by_handle(handle)
             raise
-        stream = io.TextIOWrapper(io.BufferedWriter(_HandleIO(handle, writable=True)), encoding="utf-8", newline="\n")
+        stream = _text_stream(handle, writable=True)
         try:
             yield stream
         finally:
@@ -512,7 +520,7 @@ def _write(directory_path: str, name: str) -> Iterator[TextIO]:
     keep = False
     try:
         _check_child(handle, directory_path, temporary, directory=False)
-        stream = io.TextIOWrapper(io.BufferedWriter(_HandleIO(handle, writable=True)), encoding="utf-8", newline="\n")
+        stream = _text_stream(handle, writable=True)
         try:
             yield stream
             stream.flush()
