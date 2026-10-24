@@ -100,8 +100,9 @@ Error codes: `NO_WINDOW`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`, `NOT_APPROVED`,
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
-overwriting: summary table, problem, how it was run, debug timeline (every stop,
-step, inspection and trace, numbered), root cause with confidence
+overwriting: summary table, problem, how it was run, debug timeline (every
+session since the previous report, with each stop, step, inspection and trace,
+numbered), root cause with confidence
 (`confirmed` needs how it was confirmed), solution, verification (marked as
 reported by the agent), open questions.
 

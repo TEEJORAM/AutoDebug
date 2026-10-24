@@ -118,6 +118,7 @@ class Extension(HarnessTest):
         report = Path(self.debugger.write_report(title="Area bug", problem="p", root_cause="r", solution="s",
                                                  confidence="likely")["report_file"])
         self.assertIn("| trace | geometry.py:15 |", report.read_text(encoding="utf-8"))
+        self.assertIn("| session 1 |", report.read_text(encoding="utf-8"))
 
     def test_denied(self):
         self.start()

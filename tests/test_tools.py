@@ -179,6 +179,20 @@ class Report(ToolsTest):
         self.assertIn("**Confirmed**", text)
         self.assertNotIn("hunter2", text)
 
+    def test_timeline_covers_every_session_until_the_report(self):
+        self.start_paused()
+        self.debugger.trace("geometry.py", 15, ["i"], hits=2)
+        self.debugger.stop_session()
+        self.start_paused(breakpoints=[{"file": "geometry.py", "line": 16}])
+        self.debugger.stop_session()
+        path = Path(self.debugger.write_report(title="Two sessions", problem="p", root_cause="r", solution="s",
+                                               confidence="likely")["report_file"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("| session 1 |", text)
+        self.assertIn("| trace | geometry.py:15 |", text)
+        self.assertIn("| session 2 |", text)
+        self.assertEqual(self.debugger.timeline, [])
+
     def test_confirmed_needs_how(self):
         self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
                         solution="s", confidence="confirmed", workspace_folder=str(self.workspace))
