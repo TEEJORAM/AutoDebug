@@ -1,13 +1,15 @@
 # AutoDebugDemo
 
-A tiny sketch-geometry project with **one deliberate bug**, for practising
-debugging and for trying AutoDebug. It contains no company code or data.
+A tiny sketch-geometry project for trying AutoDebug. It contains no company
+code or data. Moving a shape does not change its area.
 
-**The bug:** moving a shape must never change its area, but here it does.
+The shoelace loop in `geometry.py` includes the edge from the last point back
+to the first: `(i + 1) % n`. Leaving that edge out made a moved unit square
+report area `2.00` instead of `1.00`.
 
-## 1. See it fail
+## 1. Run it
 
-Run these from the AutoDebug folder.
+From the AutoDebug folder.
 
 Windows (PowerShell):
 
@@ -25,45 +27,14 @@ python3 report.py
 python3 -m unittest -v
 ```
 
-`report.py` prints:
+`report.py` prints `ok` for every shape and ends with `0 of 3 shapes change area when moved.` Both tests pass.
 
-```text
-unit square  area   1.00   after move   2.00   WRONG
-triangle     area   6.00   after move   9.00   WRONG
-L-bracket    area   6.00   after move   9.00   WRONG
+## 2. Look at the loop in VS Code
 
-3 of 3 shapes change area when moved.
-```
-
-and one test fails with `AssertionError: 2.0 != 1.0`.
-
-## 2. Find it with the VS Code debugger
-
-1. Open this folder in VS Code (**File → Open Folder → `examples/AutoDebugDemo`**)
-   and install the recommended Python extensions when asked.
-2. Open `geometry.py` and click left of line 15 (`total += x1 * y2 - x2 * y1`)
-   to set a breakpoint.
-3. Open **Run and Debug**, choose **Debug tests**, and press `F5`.
-4. Each time it stops, look at `i`, `len(points)` and `total` in the
-   **Variables** panel. How many times does the loop run for a 4-corner square?
-   Which edge of the shape is never added?
-
-<details>
-<summary>Answer</summary>
-
-The loop runs `len(points) - 1` times, so it never adds the closing edge from
-the last corner back to the first. At the origin that edge's term happens to be
-`0`, which is why the unmoved square looks right. Fix it in `geometry.py`:
-
-```python
-    n = len(points)
-    for i in range(n):
-        x1, y1 = points[i]
-        x2, y2 = points[(i + 1) % n]
-```
-
-Then run the tests again; both pass and `report.py` prints `ok` for every shape.
-</details>
+1. Open this folder in VS Code (**File → Open Folder → `examples/AutoDebugDemo`**).
+2. Open `geometry.py`. The area term is on line 16 (`total += x1 * y2 - x2 * y1`).
+3. **Run and Debug** → **Debug tests** → `F5`.
+4. At each stop, `i` runs `0 .. len(points) - 1`, and the next point is `points[(i + 1) % n]`.
 
 ## 3. Try AutoDebug with this project
 
@@ -95,18 +66,16 @@ budget and an evidence report on disk.
 
 ## 4. When AutoDebug can drive VS Code's debugger
 
-[`autodebug-plan.json`](autodebug-plan.json) is the plan an AI client would
-stage for this bug: a breakpoint at `geometry.py:15`, a launch of `report.py`
-and manual reproduction steps. You would approve that exact plan, AutoDebug
-would set the breakpoint in your VS Code session, and the AI would read `i`,
-`len(points)` and `total` at each stop. It may report `CONFIRMED` only once the
-fixed code passes the tests.
+[`autodebug-plan.json`](autodebug-plan.json) is a plan for this file: a
+breakpoint at `geometry.py:16` and a launch of `report.py`. You would approve
+that exact plan before AutoDebug could set the breakpoint in your VS Code
+session.
 
 ## C++ version
 
-`cpp/geometry.cpp` has the same bug at line 16, for Visual Studio, CLion, Xcode
-or VS Code with a C++ debugger. Build it from this folder (needs CMake and a C++
-compiler):
+`cpp/geometry.cpp` uses the same closing-edge loop, for Visual Studio, CLion,
+Xcode or VS Code with a C++ debugger. Build it from this folder (needs CMake
+and a C++ compiler):
 
 ```sh
 cmake -S cpp -B build

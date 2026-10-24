@@ -1,6 +1,6 @@
 """Sketch geometry for the AutoDebugDemo project.
 
-Contains one deliberate bug for practising debugging. See README.md.
+The shoelace loop includes the edge from the last point back to the first.
 """
 
 Point = tuple[float, float]
@@ -9,9 +9,10 @@ Point = tuple[float, float]
 def polygon_area(points: list[Point]) -> float:
     """Area of a simple polygon, using the shoelace formula."""
     total = 0.0
-    for i in range(len(points) - 1):
+    n = len(points)
+    for i in range(n):
         x1, y1 = points[i]
-        x2, y2 = points[i + 1]
+        x2, y2 = points[(i + 1) % n]
         total += x1 * y2 - x2 * y1
     return abs(total) / 2
 

@@ -20,8 +20,9 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 - Five IDE adapters (VS Code, Cursor, CLion, Xcode, Visual Studio) sharing one
   client-backed implementation, tested against mock clients only.
 - Offline stdlib-only wheel/sdist builder.
-- Sample buggy project for practice and future adapter tests:
-  [examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md).
+- Sample project for practice and future adapter tests:
+  [examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md). Moving a shape
+  keeps its area.
 
 ## What does not work yet
 
@@ -39,6 +40,7 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 | 2026-10-24 | GitHub Actions run 40078110989: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 518 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
 | 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 518 tests, OK (9 skipped) |
 | 2026-10-24 | Linux, Python 3.12.3 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 523 tests, OK (9 skipped) |
+| 2026-10-24 | Linux, Python 3.12.3 | demo `report.py` and `python3 -m unittest discover -s examples/AutoDebugDemo` | areas stay `1.00` / `6.00` / `6.00` after move; 2 tests OK |
 
 All tests use fake or mock backends.
 
@@ -64,6 +66,8 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — demo area fix.** `polygon_area` in
+  `examples/AutoDebugDemo` includes the closing edge in Python and C++.
 - **2026-10-24 — user guide.** `autodebug guide`, `site/index.html`, and
   `.github/workflows/pages.yml` (`openspec/changes/user-guide/`). Setup steps
   for Windows, macOS and Linux. Real debugger control stays disabled.

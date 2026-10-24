@@ -5,12 +5,12 @@
   "target": {"host_id": "local-dev", "ide": "vscode", "debug_session_id": null, "pid": null},
   "launch_configuration": [["program", "report.py"]],
   "process_running": false,
-  "breakpoints": [{"file": "geometry.py", "line": 15}],
+  "breakpoints": [{"file": "geometry.py", "line": 16}],
   "reproduction": {
     "mode": "manual",
     "steps": [
       "Run report.py under the debugger",
-      "When the breakpoint stops, compare i, len(points) and total on each pass of the loop"
+      "When the breakpoint stops, the loop index wraps with (i + 1) % n so the closing edge is included"
     ]
   },
   "policy": {"max_steps": 20, "max_inspection_seconds": 600}

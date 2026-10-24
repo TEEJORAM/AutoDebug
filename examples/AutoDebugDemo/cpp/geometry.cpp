@@ -1,5 +1,5 @@
 // C++ twin of geometry.py / report.py, for debugging in Visual Studio,
-// CLion, Xcode or VS Code with a C++ debugger. Same deliberate bug.
+// CLion, Xcode or VS Code with a C++ debugger.
 #include <cmath>
 #include <cstdio>
 #include <utility>
@@ -10,9 +10,10 @@ using Point = std::pair<double, double>;
 // Area of a simple polygon, using the shoelace formula.
 double polygon_area(const std::vector<Point>& points) {
     double total = 0.0;
-    for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+    const std::size_t n = points.size();
+    for (std::size_t i = 0; i < n; ++i) {
         const auto [x1, y1] = points[i];
-        const auto [x2, y2] = points[i + 1];
+        const auto [x2, y2] = points[(i + 1) % n];
         total += x1 * y2 - x2 * y1;
     }
     return std::fabs(total) / 2;
