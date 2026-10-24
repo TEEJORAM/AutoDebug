@@ -35,8 +35,8 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 | Date | Environment | Command | Result |
 |---|---|---|---|
-| 2026-10-24 | GitHub Actions run 40076712888: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 508 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
-| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 508 tests, OK (9 skipped) |
+| 2026-10-24 | GitHub Actions run 40078110989: Windows, macOS and Ubuntu × Python 3.11, 3.12, 3.14 | full suite (`.github/run_tests.py`), `compileall` | all 9 jobs passed; 518 tests each (Windows skips 1 POSIX-only FIFO test; macOS/Ubuntu skip the 9 Windows-only tests) |
+| 2026-10-24 | Linux, Python 3.13 | `PYTHONPATH=src python3 -m unittest discover -s tests` | 518 tests, OK (9 skipped) |
 
 All tests use fake or mock backends.
 
