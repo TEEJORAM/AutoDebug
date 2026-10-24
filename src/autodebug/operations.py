@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, Protocol, TypeVar
+from collections.abc import Callable
+from typing import Protocol, TypeVar
 
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 

@@ -36,7 +36,7 @@ class TestPlatformMatrix(unittest.TestCase):
     def test_every_cell_matches_the_documented_matrix(self):
         for cls, expectation in IDE_02_MATRIX.items():
             instance = cls()
-            for host_os, is_target in zip(OS_COLUMNS, expectation):
+            for host_os, is_target in zip(OS_COLUMNS, expectation, strict=True):
                 with self.subTest(ide=cls.ide_id, host_os=host_os):
                     result = instance.probe(host_os=host_os)
                     if is_target:

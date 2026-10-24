@@ -42,7 +42,7 @@ class SessionRegistry:
             if self._sessions.get(key) == session:
                 self._sessions.pop(key, None)
 
-    def arming_lease(self, target: TargetRef) -> "SessionLease":
+    def arming_lease(self, target: TargetRef) -> SessionLease:
         with self._registry_lock:
             self._check_quarantine(target.host_id, target.ide)
             lock = self._arm_locks.setdefault((target.host_id, target.ide), threading.Lock())
@@ -160,7 +160,7 @@ class SessionRegistry:
                 )
             )
 
-    def lease(self, session: SessionRef) -> "SessionLease":
+    def lease(self, session: SessionRef) -> SessionLease:
         """GW-05: a non-blocking, per-session mutual-exclusion lease. At most
         one mutating operation on a given session proceeds at a time; a
         second concurrent attempt is rejected immediately, never queued
@@ -181,7 +181,7 @@ class SessionLease:
         self._lock = lock
         self._acquired = False
 
-    def __enter__(self) -> "SessionLease":
+    def __enter__(self) -> SessionLease:
         self._acquired = self._lock.acquire(blocking=False)
         if not self._acquired:
             raise AutoDebugError(

@@ -1,6 +1,6 @@
-"""The five IDE adapters, declared from T01 as contract-conforming stubs
-(IDE-01). Each conforms to the same `BaseAdapter` protocol; none claims real
-native-debugger support until its proof task (T08–T12) lands.
+"""The five IDE adapters (IDE-01). Each delegates to an injected,
+IDE-specific client through the shared `ClientBackedAdapter`; none claims
+verified native-debugger support (see docs/compatibility-ledger.md).
 """
 
 from autodebug.adapters.base import BaseAdapter

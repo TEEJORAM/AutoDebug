@@ -9,7 +9,8 @@ and it never silently defaults to "whichever adapter/session seems closest."
 """
 
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
 
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail

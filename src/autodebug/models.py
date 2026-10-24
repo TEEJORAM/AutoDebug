@@ -1,10 +1,7 @@
-"""Versioned, typed data contracts for AutoDebug (T01 scaffold).
+"""Versioned, typed data contracts for AutoDebug (GW-01).
 
-These are shape definitions only — no validation, immutability enforcement,
-digest computation, or persistence is implemented here. That logic belongs to
-later tasks: plans.py (T04), approvals.py (T05), evidence.py (T06). T01's job
-is only to give every later task a single, stable set of types to build on
-(GW-01).
+Shape definitions only. Validation and digests live in plans.py, approval
+issuance in approvals.py, and persistence in evidence.py.
 """
 
 from __future__ import annotations

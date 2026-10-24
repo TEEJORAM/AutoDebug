@@ -17,19 +17,19 @@ platform integration. Eleven intended targets plus four `N/A` cells appear below
 
 | IDE | OS | Status | Check date | Recorded IDE/backend availability | Evidence and limitation |
 |---|---|---|---|---|---|
-| VS Code | macOS | `BLOCKED` | 2026-10-22 | DebugMCP not available; IDE version not recorded | T08 local availability check; `tests/test_vscode_adapter.py` uses `FakeDebugMCPClient` only. 0/8 real `IDE-04-B` criteria verified. |
+| VS Code | macOS | `BLOCKED` | 2026-10-22 | DebugMCP not available; IDE version not recorded | T08 local availability check; `tests/test_ide_adapters.py` uses `FakeDebugMCPClient` only. 0/8 real `IDE-04-B` criteria verified. |
 | VS Code | Windows | `NOT_TESTED` | — | No test host available | T13 mocked OS coverage only; no real version or native-session evidence. |
 | VS Code | Linux | `NOT_TESTED` | — | No test host available | Same T13 limitation. |
-| Cursor | macOS | `BLOCKED` | 2026-10-22 | Editor present; no native-debugger MCP backend available; IDE version not recorded | T09 independent local availability check; `tests/test_cursor_adapter.py` uses `FakeCursorDebugClient` only. 0/8 real criteria verified. |
+| Cursor | macOS | `BLOCKED` | 2026-10-22 | Editor present; no native-debugger MCP backend available; IDE version not recorded | T09 independent local availability check; `tests/test_ide_adapters.py` uses `FakeCursorDebugClient` only. 0/8 real criteria verified. |
 | Cursor | Windows | `NOT_TESTED` | — | No test host available | T13 mocked OS coverage only. |
 | Cursor | Linux | `NOT_TESTED` | — | No test host available | Same T13 limitation. |
-| CLion | macOS | `UNSUPPORTED` | 2026-10-22 | IDE not available | T10 local availability check; historical task used `UNSUPPORTED` for missing IDE, not a verdict on JetBrains product capabilities. `tests/test_clion_adapter.py` uses `FakeCLionDebugClient` only; 0/8 real criteria verified. |
+| CLion | macOS | `UNSUPPORTED` | 2026-10-22 | IDE not available | T10 local availability check; historical task used `UNSUPPORTED` for missing IDE, not a verdict on JetBrains product capabilities. `tests/test_ide_adapters.py` uses `FakeCLionDebugClient` only; 0/8 real criteria verified. |
 | CLion | Windows | `NOT_TESTED` | — | No test host available | T13 mocked OS coverage only. |
 | CLion | Linux | `NOT_TESTED` | — | No test host available | Same T13 limitation. |
-| Visual Studio (full IDE) | Windows | `BLOCKED` | 2026-10-22 | No Windows test host available | T12 environment finding; `tests/test_visual_studio_adapter.py` uses `FakeVisualStudioDebugClient` only; 0/8 real criteria verified. No claim that a native bridge cannot work. |
+| Visual Studio (full IDE) | Windows | `BLOCKED` | 2026-10-22 | No Windows test host available | T12 environment finding; `tests/test_ide_adapters.py` uses `FakeVisualStudioDebugClient` only; 0/8 real criteria verified. No claim that a native bridge cannot work. |
 | Visual Studio (full IDE) | macOS | `N/A` | — | Not a target | `IDE-02`. |
 | Visual Studio (full IDE) | Linux | `N/A` | — | Not a target | `IDE-02`. |
-| Xcode | macOS | `UNSUPPORTED` | 2026-10-22 | Xcode 26.0.1, build 17A400; `mcpbridge` unavailable in that installation | T11 developer-tool availability check; `tests/test_xcode_adapter.py` uses `FakeXcodeDebugClient` only; 0/8 real criteria verified. This is not a verdict on other Xcode versions/installations. |
+| Xcode | macOS | `UNSUPPORTED` | 2026-10-22 | Xcode 26.0.1, build 17A400; `mcpbridge` unavailable in that installation | T11 developer-tool availability check; `tests/test_ide_adapters.py` uses `FakeXcodeDebugClient` only; 0/8 real criteria verified. This is not a verdict on other Xcode versions/installations. |
 | Xcode | Windows | `N/A` | — | Not a target | `IDE-02`. |
 | Xcode | Linux | `N/A` | — | Not a target | `IDE-02`. |
 

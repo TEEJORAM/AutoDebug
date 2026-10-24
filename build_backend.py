@@ -38,7 +38,7 @@ def _metadata() -> dict[str, bytes]:
     return {
         "METADATA": (metadata + "\n").encode("utf-8"),
         "WHEEL": b"Wheel-Version: 1.0\nGenerator: autodebug-stdlib\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
-        "entry_points.txt": f"[console_scripts]\n{scripts}\n".encode("utf-8"),
+        "entry_points.txt": f"[console_scripts]\n{scripts}\n".encode(),
     }
 
 

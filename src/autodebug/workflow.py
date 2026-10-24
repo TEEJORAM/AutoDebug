@@ -18,6 +18,7 @@ before reproduction is ever requested (RP-06).
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from autodebug import plans
@@ -177,8 +178,8 @@ class Case:
         """RP-06: only transition to `BREAKPOINTS_BOUND` if every requested
         breakpoint actually bound; otherwise fail closed with
         `BREAKPOINT_UNBOUND` and never claim ready-to-reproduce."""
-        from collections import Counter
-
+        if self.plan is None:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="no plan staged"))
         requested = Counter((bp.file, bp.line) for bp in self.plan.breakpoints)
         returned = Counter((result.file, result.line) for result in results)
         if requested != returned:

@@ -1,6 +1,6 @@
 # VS Code ↔ DebugMCP adapter protocol mapping (T08)
 
-**Status: `VSCodeAdapter` is now implemented** (`src/autodebug/adapters/vscode.py`), behind an injected `DebugMCPClient` abstraction, tested only against `tests/fixtures/fake_debugmcp_client.py` (a mock). **DebugMCP itself has still never been installed, contacted, or fetched from** — remains confirmed absent from this environment (filesystem check, 2026-10-22; see `docs/compatibility-ledger.md`). Every exact remote tool/schema name below remains unverified. This document no longer describes a future task — it describes the shape the real implementation actually took, and what remains unverified within it.
+**Status: `VSCodeAdapter` is now implemented** (`src/autodebug/adapters/vscode.py`), behind an injected `DebugMCPClient` abstraction, tested only against `tests/fixtures/fake_ide_clients.py` (a mock). **DebugMCP itself has still never been installed, contacted, or fetched from** — remains confirmed absent from this environment (filesystem check, 2026-10-22; see `docs/compatibility-ledger.md`). Every exact remote tool/schema name below remains unverified. This document no longer describes a future task — it describes the shape the real implementation actually took, and what remains unverified within it.
 
 ## Why this document exists
 
@@ -10,7 +10,7 @@
 
 ## Genuine defect found and fixed during this task
 
-`src/autodebug/facade.py`'s `autodebug_wait_for_stop` already called `ctx.adapter.is_paused(...)` (added in T07's security review for cancellable polling) — but `is_paused` was never declared on `BaseAdapter`, only improvised on the `FakeAdapter` test double. A real adapter implementing the full, formal `BaseAdapter` contract would not have had this method. Fixed by adding `is_paused` to `BaseAdapter` (default `NotImplementedError` stub, like every other operation) and to `CORE_OPERATIONS` (now ten entries, not nine). `VSCodeAdapter.wait_for_stop` is implemented as a loop over this same primitive, so there is one source of truth for "is this session paused," not two. All 189 tests pass with this addition (166 prior + 23 new in `tests/test_vscode_adapter.py`) — purely additive, no existing adapter or test assumed exactly nine operations.
+`src/autodebug/facade.py`'s `autodebug_wait_for_stop` already called `ctx.adapter.is_paused(...)` (added in T07's security review for cancellable polling) — but `is_paused` was never declared on `BaseAdapter`, only improvised on the `FakeAdapter` test double. A real adapter implementing the full, formal `BaseAdapter` contract would not have had this method. Fixed by adding `is_paused` to `BaseAdapter` (default `NotImplementedError` stub, like every other operation) and to `CORE_OPERATIONS` (now ten entries, not nine). `VSCodeAdapter.wait_for_stop` is implemented as a loop over this same primitive, so there is one source of truth for "is this session paused," not two. All 189 tests pass with this addition (166 prior + 23 new in `tests/test_ide_adapters.py`) — purely additive, no existing adapter or test assumed exactly nine operations.
 
 ## Actual method-by-method mapping (as implemented)
 
@@ -37,7 +37,7 @@ Any future real-backend test exercising this mapping must target a **disposable 
 
 ## `GW-06` scenario mapping — implemented and proven against a mock
 
-| Scenario | Implementation, proven in `tests/test_vscode_adapter.py::TestGW06ScenariosAgainstRouter` | Real-DebugMCP status |
+| Scenario | Implementation, proven in `tests/test_ide_adapters.py::TestVSCodeAdapter` (`test_scenario_*`) | Real-DebugMCP status |
 |---|---|---|
 | `GW-06-A` (launch, not running) | `VSCodeAdapter.launch_or_attach` → `client.start_or_attach`; `Router.arm_target` does not report ready until `set_breakpoints` confirms binding | Proven against `FakeDebugMCPClient` only |
 | `GW-06-B` (attach, already running) | Same path, `process_running=True`; `SessionRef.pid` carries the approved target's PID | Proven against `FakeDebugMCPClient` only |
@@ -56,5 +56,5 @@ Any future real-backend test exercising this mapping must target a **disposable 
 
 ## What this task did and did not do
 
-- **Did:** implement `VSCodeAdapter` fully, behind an injected `DebugMCPClient` abstraction; add the missing `is_paused` primitive to `BaseAdapter`/`CORE_OPERATIONS`; prove all of the above against a mock (`tests/fixtures/fake_debugmcp_client.py`); confirm the T05 authorization gate still refuses this adapter exactly as before.
+- **Did:** implement `VSCodeAdapter` fully, behind an injected `DebugMCPClient` abstraction; add the missing `is_paused` primitive to `BaseAdapter`/`CORE_OPERATIONS`; prove all of the above against a mock (`tests/fixtures/fake_ide_clients.py`); confirm the T05 authorization gate still refuses this adapter exactly as before.
 - **Did not:** install the DebugMCP extension, any MCP SDK, or any other package; contact DebugMCP or any real debugger (confirmed absent from this environment); resolve any of the 7 unknowns above against real evidence; authorize real-backend operations — the T05 security gate remains **OPEN / NOT APPROVED**.

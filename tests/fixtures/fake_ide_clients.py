@@ -1,13 +1,11 @@
-"""A deterministic mock standing in for a real Cursor native-debugger
-connection (T09).
+"""Deterministic in-memory stand-ins for each IDE adapter's injected client.
 
-This fixture implements `autodebug.adapters.cursor.CursorDebugClient` — it
-proves `CursorAdapter`'s own translation/wrapping logic is correct. It does
-**not** prove anything about Cursor's real debugger-access protocol, if one
-ever exists: `~/.cursor/mcp.json` on this development machine currently
-registers zero MCP servers (`{"mcpServers": {}}`), so there is no real
-protocol to even describe yet. This fixture is only ever used in tests, and
-nothing in `src/autodebug` imports it.
+Each class implements its adapter's client `Protocol` (for example
+`autodebug.adapters.cursor.CursorDebugClient`). They prove only AutoDebug's
+own translation/wrapping logic; they say nothing about any IDE's real
+debugger protocol, none of which has been verified (see
+`docs/compatibility-ledger.md`). Used only by tests; nothing in
+`src/autodebug` imports this module.
 """
 
 from __future__ import annotations
@@ -19,7 +17,15 @@ from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.workflow import BreakpointBindingResult
 
 
-class FakeCursorDebugClient:
+class FakeIDEClient:
+    """Shared fake behaviour; subclasses only set identity details."""
+
+    ide_id = "fake"
+    session_prefix = "fake"
+    pid_base = 20_000
+    executable = "/fake/disposable-test-app"
+    source_file = "/fake/disposable-test-app.py"
+
     def __init__(self, *, can_start_or_attach: bool = True, can_bind_breakpoints: bool = True) -> None:
         self.can_start_or_attach = can_start_or_attach
         self.can_bind_breakpoints = can_bind_breakpoints
@@ -38,16 +44,16 @@ class FakeCursorDebugClient:
             raise AutoDebugError(
                 ErrorDetail(
                     code=ErrorCode.CAPABILITY_UNSUPPORTED,
-                    message="cursor.launch_or_attach is not supported by this fake Cursor client",
+                    message=f"{self.ide_id}.launch_or_attach is not supported by this fake client",
                 )
             )
         sequence = next(self._ids)
-        remote_session_id = f"cursor-session-{sequence}"
+        remote_session_id = f"{self.session_prefix}-session-{sequence}"
         info = RemoteSessionInfo(
             remote_session_id=remote_session_id,
-            pid=target.pid if target.pid is not None else 30_000 + sequence,
-            ide_instance_id=f"cursor-window-{sequence}",
-            executable="/fake/disposable-test-app",
+            pid=target.pid if target.pid is not None else self.pid_base + sequence,
+            ide_instance_id=f"{self.session_prefix}-window-{sequence}",
+            executable=self.executable,
             state="running",
             generation=None,
         )
@@ -66,8 +72,7 @@ class FakeCursorDebugClient:
         )
 
     def simulate_stop(self, remote_session_id: str) -> None:
-        """Test-only hook standing in for a real breakpoint hit. Nothing in
-        `src/autodebug` calls this."""
+        """Test-only stand-in for a real breakpoint hit."""
         self._paused.add(remote_session_id)
 
     def is_paused(self, remote_session_id: str) -> bool:
@@ -75,7 +80,7 @@ class FakeCursorDebugClient:
 
     def get_stack(self, remote_session_id, frame_limit):
         return tuple(
-            {"frame": f"cursor_frame_{i}", "file": "/fake/disposable-test-app.py", "line": 10 + i}
+            {"frame": f"{self.session_prefix}_frame_{i}", "file": self.source_file, "line": 10 + i}
             for i in range(min(frame_limit, 3))
         )
 
@@ -84,7 +89,7 @@ class FakeCursorDebugClient:
         return {name: fake_values.get(name, "undefined") for name in selected_names}
 
     def step(self, remote_session_id, kind) -> None:
-        return None
+        pass
 
     def continue_execution(self, remote_session_id) -> None:
         self._paused.discard(remote_session_id)
@@ -92,3 +97,27 @@ class FakeCursorDebugClient:
     def disconnect(self, remote_session_id) -> None:
         self.disconnect_calls += 1
         self._sessions.pop(remote_session_id, None)
+
+
+class FakeDebugMCPClient(FakeIDEClient):
+    ide_id, session_prefix, pid_base = "vscode", "vscode", 20_000
+
+
+class FakeCursorDebugClient(FakeIDEClient):
+    ide_id, session_prefix, pid_base = "cursor", "cursor", 30_000
+
+
+class FakeCLionDebugClient(FakeIDEClient):
+    ide_id, session_prefix, pid_base = "clion", "clion", 40_000
+    source_file = "/fake/disposable-test-app.cpp"
+
+
+class FakeXcodeDebugClient(FakeIDEClient):
+    ide_id, session_prefix, pid_base = "xcode", "xcode", 50_000
+    source_file = "/fake/disposable-test-app.swift"
+
+
+class FakeVisualStudioDebugClient(FakeIDEClient):
+    ide_id, session_prefix, pid_base = "visual_studio", "vs", 60_000
+    executable = "/fake/disposable-test-app.exe"
+    source_file = "/fake/disposable-test-app.cs"

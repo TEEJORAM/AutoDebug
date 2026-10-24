@@ -119,7 +119,7 @@ class StrictFinalSecurityTests(unittest.TestCase):
                 approval = self.stage_extra(helper, "wrong-process", target=target)
                 launch = helper.adapter.launch_or_attach
 
-                def wrong(*args):
+                def wrong(*args, launch=launch, field=field, value=value):
                     return replace(launch(*args), **{field: value})
 
                 with patch.object(helper.adapter, "launch_or_attach", side_effect=wrong):
@@ -306,7 +306,7 @@ class StrictFinalSecurityTests(unittest.TestCase):
             with self.subTest(method=method):
                 helper = self.fixture()
 
-                def cancel(*_args):
+                def cancel(*_args, helper=helper):
                     helper.facade.autodebug_cancel_case(case_id=helper.case_id)
 
                 with patch.object(helper.adapter, method, side_effect=cancel):

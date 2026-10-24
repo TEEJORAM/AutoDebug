@@ -25,9 +25,7 @@ from autodebug.models import CapabilityState, TargetRef
 from autodebug.router import Router
 from autodebug.sessions import SessionRegistry
 from tests.fixtures.fake_backend import FULL_SUPPORT
-from tests.fixtures.fake_clion_client import FakeCLionDebugClient
-from tests.fixtures.fake_cursor_client import FakeCursorDebugClient
-from tests.fixtures.fake_debugmcp_client import FakeDebugMCPClient
+from tests.fixtures.fake_ide_clients import FakeCLionDebugClient, FakeCursorDebugClient, FakeDebugMCPClient
 
 #: The three adapters targeted by T13 — VS Code, Cursor, and CLion are all
 #: design targets on Windows, macOS, and Linux (IDE-02). Visual Studio

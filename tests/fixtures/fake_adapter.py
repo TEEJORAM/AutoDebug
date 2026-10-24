@@ -93,11 +93,9 @@ class FakeAdapter(BaseAdapter):
 
     def step(self, session, kind):
         self.simulate_stop(session.debug_session_id)
-        return None
 
     def continue_execution(self, session):
         self._paused.discard(session.debug_session_id)
-        return None
 
     def launch_or_attach(self, target, reviewed_configuration):
         self.launch_or_attach_calls += 1

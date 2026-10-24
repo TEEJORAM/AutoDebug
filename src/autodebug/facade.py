@@ -31,26 +31,21 @@ directly — per T05's binding requirement recorded in `tasks.md`. `step`/
 calls `self._router.arm_target(...)` on its own.
 
 **This module is NOT an MCP server.** `AutoDebugFacade` is a plain Python
-class with plain Python methods — there is no `stdio`/HTTP transport, no
-request/response framing, no tool-registration/discovery handshake, and no
-MCP SDK object anywhere in this file or its dependency graph. Binding this
-facade to an actual MCP transport (per `docs/mcp-contract.md`'s "Protocol
-transport" section) is explicitly out of scope for T07 and remains a
-future task, contingent on the still-open dependency-approval blocker
-(`docs/status.md`, blocker #1).
+class; the dependency-free MCP stdio binding lives in `server.py`.
 """
 
 from __future__ import annotations
 
-import threading
-import time
+import json
 import logging
 import math
-import json
+import threading
+import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker, authorize_and_arm
@@ -85,6 +80,14 @@ def target_identity_for(target: TargetRef) -> str:
     trusted approval-issuing process used when calling `issue_approval`."""
     discriminator = target.pid if target.pid is not None else target.debug_session_id
     return f"{target.host_id}/{target.ide}/{discriminator}"
+
+
+def _execution_confidence(plan: CasePlan) -> ExecutionConfidence:
+    """RP-08: api_script observations are at best developer-reported, since
+    no adapter instruments script execution; manual plans have no script."""
+    if plan.reproduction.mode == "api_script":
+        return ExecutionConfidence.DEVELOPER_REPORTED
+    return ExecutionConfidence.NOT_APPLICABLE
 
 
 def _ok(case_id: str | None, result: object = None) -> dict:
@@ -245,8 +248,7 @@ class AutoDebugFacade:
             event_type=event_type, session_id=ctx.session.debug_session_id,
             source_revision=ctx.case.plan.source_revision, frame=frame,
             observation_name=name, observation_value=value, expected="", confidence="observation-only",
-            execution_confidence=(ExecutionConfidence.DEVELOPER_REPORTED if ctx.case.plan.reproduction.mode == "api_script"
-                                  else ExecutionConfidence.NOT_APPLICABLE),
+            execution_confidence=_execution_confidence(ctx.case.plan),
             stop_id=stop.stop_id if stop else None,
             frame_generation=stop.frame_generation if stop else None,
             process_start_id=ctx.session.process_start_id, plan_digest=ctx.case.approved_digest,
@@ -683,23 +685,11 @@ class AutoDebugFacade:
                 or not isinstance(frame_id, str) or not frame_id or len(frame_id) > 500
             ):
                 raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="bounded frame and named variable selection required"))
-            # RP-08/mcp-contract.md: "AutoDebug SHALL default to
-            # developer_reported for api_script cases absent real
-            # instrumentation" — no real instrumentation exists anywhere in
-            # this project (no adapter confirms a script actually ran), so
-            # an api_script-mode case's observations are always, at best,
-            # developer-reported; a manual-mode case has no script to have
-            # run at all, so NOT_APPLICABLE (the model default) is correct.
             with SessionLease(ctx.operation_lock), self._registry.lease(ctx.session) if ctx.session is not None else nullcontext():
                 self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
                 ctx.evidence_store.require_capacity(len(set(selected_names)))
                 self._ensure_inspecting(ctx)
                 self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
-                execution_confidence = (
-                    ExecutionConfidence.DEVELOPER_REPORTED
-                    if ctx.case.plan.reproduction.mode == "api_script"
-                    else ExecutionConfidence.NOT_APPLICABLE
-                )
                 raw = self._call(ctx, ctx.adapter.get_variables, ctx.session, frame_id, selected_names)
                 self._check_active(ctx, ctx.approval, SCOPE_VARIABLES)
                 self._ensure_inspecting(ctx)
@@ -852,8 +842,7 @@ class AutoDebugFacade:
                     uncertainties=uncertainties,
                     next_steps=next_steps,
                     causal_validation=causal_validation,
-                    execution_confidence=(ExecutionConfidence.DEVELOPER_REPORTED if ctx.case.plan.reproduction.mode == "api_script"
-                                          else ExecutionConfidence.NOT_APPLICABLE),
+                    execution_confidence=_execution_confidence(ctx.case.plan),
                 )
                 if ctx.backend_active.is_set():
                     raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="backend call is still retiring"))

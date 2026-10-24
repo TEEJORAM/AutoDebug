@@ -346,3 +346,12 @@ human review, approved case-data handling and Autodesk ownership/OSSA/Legal.
 For every finished task, update the box **only after** checks actually run and code is reviewed. Add a short block under the task recording: `PR/commit`, `reviewer`, `test command + observed result`, `open limitation`. Keep `docs/status.md` in sync. New features get their own `openspec/changes/<new-change>` rather than extending this indefinitely.
 
 **T01 starting instruction (after G00 approval):** Implement T01 only against a fake backend, using Python standard library only. Do not install any package (including the MCP SDK), contact Jira, launch an IDE, install DebugMCP or run Fusion.
+
+## Strict code review cleanup — 2026-10-24 (developer-requested)
+
+Behaviour-preserving refactor and dead-code removal only; no requirement,
+scope or security-gate change. Adapter implementations, fake clients and
+adapter tests were consolidated (see `docs/status.md`). Test references to
+`tests/test_<ide>_adapter.py` and `tests/fixtures/fake_<ide>_client.py` in
+the entries above are historical; those files are now
+`tests/test_ide_adapters.py` and `tests/fixtures/fake_ide_clients.py`.

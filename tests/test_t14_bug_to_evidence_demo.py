@@ -26,8 +26,7 @@ from pathlib import Path
 
 from autodebug.adapters import VSCodeAdapter
 from autodebug.approvals import ApprovalBroker
-from autodebug.errors import ErrorCode
-from autodebug.evidence import REDACTED_PLACEHOLDER, EvidenceStore
+from autodebug.evidence import REDACTED_PLACEHOLDER
 from autodebug.facade import SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STEP, AutoDebugFacade, target_identity_for
 from autodebug.models import (
     Breakpoint,

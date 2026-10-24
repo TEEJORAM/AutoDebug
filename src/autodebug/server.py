@@ -21,14 +21,18 @@ import sys
 import threading
 import time
 import types
-from dataclasses import MISSING, dataclass, fields, is_dataclass
+from dataclasses import MISSING, dataclass, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Union, get_args, get_origin, get_type_hints
 
+from autodebug import __version__
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker
-from autodebug.facade import AutoDebugFacade, target_identity_for
+from autodebug.facade import (
+    SCOPE_ARM, SCOPE_CONTINUE, SCOPE_STACK, SCOPE_STEP, SCOPE_VARIABLES, SCOPE_WAIT,
+    AutoDebugFacade, target_identity_for,
+)
 from autodebug.models import (
     ApprovalRecord, Breakpoint, CasePlan, CasePolicy, IntakeSource,
     ReproductionPlan, RootCauseConfidence, SCHEMA_VERSION, TargetRef,
@@ -36,7 +40,7 @@ from autodebug.models import (
 from autodebug.sessions import SessionRegistry
 
 PROTOCOL_VERSION = "2025-11-25"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = __version__
 MAX_LINE_BYTES = 256 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
 MAX_IN_FLIGHT = 8
@@ -112,7 +116,7 @@ def _decode(value: object, annotation: object) -> object:
         if args[-1] is Ellipsis:
             return tuple(_decode(item, args[0]) for item in value)
         if len(value) == len(args):
-            return tuple(_decode(item, arg) for item, arg in zip(value, args))
+            return tuple(_decode(item, arg) for item, arg in zip(value, args, strict=True))
         raise InvalidParams("Invalid tuple arity")
     if origin is dict and type(value) is dict and len(value) <= 256:
         return {_decode(k, args[0]): _decode(v, args[1]) for k, v in value.items()}
@@ -252,8 +256,7 @@ class ToolDispatcher:
             kwargs["approval"] = approval
         if name == "autodebug_arm_case":
             kwargs["capability_report"] = self.capability_report
-        result = getattr(self.facade, name)(**kwargs)
-        return result
+        return getattr(self.facade, name)(**kwargs)
 
 
 @dataclass
@@ -531,14 +534,12 @@ def _cli_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
         staged = facade.autodebug_stage_plan(case_id=DEMO_CASE_ID, plan=plan)
         if not created["ok"] or not staged["ok"]:
             raise ValueError("Cannot seed synthetic demonstration")
-        from dataclasses import replace
         plan = replace(plan, digest_sha256=staged["result"]["digest_sha256"])
         approvals[DEMO_CASE_ID] = broker.issue_approval(
             plan, reviewer="local-cli-synthetic-demo", backend_kind="fake",
             target_identity=target_identity_for(target),
-            scope=tuple("op:" + op for op in (
-                "arm_case", "step", "continue", "wait_for_stop", "get_stack", "get_variables",
-            )), ttl_seconds=60, human_presence_confirmed=True,
+            scope=(SCOPE_ARM, SCOPE_STEP, SCOPE_CONTINUE, SCOPE_WAIT, SCOPE_STACK, SCOPE_VARIABLES),
+            ttl_seconds=60, human_presence_confirmed=True,
         )
         armed = facade.autodebug_arm_case(
             case_id=DEMO_CASE_ID, approval=approvals[DEMO_CASE_ID],

@@ -10,12 +10,17 @@ so `UNKNOWN`, `UNAVAILABLE`, `UNSUPPORTED` and `NOT_APPLICABLE` stay distinct
 
 from __future__ import annotations
 
+import itertools
 import platform
+import time
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
-from autodebug.models import CapabilityState
+from autodebug.models import Breakpoint, CapabilityState, SessionRef, TargetRef
+
+if TYPE_CHECKING:
+    from autodebug.workflow import BreakpointBindingResult
 
 #: The core debugger operations every adapter is probed against (GW-02).
 #: `probe()`/`probe_capabilities()` never contact a real IDE to build this list
@@ -226,20 +231,10 @@ class BaseAdapter:
 
     def is_paused(self, debug_session_id):
         """Non-blocking, single-check poll: is this session currently
-        paused? (T08.) This is the primitive `facade.AutoDebugFacade`'s
-        cancellable `autodebug_wait_for_stop` loop actually calls — it polls
-        this on a short interval instead of making one long blocking
-        `wait_for_stop` call, so a cancellation request is observed
-        promptly. `wait_for_stop` above remains the single-call, non
-        -cancellable operation named in `CORE_OPERATIONS`/`GW-06`; a
-        concrete adapter is expected to implement both, typically with
-        `wait_for_stop` looping over this same check internally.
-
-        This was previously only implemented ad hoc on the `FakeAdapter`
-        test double, with no corresponding declaration here — a real gap,
-        since nothing enforced that a future real adapter would provide it
-        too. Declaring it formally here closes that gap.
-        """
+        paused? `wait_for_stop` is the single-call, bounded variant named in
+        `CORE_OPERATIONS`/`GW-06`; concrete adapters typically implement it
+        as a loop over this check. The facade itself polls `get_stop`, which
+        additionally carries a verified stop identity."""
         self._not_implemented("is_paused")
 
     def get_stack(self, session, frame_limit):
@@ -256,3 +251,124 @@ class BaseAdapter:
 
     def disconnect(self, session):
         self._not_implemented("disconnect")
+
+
+class RemoteDebugClient(Protocol):
+    """The minimal operations a client-backed adapter needs from a connected
+    IDE debugger bridge. This is AutoDebug's own abstraction, never a
+    transcription of any IDE's real wire protocol. Each adapter module
+    declares its own distinctly named sub-protocol, so a client written for
+    one IDE is never implied to fit another (IDE-03)."""
+
+    def list_sessions(self) -> tuple[RemoteSessionInfo, ...]: ...
+
+    def start_or_attach(self, target: TargetRef, reviewed_configuration: object) -> RemoteSessionInfo: ...
+
+    def set_breakpoints(
+        self, remote_session_id: str, breakpoints: tuple[Breakpoint, ...]
+    ) -> tuple[BreakpointBindingResult, ...]: ...
+
+    def is_paused(self, remote_session_id: str) -> bool: ...
+
+    def get_stack(self, remote_session_id: str, frame_limit: int) -> tuple[dict, ...]: ...
+
+    def get_variables(self, remote_session_id: str, frame_id: str, selected_names: tuple[str, ...]) -> dict: ...
+
+    def step(self, remote_session_id: str, kind: str) -> None: ...
+
+    def continue_execution(self, remote_session_id: str) -> None: ...
+
+    def disconnect(self, remote_session_id: str) -> None: ...
+
+
+class ClientBackedAdapter(BaseAdapter):
+    """Shared implementation for adapters that delegate every operation to
+    a constructor-injected `RemoteDebugClient` (T08-T12).
+
+    With no client attached (the default, so `cls()` always works), every
+    operation fails closed with `BACKEND_UNAVAILABLE` (IDE-03-A). Values
+    are returned raw: DE-07 redaction happens exactly once, at the facade
+    boundary. Nothing here spawns a process, touches `approvals.py`, or
+    contacts a real debugger; `verify_approval` still refuses every
+    `backend_kind != "fake"`.
+    """
+
+    #: Shown when no client is attached; each subclass names its bridge.
+    missing_client_message: str = "no debug client is attached"
+
+    def __init__(self, client: RemoteDebugClient | None = None, *, host_id: str = "local-mac") -> None:
+        self._client = client
+        self._host_id = host_id
+        self._generations: dict[str, int] = {}
+        self._generation_counter = itertools.count(1)
+
+    def _require_client(self) -> RemoteDebugClient:
+        if self._client is None:
+            raise AutoDebugError(
+                ErrorDetail(code=ErrorCode.BACKEND_UNAVAILABLE, message=f"{self.missing_client_message} (IDE-03-A)")
+            )
+        return self._client
+
+    def _generation_for(self, remote_session_id: str, reported: int | None) -> int:
+        """Use the client's generation when reported; otherwise track a
+        local per-session counter so GW-03 identity checks still have
+        something to compare."""
+        if reported is not None:
+            return reported
+        if remote_session_id not in self._generations:
+            self._generations[remote_session_id] = next(self._generation_counter)
+        return self._generations[remote_session_id]
+
+    def _to_session_ref(self, info: RemoteSessionInfo) -> SessionRef:
+        return SessionRef(
+            host_id=self._host_id,
+            ide=self.ide_id,
+            ide_instance_id=info.ide_instance_id,
+            debug_session_id=info.remote_session_id,
+            session_generation=self._generation_for(info.remote_session_id, info.generation),
+            pid=info.pid,
+            executable=info.executable,
+            state=info.state,
+            capabilities=(),
+        )
+
+    def list_sessions(self) -> tuple[SessionRef, ...]:
+        return tuple(self._to_session_ref(info) for info in self._require_client().list_sessions())
+
+    def launch_or_attach(self, target: TargetRef, reviewed_configuration: object) -> SessionRef:
+        return self._to_session_ref(self._require_client().start_or_attach(target, reviewed_configuration))
+
+    def set_breakpoints(
+        self, session: SessionRef, resolved_locations: tuple[Breakpoint, ...]
+    ) -> tuple[BreakpointBindingResult, ...]:
+        return self._require_client().set_breakpoints(session.debug_session_id, resolved_locations)
+
+    def is_paused(self, debug_session_id: str) -> bool:
+        return self._require_client().is_paused(debug_session_id)
+
+    def wait_for_stop(self, session: SessionRef, timeout: float) -> None:
+        """Single bounded blocking wait; the facade polls instead (DE-09)."""
+        client = self._require_client()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if client.is_paused(session.debug_session_id):
+                return
+            time.sleep(0.05)
+        raise AutoDebugError(
+            ErrorDetail(code=ErrorCode.TIMEOUT, message="timed out waiting for a real pause event (DE-01)")
+        )
+
+    def get_stack(self, session: SessionRef, frame_limit: int) -> tuple[dict, ...]:
+        return self._require_client().get_stack(session.debug_session_id, frame_limit)
+
+    def get_variables(self, session: SessionRef, frame_id: str, selected_names: tuple[str, ...]) -> dict:
+        return self._require_client().get_variables(session.debug_session_id, frame_id, selected_names)
+
+    def step(self, session: SessionRef, kind: str) -> None:
+        self._require_client().step(session.debug_session_id, kind)
+
+    def continue_execution(self, session: SessionRef) -> None:
+        self._require_client().continue_execution(session.debug_session_id)
+
+    def disconnect(self, session: SessionRef) -> None:
+        self._require_client().disconnect(session.debug_session_id)

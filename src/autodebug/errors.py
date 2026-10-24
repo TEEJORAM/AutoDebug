@@ -1,4 +1,4 @@
-"""Stable, versioned error codes for AutoDebug's MCP contract (T01 scaffold).
+"""Stable, versioned error codes for AutoDebug's MCP contract.
 
 AutoDebug components raise `AutoDebugError` with one of these codes instead of an
 ad-hoc message, so every caller can branch on a bounded, documented set

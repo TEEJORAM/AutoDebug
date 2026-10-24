@@ -26,11 +26,11 @@ agent's own tool-calling path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import math
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 
 from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
@@ -72,22 +72,6 @@ def reject_prohibited_target(host_id: str) -> None:
                 message=f"target host '{host_id}' is not recognized as local; remote targets are denied by default (DE-07)",
             )
         )
-
-
-@dataclass(frozen=True)
-class ApprovalRequest:
-    """Everything a trusted local broker must show the developer before
-    issuing an approval (docs/security.md "Developer approval must cover").
-    This is a *display* contract, not a decision — issuance only follows a
-    real human-presence check that this prototype cannot perform."""
-
-    case_id: str
-    plan_digest: str
-    target_summary: str
-    script_or_steps_summary: str
-    allowed_operations: tuple[str, ...]
-    max_steps: int
-    max_inspection_seconds: int
 
 
 @dataclass
@@ -174,16 +158,7 @@ class ApprovalBroker:
         with self._lock:
             self._revoked_tokens.add(token)
             if token in self._issued:
-                issued = self._issued[token]
-                self._issued[token] = ApprovalRecord(
-                    case_id=issued.case_id,
-                    plan_digest=issued.plan_digest,
-                    reviewer=issued.reviewer,
-                    expiration=issued.expiration,
-                    scope=issued.scope,
-                    token=issued.token,
-                    revoked=True,
-                )
+                self._issued[token] = replace(self._issued[token], revoked=True)
 
     def revoke_for_case(self, case_id: str) -> None:
         """DE-09: cancellation revokes the case's approval/permission
@@ -241,8 +216,6 @@ class ApprovalBroker:
                     message="presented approval does not match the issued record",
                 )
             )
-        if issued.revoked or record.token in self._revoked_tokens:
-            raise AutoDebugError(ErrorDetail(code=ErrorCode.CANCELLED, message="approval has been revoked"))
         if self.now() >= float(issued.expiration) or time.monotonic() >= self._deadlines[record.token]:
             raise AutoDebugError(ErrorDetail(code=ErrorCode.APPROVAL_EXPIRED, message="approval has expired"))
         if plan.digest_sha256 != issued.plan_digest or compute_plan_digest(plan) != issued.plan_digest:

@@ -25,6 +25,32 @@ finalization commit and STOP; publication only after the
 native integration or further audit cycle is authorized. Historical T15 human
 sign-off is not manufactured by this publication-finalization scope.
 
+## Strict code review and cleanup (2026-10-24, branch `cleanup/strict-review`)
+
+Developer-requested whole-repository review and cleanup. Behaviour-preserving;
+no native integration, approval, transport or security-gate change.
+
+- Five near-identical adapter implementations (~1,000 lines) now share
+  `ClientBackedAdapter`/`RemoteDebugClient` in `adapters/base.py`; each adapter
+  keeps its own distinctly named client `Protocol`, `ide_id`, OS list and
+  provenance docstring. A write-only `_sessions` cache was removed.
+- Five duplicated adapter test files (~3,450 lines) and five fake clients
+  (~470 lines) were consolidated into `tests/test_ide_adapters.py` and
+  `tests/fixtures/fake_ide_clients.py`. Every adapter now runs the full
+  shared suite (VS Code previously ran a subset); one new test covers a
+  client-reported generation, which nothing exercised before.
+- Dead code removed: unused `ApprovalRequest`, an unused
+  `execution_confidence` local in `autodebug_get_variables`, a redundant
+  unlocked revocation re-check in `verify_approval`, and an unused
+  `sanitize_output` parameter. `Case.bind_breakpoints` now fails closed with
+  `NOT_APPROVED` when no plan is staged instead of raising `AttributeError`.
+- Single version source (`autodebug.__version__` = `0.1.0`, was
+  `0.1.0-t01`); stale "T01 scaffold"/"still-stub" docstrings refreshed;
+  lint fixes (unused imports, explicit loop-variable binding, `zip(strict=True)`).
+- Verification actually run: `python -m unittest discover -s tests` passed
+  **474 tests** on Linux, Python 3.13; `compileall` and `git diff --check`
+  clean. Python 3.11/3.12, macOS and Windows were not run in this pass.
+
 ## Frozen implementation and publication finalization (2026-10-24)
 
 - Implementation commit: `736cc154dda574a54bfc4f42ebf16d6980d71ac1`,

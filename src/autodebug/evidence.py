@@ -26,7 +26,8 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from itertools import islice
 from pathlib import Path
-from typing import Iterator, TextIO
+from collections.abc import Iterator
+from typing import TextIO
 
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
 from autodebug.models import SCHEMA_VERSION, EvidenceRecord, ExecutionConfidence, InvestigationReport, RootCauseConfidence
@@ -137,7 +138,7 @@ def sanitize_text(text: str) -> str:
     return cap_value(redact_text(text)[0])[0]
 
 
-def sanitize_output(value: object, *, depth: int = 0) -> object:
+def sanitize_output(value: object) -> object:
     """Bound the whole tree, including JSON escaping, not just each leaf."""
     remaining_bytes = MAX_OUTPUT_BYTES - 1024
     remaining_nodes = MAX_OUTPUT_NODES
@@ -187,7 +188,7 @@ def sanitize_output(value: object, *, depth: int = 0) -> object:
         remaining_bytes -= size
         return safe
 
-    sanitized = visit(value, depth)
+    sanitized = visit(value, 0)
     if len(json.dumps(sanitized).encode("utf-8")) > MAX_OUTPUT_BYTES - 128:
         return {"truncated": marker}
     return sanitized
