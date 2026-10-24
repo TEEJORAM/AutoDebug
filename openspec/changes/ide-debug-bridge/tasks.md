@@ -6,7 +6,12 @@ requirement IDs, tests and the observed test result.
 - [x] B0 — Developer sign-off on proposal decisions 1–3 (T05 gate for
   `vscode-bridge`, own extension, report location). Signed off 2026-10-24:
   approve gate for `vscode-bridge`; own extension; Python first, then C++.
-- [ ] B1 — Plan schema 0.3 and extended digest (BR-03).
+- [x] B1 — Plan schema 0.3 and extended digest (BR-03). `models.py`
+  (fields, `max_build_seconds`), `plans.py` (`resolve_inputs`,
+  `bind_resolved_inputs`, validation; legacy digests unchanged), facade refuses
+  caller-supplied `resolved_inputs`.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 546, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B2 — Bridge protocol, discovery and Python fake bridge (BR-01, BR-02, BR-11).
 - [ ] B3 — `VSCodeBridgeAdapter`: launch, breakpoints, stop, stack, variables,
   step, continue, end (BR-06, BR-07, BR-08).

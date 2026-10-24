@@ -481,6 +481,10 @@ class AutoDebugFacade:
             ctx = self._lookup(case_id)
             if plan.target != ctx.target:
                 raise AutoDebugError(ErrorDetail(code=ErrorCode.TARGET_MISMATCH, message="target differs from case"))
+            if plan.resolved_inputs:
+                raise AutoDebugError(ErrorDetail(
+                    code=ErrorCode.PERMISSION_DENIED, message="resolved_inputs are set by the IDE bridge, not the caller",
+                ))
             ctx.case.stage_plan(plan)
         except AutoDebugError as exc:
             return _err(case_id, exc.detail)

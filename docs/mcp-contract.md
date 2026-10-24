@@ -112,6 +112,37 @@ Example `CasePlan`:
 
 The illustrative `pid`, file path and digest are **not** live values and cannot be used to target a process. Actual identity handling needs an immutable session nonce/generation and PID/start-time verification to protect against PID reuse.
 
+### Schema 0.3 (IDE bridge)
+
+For the `vscode-bridge` backend ([ide-debug-bridge](../openspec/changes/ide-debug-bridge/spec.md),
+`BR-03`). The plan launches one named configuration from `.vscode/launch.json`
+in an absolute workspace folder; breakpoint files are relative to it and may not
+leave it. `launch_configuration` must be empty and `process_running` false.
+
+```json
+{
+  "schema_version": "0.3",
+  "case_id": "DEMO-AREA-MOVE",
+  "source_revision": "working-tree",
+  "target": {"host_id": "local-windows", "ide": "vscode", "debug_session_id": null, "pid": null},
+  "workspace_folder": "D:\\Projects\\AutoDebug\\examples\\AutoDebugDemo",
+  "launch_configuration_name": "Debug tests",
+  "build_task": null,
+  "report_to_workspace": true,
+  "breakpoints": [{"file": "geometry.py", "line": 15}],
+  "reproduction": {"mode": "manual", "steps": ["Run the tests under the debugger"]},
+  "policy": {"max_steps": 20, "max_inspection_seconds": 600, "max_build_seconds": 300}
+}
+```
+
+`target.ide` is `vscode` or `cursor`; `build_task` is a task label or `null`;
+`policy.max_build_seconds` is 1–900 (default 300). `resolved_inputs` is filled
+by the bridge with SHA-256 hashes of the resolved launch configuration
+(`launch`), build task (`task`) and each breakpoint file (`file:<path>`); a
+caller that supplies it gets `PERMISSION_DENIED`. These hashes are part of the
+digest, so editing any of those files changes the plan. Plans with schema
+`0.1-draft` or `0.2-draft` cannot use these fields and keep their old digests.
+
 ## Approval binding
 
 Case/plan/approval IDs and routed targets must agree. Inspection uses the stored

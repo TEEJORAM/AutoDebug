@@ -39,8 +39,11 @@ authorization missing.
 | IDE-04 | BLOCKED | T08–T12 | Mock suites only | No `IDE-04-B` 8-point native certification |
 | IDE-05 | IMPLEMENTED | T13, T15 | 11-cell ledger with honest states | Cells stay NOT_TESTED/BLOCKED until real tests |
 | CLI-01–06 | IMPLEMENTED | `cli-usability` C1–C6 | `tests/test_cli.py`, `tests/test_server.py` | — |
+| BR-03 | IMPLEMENTED | `ide-debug-bridge` B1 | `tests/test_bridge_plan.py` | Bridge resolution itself arrives in B2/B3 |
+| BR-01, 02, 04–12 | PROPOSED | `ide-debug-bridge` B2–B11 | — | Approved 2026-10-24; not built yet |
 | WIN-01–03 | IMPLEMENTED | `windows-evidence-storage` W1–W4 | `tests/test_windows_evidence.py`, `tests/test_publication_evidence.py` on Windows CI | — |
 
 Test-case IDs `TC-01`–`TC-24` are defined in [test-plan.md](test-plan.md).
 `CLI-*` requirements are in `openspec/changes/cli-usability/spec.md`; `WIN-*` in
-`openspec/changes/windows-evidence-storage/spec.md`.
+`openspec/changes/windows-evidence-storage/spec.md`; `BR-*` in
+`openspec/changes/ide-debug-bridge/spec.md`.
