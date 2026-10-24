@@ -16,8 +16,11 @@ requirement IDs, tests and the observed test result.
   `bridge/protocol.py`, `bridge/client.py`, `tests/fixtures/fake_bridge.py`.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 563, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B3 — `VSCodeBridgeAdapter`: launch, breakpoints, stop, stack, variables,
-  step, continue, end (BR-06, BR-07, BR-08).
+- [x] B3 — `VSCodeBridgeAdapter`: launch, breakpoints, stop, stack, variables,
+  step, continue, end (BR-06, BR-07, BR-08). `adapters/vscode_bridge.py`;
+  `StopSnapshot.location`.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 580, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B4 — Bridge-issued approval, allowlist entry, new approval tools
   (BR-04, BR-12 allowlist part).
 - [ ] B5 — Build step (BR-05).
