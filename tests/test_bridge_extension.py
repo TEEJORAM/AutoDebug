@@ -53,12 +53,13 @@ class ExtensionCore(unittest.TestCase):
                                      stdout=subprocess.PIPE, text=True, encoding="utf-8", env=env)
         self.addCleanup(self.stop_node)
         threading.Thread(target=lambda: [self.lines.put(line.rstrip("\n")) for line in self.node.stdout], daemon=True).start()
-        self.expect("READY")
+        self.expect("READY", timeout=30)  # Node can start slowly on shared CI runners
         self.dispatcher = build_dispatcher(self.run_dir, demo=False, bridges_folder=self.folder)
 
     def stop_node(self):
         if self.node.poll() is None:
-            self.dispatcher.call("autodebug_cancel_case", {"case_id": CASE})
+            if hasattr(self, "dispatcher"):
+                self.dispatcher.call("autodebug_cancel_case", {"case_id": CASE})
             self.send("exit")
             try:
                 self.node.wait(timeout=5)
