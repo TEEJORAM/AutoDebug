@@ -209,7 +209,8 @@ TOOLS = {
         **_CASE, "root_cause_statement": str, "confidence": RootCauseConfidence,
         "evidence_ids": tuple[str, ...], "reproduced": bool,
         "uncertainties": tuple[str, ...], "next_steps": tuple[str, ...], "causal_validation": str | None,
-    }, frozenset({"uncertainties", "next_steps", "causal_validation"})),
+        "problem": str | None, "solution": str | None, "verification": str | None,
+    }, frozenset({"uncertainties", "next_steps", "causal_validation", "problem", "solution", "verification"})),
     "autodebug_cancel_case": _Tool(_CASE),
     "autodebug_request_approval": _Tool(_CASE),
     "autodebug_wait_for_approval": _Tool(

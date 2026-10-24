@@ -219,6 +219,17 @@ class EvidenceRecord:
 
 
 @dataclass(frozen=True)
+class ReportContext:
+    """BR-09 — what was run, for the structured report of a bridge case."""
+
+    workspace_folder: str
+    launch_configuration: str
+    build_task: str | None
+    breakpoints: tuple[str, ...]
+    reproduction_steps: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class InvestigationReport:
     """DE-06 — the final root-cause statement. Never CONFIRMED without causal
     validation."""
@@ -232,3 +243,8 @@ class InvestigationReport:
     next_steps: tuple[str, ...] = ()
     execution_confidence: ExecutionConfidence = ExecutionConfidence.NOT_APPLICABLE
     causal_validation: str | None = None
+    # BR-09: the structured report's extra sections (bridge cases).
+    problem: str | None = None
+    solution: str | None = None
+    verification: str | None = None
+    context: ReportContext | None = None

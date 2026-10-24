@@ -34,8 +34,8 @@ from autodebug.adapters.base import BaseAdapter, CapabilityReport
 from autodebug.approvals import ApprovalBroker, authorize_and_arm
 from autodebug.bridge.approval import approval_summary
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
-from autodebug.evidence import EvidenceStore, build_investigation_report, sanitize_observation, sanitize_output, sanitize_text, validate_case_id
-from autodebug.models import BRIDGE_SCHEMA_VERSION, ApprovalRecord, CasePlan, CaseState, ExecutionConfidence, IntakeSource, RootCauseConfidence, SessionRef, StopSnapshot, TargetRef
+from autodebug.evidence import EvidenceStore, build_investigation_report, sanitize_observation, sanitize_output, sanitize_text, validate_case_id, write_workspace_report
+from autodebug.models import BRIDGE_SCHEMA_VERSION, ApprovalRecord, CasePlan, CaseState, ExecutionConfidence, IntakeSource, ReportContext, RootCauseConfidence, SessionRef, StopSnapshot, TargetRef
 from autodebug.operations import call_bounded
 from autodebug.plans import bind_resolved_inputs
 from autodebug.router import Router
@@ -471,6 +471,16 @@ class AutoDebugFacade:
                 raise AutoDebugError(ErrorDetail(code=ErrorCode.BACKEND_UNAVAILABLE, message="bridge operation failed")) from None
         return call_bounded(execute, timeout=ctx.case.plan.policy.max_operation_seconds,
                             cancellation=ctx.cancel_event, on_abandon=lambda: None)
+
+    @staticmethod
+    def _report_context(plan: CasePlan) -> ReportContext | None:
+        if plan.schema_version != BRIDGE_SCHEMA_VERSION:
+            return None
+        return ReportContext(
+            workspace_folder=plan.workspace_folder, launch_configuration=plan.launch_configuration_name,
+            build_task=plan.build_task, breakpoints=tuple(f"{bp.file}:{bp.line}" for bp in plan.breakpoints),
+            reproduction_steps=plan.reproduction.steps,
+        )
 
     def _approved_bridge_case(self, case_id: str) -> tuple[CasePlan, BaseAdapter, TargetRef] | None:
         """For the trusted dispatcher only (never a tool): the case's plan,
@@ -931,7 +941,11 @@ class AutoDebugFacade:
         uncertainties: tuple[str, ...] = (),
         next_steps: tuple[str, ...] = (),
         causal_validation: str | None = None,
+        problem: str | None = None,
+        solution: str | None = None,
+        verification: str | None = None,
     ) -> dict:
+        report_file = None
         try:
             ctx = self._lookup(case_id)
             with SessionLease(ctx.operation_lock), ctx.state_lock:
@@ -980,12 +994,21 @@ class AutoDebugFacade:
                     next_steps=next_steps,
                     causal_validation=causal_validation,
                     execution_confidence=_execution_confidence(ctx.case.plan),
+                    problem=problem, solution=solution, verification=verification,
+                    context=self._report_context(ctx.case.plan),
                 )
                 if ctx.backend_active.is_set():
                     raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="backend call is still retiring"))
                 self._disconnect(ctx)
                 final_state = ctx.case.state if ctx.case.state in INCOMPLETE_STATES else CaseState.FINALIZED
-                ctx.evidence_store.finalize(case_state=final_state.value, report=report)
+                rendered = ctx.evidence_store.finalize(case_state=final_state.value, report=report)
+                plan = ctx.case.plan
+                if report.context is not None and plan.report_to_workspace and rendered:
+                    try:
+                        report_file = str(write_workspace_report(plan.workspace_folder, case_id, rendered))
+                    except (OSError, ValueError):
+                        _LOG.error("Could not write the report into the workspace; it is in the evidence folder")
+                        report_file = None
                 if final_state is CaseState.FINALIZED:
                     if ctx.case.state is CaseState.PAUSED:
                         ctx.case.inspect()
@@ -1000,11 +1023,14 @@ class AutoDebugFacade:
             return _err(case_id, ErrorDetail(code=ErrorCode.INTERNAL_ERROR, message=str(exc), recoverable=True))
         except OSError:
             return self._storage_error(case_id)
-        return _ok(case_id, {
+        result = {
             "state": ctx.case.state.value,
             "summary": f"Case completed with {report.confidence.value} confidence; reproduced={report.reproduced}.",
             "artifacts": {name: f"{case_id}/{name}" for name in ("case.json", "events.jsonl", "report.md")},
-        })
+        }
+        if report.context is not None and ctx.case.plan.report_to_workspace:
+            result["report_file"] = sanitize_text(report_file) if report_file else None
+        return _ok(case_id, result)
 
     def autodebug_cancel_case(self, *, case_id: str) -> dict:
         """DE-09: idempotent cancel. Interrupts waits, revokes approvals,

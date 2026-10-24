@@ -24,7 +24,7 @@ from typing import TextIO
 
 from autodebug import _winfs
 from autodebug.errors import AutoDebugError, ErrorCode, ErrorDetail
-from autodebug.models import SCHEMA_VERSION, EvidenceRecord, ExecutionConfidence, InvestigationReport, RootCauseConfidence
+from autodebug.models import SCHEMA_VERSION, EvidenceRecord, ExecutionConfidence, InvestigationReport, ReportContext, RootCauseConfidence
 
 REDACTED_PLACEHOLDER = "***REDACTED***"
 MAX_VALUE_LENGTH = 500
@@ -166,6 +166,15 @@ def sanitize_text(text: str) -> str:
     return cap_value(redact_text(text)[0])[0]
 
 
+#: Report prose (problem, solution, verification) may include a short code fix.
+MAX_PROSE_LENGTH = 4000
+
+
+def sanitize_prose(text: str) -> str:
+    """Like `sanitize_text`, with room for a report paragraph."""
+    return cap_value(redact_text(text)[0], MAX_PROSE_LENGTH)[0]
+
+
 def sanitize_output(value: object) -> object:
     """Bound the whole tree, including JSON escaping, not just each leaf."""
     remaining_bytes = MAX_OUTPUT_BYTES - 1024
@@ -233,6 +242,10 @@ def build_investigation_report(
     next_steps: tuple[str, ...] = (),
     causal_validation: str | None = None,
     execution_confidence: ExecutionConfidence = ExecutionConfidence.NOT_APPLICABLE,
+    problem: str | None = None,
+    solution: str | None = None,
+    verification: str | None = None,
+    context: ReportContext | None = None,
 ) -> InvestigationReport:
     """DE-06: enforce the confidence bar and redact every prose field.
 
@@ -251,6 +264,9 @@ def build_investigation_report(
             "reproduction, a verified fix, or equivalent direct evidence; a breakpoint hit "
             "alone is not sufficient"
         )
+    for name, value in (("problem", problem), ("solution", solution), ("verification", verification)):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"{name} must be nonempty text when given")
     statement = root_cause_statement
     if causal_validation:
         statement = f"{root_cause_statement} Causal validation: {causal_validation}"
@@ -267,12 +283,100 @@ def build_investigation_report(
         next_steps=sanitized_next_steps,
         execution_confidence=execution_confidence,
         causal_validation=sanitize_text(causal_validation) if causal_validation else None,
+        problem=sanitize_prose(problem) if problem else None,
+        solution=sanitize_prose(solution) if solution else None,
+        verification=sanitize_prose(verification) if verification else None,
+        context=context,
     )
 
 
-def render_report(report: InvestigationReport, *, case_state: str) -> str:
+def _cell(text: str, limit: int = 300) -> str:
+    """One Markdown table cell: one line, no pipes, bounded."""
+    flat = " ".join(sanitize_text(text).split())
+    flat = flat if len(flat) <= limit else flat[: limit - 1] + "…"
+    return flat.replace("|", "\\|") or "—"
+
+
+_EVENT_NAMES = {
+    "build_finished": "Build", "stop_observed": "Stopped", "stack_observed": "Stack",
+    "variable_observed": "Variable", "variables_listed": "Variable names",
+}
+
+
+def _where(event: EvidenceRecord) -> tuple[str, str]:
+    """(where, what) for one timeline row: stops show their code location."""
+    observation = event.observation
+    if event.event_type == "stop_observed" and observation.startswith("stop_reason="):
+        reason, _, location = observation.removeprefix("stop_reason=").partition(" at ")
+        return location or "", reason
+    if event.frame.startswith("frame:"):
+        return f"frame {event.frame.removeprefix('frame:')}", observation
+    return event.frame, observation
+
+
+def _render_structured(report: InvestigationReport, *, case_state: str, events: tuple[EvidenceRecord, ...]) -> str:
+    """BR-09 — the report a developer reads: problem, reproduction, timeline,
+    root cause, solution, verification."""
+    context = report.context
+    text = sanitize_text
+    lines = [
+        f"# AutoDebug report: {text(report.case_id)}",
+        "",
+        "| | |",
+        "|---|---|",
+        f"| Outcome | {_cell(case_state.capitalize())} |",
+        f"| Root cause confidence | **{report.confidence.value.upper()}** |",
+        f"| Reproduced under the debugger | {'Yes' if report.reproduced else 'No'} |",
+        f"| Workspace | `{_cell(context.workspace_folder)}` |",
+        "",
+        "## Problem",
+        "",
+        sanitize_prose(report.problem) if report.problem else "_Not stated._",
+        "",
+        "## Reproduction",
+        "",
+        f"- Build task: `{_cell(context.build_task)}`" if context.build_task else "- Build task: none",
+        f"- Launch configuration: `{_cell(context.launch_configuration)}`",
+        "- Breakpoints: " + ", ".join(f"`{_cell(bp)}`" for bp in context.breakpoints),
+    ]
+    lines += ["- Steps:"] + [f"  {number}. {_cell(step)}" for number, step in enumerate(context.reproduction_steps, 1)]
+    lines += ["", "## Debug timeline", ""]
+    if events:
+        lines += ["| Evidence | Event | Where | Observation |", "|---|---|---|---|"]
+        for event in events:
+            where, observation = _where(event)
+            lines.append(f"| {_cell(event.evidence_id)} | {_EVENT_NAMES.get(event.event_type, _cell(event.event_type))} "
+                         f"| {_cell(where)} | {_cell(observation)} |")
+    else:
+        lines.append("_No observations were recorded._")
+    cited = ", ".join(text(e) for e in report.evidence_ids) or "none cited"
+    lines += [
+        "", "## Root cause", "", f"**Confidence: {report.confidence.value.upper()}**", "",
+        text(report.root_cause_statement), "", f"Supporting evidence: {cited}",
+        "", "## Solution", "", sanitize_prose(report.solution) if report.solution else "_Not stated._",
+        "", "## Verification", "",
+    ]
+    if report.verification:
+        lines += ["_Reported by the AI agent; AutoDebug did not run this check._", "", sanitize_prose(report.verification)]
+    else:
+        lines.append("_Not verified._")
+    lines += ["", "## Uncertainties", ""]
+    lines += [f"- {text(u)}" for u in report.uncertainties] or ["- None noted."]
+    lines += ["", "## Next steps", ""]
+    lines += [f"- {text(n)}" for n in report.next_steps] or ["- None."]
+    lines += ["", "## Evidence index", "",
+              f"{len(events)} redacted records in `events.jsonl` for case `{text(report.case_id)}`, in AutoDebug's "
+              "private evidence folder. Values that look like secrets are replaced with `***REDACTED***`."]
+    return "\n".join(lines) + "\n"
+
+
+def render_report(
+    report: InvestigationReport, *, case_state: str, events: tuple[EvidenceRecord, ...] = (),
+) -> str:
     """Render `report.md`, citing evidence IDs instead of raw data. Prose is
     redacted again here because this is the disk-writing boundary."""
+    if report.context is not None:
+        return _render_structured(report, case_state=case_state, events=events)
     statement = sanitize_text(report.root_cause_statement)
     uncertainties = [sanitize_text(u) for u in report.uncertainties]
     next_steps = [sanitize_text(n) for n in report.next_steps]
@@ -528,15 +632,17 @@ class EvidenceStore:
                 return ()
             return tuple(records)
 
-    def finalize(self, *, case_state: str, report: InvestigationReport | None) -> None:
+    def finalize(self, *, case_state: str, report: InvestigationReport | None) -> str | None:
         """DE-05/DE-08/DE-09: write `case.json` with the case's *real*,
         current state — `CANCELLED`/`INCOMPLETE`/`FAILED`/`FINALIZED`/etc. —
         never overridden to look complete. Idempotent: calling this more than
         once (e.g. a repeated cancellation, DE-09-B) simply rewrites the same
         honest snapshot. Always callable, even with zero evidence recorded or
         no report available — a cancelled/incomplete case still gets its
-        partial state persisted rather than silently dropped.
+        partial state persisted rather than silently dropped. Returns the
+        rendered report, if any.
         """
+        rendered = None
         with self._lock:
             if report is not None:
                 if report.case_id != self.case_id:
@@ -553,10 +659,39 @@ class EvidenceStore:
             with self._open_file("events.jsonl", "a"):
                 pass
             if report is not None:
+                rendered = render_report(report, case_state=case_state, events=self.read_events())
                 with self._open_file("report.md", "w") as f:
-                    f.write(render_report(report, case_state=case_state))
+                    f.write(rendered)
             with self._open_file("case.json", "w") as f:
                 f.write(json.dumps(case_payload, sort_keys=True, indent=2))
+        return rendered
+
+
+REPORTS_FOLDER = "autodebug-reports"
+
+
+def write_workspace_report(workspace_folder: str, case_id: str, text: str) -> Path:
+    """BR-09 — copy the redacted report into `<workspace>/autodebug-reports/`.
+    Never overwrites: a second report for the same case gets `-2`, `-3`, ..."""
+    validate_case_id(case_id)
+    workspace = Path(workspace_folder)
+    if not workspace.is_dir() or is_link(workspace):
+        raise ValueError(f"workspace folder is not a directory: {workspace}")
+    folder = workspace / REPORTS_FOLDER
+    if is_link(folder):
+        raise ValueError(f"{folder} is a link or junction; refusing to write the report there")
+    folder.mkdir(exist_ok=True)
+    data = redact_text(text)[0].encode("utf-8")
+    for number in range(1, 1000):
+        path = folder / (f"{case_id}.md" if number == 1 else f"{case_id}-{number}.md")
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o644)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        return path
+    raise ValueError(f"too many reports for case {case_id} in {folder}")
 
 
 def validate_case_id(case_id: str) -> None:
