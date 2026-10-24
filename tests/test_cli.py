@@ -63,7 +63,7 @@ class TestEvidenceLocation(_TempDir):
             self.assertEqual(cli.resolve_evidence_dir(None), self.tmp / "d")
 
     def test_platform_defaults(self):
-        home = Path.home()
+        home = Path("/home/tester")
         cases = {
             ("Linux", ()): home / ".local" / "state" / "autodebug",
             ("Linux", (("XDG_STATE_HOME", "/xdg"),)): Path("/xdg") / "autodebug",
@@ -71,8 +71,10 @@ class TestEvidenceLocation(_TempDir):
             ("Windows", (("LOCALAPPDATA", "C:/Users/u/AppData/Local"),)): Path("C:/Users/u/AppData/Local") / "autodebug",
         }
         for (system, env), expected in cases.items():
+            # Path.home() is patched too: with a cleared environment Windows
+            # cannot determine a home directory at all.
             with self.subTest(system=system, env=env), patch.object(cli.platform, "system", return_value=system), \
-                    patch.dict(os.environ, dict(env), clear=True):
+                    patch.dict(os.environ, dict(env), clear=True), patch.object(cli.Path, "home", return_value=home):
                 self.assertEqual(cli.default_evidence_dir(), expected)
 
     @unittest.skipUnless(hasattr(os, "getuid"), "POSIX permissions")
