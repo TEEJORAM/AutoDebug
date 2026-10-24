@@ -187,3 +187,60 @@ class DemoModeHasNoBridge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Build(BridgeFlow):
+    TASK = {"label": "cmake build", "type": "shell", "command": "cmake --build build"}
+
+    def approve_with_build(self, **policy) -> None:
+        from autodebug.models import CasePolicy
+        self.fake.tasks = {"cmake build": self.TASK}
+        self.stage(build_task="cmake build",
+                   policy=CasePolicy(max_steps=20, max_inspection_seconds=600, **policy))
+        self.ok("autodebug_request_approval")
+        self.assertEqual(self.fake.requests[-1]["summary"]["build_task"], "cmake build")
+        self.fake.answer("approve")
+        self.ok("autodebug_wait_for_approval", timeout_seconds=5)
+
+    def test_build_runs_before_launch(self):
+        self.approve_with_build()
+        result = self.assertRefused("NOT_APPROVED", "autodebug_arm_case", reviewed_configuration={}, process_running=False)
+        self.assertIn("autodebug_run_build", result["error"]["message"])
+        self.assertEqual(self.ok("autodebug_run_build")["status"], "running")
+        self.assertRefused("POLICY_LIMIT", "autodebug_run_build")
+        self.assertEqual(self.ok("autodebug_wait_for_build", timeout_seconds=5)["status"], "succeeded")
+        self.ok("autodebug_arm_case", reviewed_configuration={}, process_running=False)
+        ops = [op for op, _ in self.fake.calls]
+        self.assertLess(ops.index("build_start"), ops.index("launch"))
+        events = (self.run_dir / CASE / "events.jsonl").read_text(encoding="utf-8")
+        self.assertIn("build_finished", events)
+        self.assertIn("exit code 0", events)
+
+    def test_failed_build_launches_nothing(self):
+        self.fake.build_result = (2, ["geometry.cpp:16: error: expected ';'"])
+        self.approve_with_build()
+        self.ok("autodebug_run_build")
+        result = self.assertRefused("BUILD_FAILED", "autodebug_wait_for_build", timeout_seconds=5)
+        self.assertIn("expected ';'", result["error"]["message"])
+        self.assertEqual(self.ok("autodebug_case_status")["state"], "failed")
+        self.assertRefused("NOT_APPROVED", "autodebug_arm_case", reviewed_configuration={}, process_running=False)
+        self.assertNotIn("launch", [op for op, _ in self.fake.calls])
+        self.assertTrue(self.fake.ended)
+
+    def test_build_past_its_time_limit_fails(self):
+        self.fake.op_build_status = lambda args: {"status": "running"}
+        self.approve_with_build(max_build_seconds=1)
+        self.ok("autodebug_run_build")
+        self.assertEqual(self.ok("autodebug_wait_for_build", timeout_seconds=0.3)["status"], "running")
+        result = self.assertRefused("BUILD_FAILED", "autodebug_wait_for_build", timeout_seconds=5)
+        self.assertIn("max_build_seconds", result["error"]["message"])
+
+    def test_build_needs_approval(self):
+        self.fake.tasks = {"cmake build": self.TASK}
+        self.stage(build_task="cmake build")
+        self.assertRefused("NOT_APPROVED", "autodebug_run_build")
+        self.assertNotIn("build_start", [op for op, _ in self.fake.calls])
+
+    def test_plan_without_build_task(self):
+        self.approve()
+        self.assertEqual(self.ok("autodebug_run_build")["status"], "not_required")

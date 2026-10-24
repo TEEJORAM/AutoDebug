@@ -29,7 +29,10 @@ requirement IDs, tests and the observed test result.
   plain `serve`, stop reason and location in results, step stops recorded.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 594, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B5 — Build step (BR-05).
+- [x] B5 — Build step (BR-05). `autodebug_run_build`/`autodebug_wait_for_build`,
+  `BUILD_FAILED`, build evidence; arming waits for a successful build.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 599, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B6 — Report sections and workspace export (BR-09).
 - [ ] B7 — MCP instructions and tool descriptions; `list_variables` (BR-07, BR-10).
 - [ ] B8 — Bridge extension and `autodebug bridge install` (BR-01, BR-12).

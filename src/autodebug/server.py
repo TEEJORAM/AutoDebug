@@ -216,6 +216,11 @@ TOOLS = {
         {**_CASE, "timeout_seconds": float},
         limits={"timeout_seconds": {"exclusiveMinimum": 0, "maximum": MAX_APPROVAL_WAIT}},
     ),
+    "autodebug_run_build": _Tool(_CASE),
+    "autodebug_wait_for_build": _Tool(
+        {**_CASE, "timeout_seconds": float},
+        limits={"timeout_seconds": {"exclusiveMinimum": 0, "maximum": MAX_APPROVAL_WAIT}},
+    ),
 }
 
 
@@ -280,7 +285,8 @@ class ToolDispatcher:
                     }}
             else:
                 kwargs["adapter"] = self.adapter
-        if name in ("autodebug_arm_case", "autodebug_step", "autodebug_continue"):
+        if name in ("autodebug_arm_case", "autodebug_step", "autodebug_continue", "autodebug_run_build",
+                    "autodebug_wait_for_build"):
             approval = self._local_approvals.get(kwargs["case_id"])
             if approval is None:
                 return {"ok": False, "case_id": kwargs["case_id"], "error": {

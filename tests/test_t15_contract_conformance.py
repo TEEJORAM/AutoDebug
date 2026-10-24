@@ -32,6 +32,7 @@ DOCUMENTED_ERROR_CODES = {
     "SENSITIVE_OUTPUT_BLOCKED",
     "CANCELLED",
     "INTERNAL_ERROR",
+    "BUILD_FAILED",
 }
 
 #: Exact set documented in design.md's "Case workflow states" line, plus the
@@ -101,6 +102,8 @@ DOCUMENTED_FACADE_TOOLS = {
     "autodebug_cancel_case",
     "autodebug_request_approval",
     "autodebug_wait_for_approval",
+    "autodebug_run_build",
+    "autodebug_wait_for_build",
 }
 
 

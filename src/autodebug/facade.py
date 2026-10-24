@@ -131,6 +131,9 @@ class _CaseContext:
     #: the open dialog request. The approval itself is issued by the host.
     staged_plan: CasePlan | None = None
     approval_request: str | None = None
+    #: Build task (BR-05): when it started, and whether it succeeded.
+    build_started_at: float | None = None
+    build_succeeded: bool = False
 
 
 class AutoDebugFacade:
@@ -544,6 +547,81 @@ class AutoDebugFacade:
         except AutoDebugError as exc:
             return _err(case_id, exc.detail)
 
+    # -- build (BR-05) ------------------------------------------------------
+
+    def _build_evidence(self, ctx: _CaseContext, status: str, code: int | None, tail: tuple[str, ...]) -> None:
+        if ctx.evidence_store is None:
+            ctx.evidence_store = EvidenceStore(self._evidence_base_dir, ctx.case.case_id,
+                                               max_events=ctx.case.plan.policy.max_evidence_records)
+        ctx.evidence_store.record_evidence(
+            event_type="build_finished", session_id="build", source_revision=ctx.case.plan.source_revision,
+            frame=f"task:{ctx.case.plan.build_task}", observation_name="build",
+            observation_value=f"{status}, exit code {code}" + ("\n" + "\n".join(tail) if tail else ""),
+            expected="exit code 0", confidence="observation-only", plan_digest=ctx.case.plan.digest_sha256,
+        )
+
+    def _check_build_approval(self, ctx: _CaseContext, approval: ApprovalRecord) -> None:
+        if ctx.cancel_event.is_set() or ctx.case.state in TERMINAL_STATES:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.CANCELLED, message="case is no longer active"))
+        if ctx.case.state != CaseState.AWAITING_APPROVAL:
+            raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="the build runs after approval and before arming"))
+        self._check_binding(ctx)
+        self._verify_approval(ctx, approval, SCOPE_BUILD)
+
+    def autodebug_run_build(self, *, case_id: str, approval: ApprovalRecord) -> dict:
+        try:
+            ctx = self._lookup(case_id)
+            with SessionLease(ctx.operation_lock):
+                self._check_build_approval(ctx, approval)
+                if ctx.case.plan.build_task is None:
+                    return _ok(case_id, {"status": "not_required", "next": "call autodebug_arm_case"})
+                if ctx.build_started_at is not None:
+                    raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="the build already ran for this case"))
+                self._bridge_call(ctx, ctx.adapter.start_build)
+                ctx.build_started_at = self._now()
+        except AutoDebugError as exc:
+            return _err(case_id, exc.detail)
+        return _ok(case_id, {"status": "running", "next": "call autodebug_wait_for_build"})
+
+    def autodebug_wait_for_build(self, *, case_id: str, approval: ApprovalRecord, timeout_seconds: float) -> dict:
+        try:
+            ctx = self._lookup(case_id)
+            if not _positive_finite(timeout_seconds) or timeout_seconds > MAX_APPROVAL_WAIT:
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.POLICY_LIMIT, message="timeout_seconds must be in (0, 30]"))
+            if ctx.build_succeeded:
+                return _ok(case_id, {"status": "succeeded", "next": "call autodebug_arm_case"})
+            if ctx.build_started_at is None:
+                raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="call autodebug_run_build first"))
+            start = self._now()
+            while True:
+                with SessionLease(ctx.operation_lock):
+                    self._check_build_approval(ctx, approval)
+                    status, code, tail = self._bridge_call(ctx, ctx.adapter.build_status)
+                    over_budget = self._now() - ctx.build_started_at >= ctx.case.plan.policy.max_build_seconds
+                    if status == "succeeded":
+                        self._build_evidence(ctx, status, code, tail)
+                        ctx.build_succeeded = True
+                        return _ok(case_id, {"status": "succeeded", "exit_code": code, "next": "call autodebug_arm_case"})
+                    if status == "failed" or over_budget:
+                        reason = f"exit code {code}" if status == "failed" else "it ran past policy.max_build_seconds"
+                        self._build_evidence(ctx, "failed" if status == "failed" else "timed out", code, tail)
+                        self._broker.revoke_for_case(case_id)
+                        ctx.case.fail()
+                        ctx.evidence_store.finalize(case_state=ctx.case.state.value, report=None)
+                        self._close_adapter(ctx)
+                        raise AutoDebugError(ErrorDetail(
+                            code=ErrorCode.BUILD_FAILED,
+                            message=f"build task {ctx.case.plan.build_task!r} failed ({reason}); nothing was launched. "
+                                    "Last output: " + " | ".join(tail[-5:]),
+                        ))
+                if self._now() - start >= timeout_seconds:
+                    return _ok(case_id, {"status": "running", "next": "call autodebug_wait_for_build again"})
+                self._sleep(min(0.25, timeout_seconds))
+        except AutoDebugError as exc:
+            return _err(case_id, exc.detail)
+        except (OSError, ValueError):
+            return self._storage_error(case_id)
+
     # -- read-only tools ----------------------------------------------------
 
     def autodebug_health(self) -> dict:
@@ -639,6 +717,11 @@ class AutoDebugFacade:
                 self._check_binding(ctx)
                 if ctx.case.state != CaseState.AWAITING_APPROVAL:
                     raise AutoDebugError(ErrorDetail(code=ErrorCode.NOT_APPROVED, message="case is not awaiting approval"))
+                if ctx.case.plan.build_task is not None and not ctx.build_succeeded:
+                    raise AutoDebugError(ErrorDetail(
+                        code=ErrorCode.NOT_APPROVED, message="run the plan's build first: autodebug_run_build, then autodebug_wait_for_build",
+                        recoverable=True,
+                    ))
                 self._broker.verify_approval(
                     approval, plan=ctx.case.plan, backend_kind=ctx.adapter.backend_kind,
                     target_identity=target_identity_for(ctx.target), required_scope=SCOPE_ARM,
@@ -651,7 +734,8 @@ class AutoDebugFacade:
                     ctx.arming_started_at = started
                     try:
                         try:
-                            ctx.evidence_store = EvidenceStore(self._evidence_base_dir, case_id, max_events=ctx.case.plan.policy.max_evidence_records)
+                            if ctx.evidence_store is None:
+                                ctx.evidence_store = EvidenceStore(self._evidence_base_dir, case_id, max_events=ctx.case.plan.policy.max_evidence_records)
                         except (OSError, ValueError):
                             self._broker.revoke_for_case(case_id)
                             ctx.case.fail()
