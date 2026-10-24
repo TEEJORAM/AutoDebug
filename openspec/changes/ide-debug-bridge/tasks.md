@@ -12,7 +12,10 @@ requirement IDs, tests and the observed test result.
   caller-supplied `resolved_inputs`.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 546, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
-- [ ] B2 — Bridge protocol, discovery and Python fake bridge (BR-01, BR-02, BR-11).
+- [x] B2 — Bridge protocol, discovery and Python fake bridge (BR-01, BR-02, BR-11).
+  `bridge/protocol.py`, `bridge/client.py`, `tests/fixtures/fake_bridge.py`.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    ran 563, failures 0, errors 0, skipped 9 (Linux, Python 3.13).
 - [ ] B3 — `VSCodeBridgeAdapter`: launch, breakpoints, stop, stack, variables,
   step, continue, end (BR-06, BR-07, BR-08).
 - [ ] B4 — Bridge-issued approval, allowlist entry, new approval tools
