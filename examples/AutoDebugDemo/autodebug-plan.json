@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.2-draft",
+  "case_id": "DEMO-AREA-MOVE",
+  "source_revision": "examples/AutoDebugDemo",
+  "target": {"host_id": "local-dev", "ide": "vscode", "debug_session_id": null, "pid": null},
+  "launch_configuration": [["program", "report.py"]],
+  "process_running": false,
+  "breakpoints": [{"file": "geometry.py", "line": 15}],
+  "reproduction": {
+    "mode": "manual",
+    "steps": [
+      "Run report.py under the debugger",
+      "When the breakpoint stops, compare i, len(points) and total on each pass of the loop"
+    ]
+  },
+  "policy": {"max_steps": 20, "max_inspection_seconds": 600}
+}

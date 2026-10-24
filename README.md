@@ -74,6 +74,10 @@ your real IDE debugger. **[docs/getting-started.md](docs/getting-started.md)**
 covers Cursor, Claude Desktop and Claude Code, the full demo walkthrough and
 troubleshooting.
 
+**Need a project to practise on?**
+[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) is a small Python and
+C++ app with one deliberate bug, ready to debug in VS Code, Visual Studio or CLion.
+
 ## How it works
 
 ```text
@@ -126,6 +130,7 @@ These are design targets. None is certified yet; current results are in the
 | Read | For |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Install, connect a client, run the demo |
+| [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) | Sample buggy app (Python and C++) to practise on |
 | [docs/status.md](docs/status.md) | What works, open blockers, verification |
 | [docs/architecture.md](docs/architecture.md) | Components, source layout, investigation flow |
 | [docs/mcp-contract.md](docs/mcp-contract.md) | Tools, data model, approval binding, error codes |

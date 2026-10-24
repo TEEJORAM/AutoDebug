@@ -19,6 +19,8 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 - Five IDE adapters (VS Code, Cursor, CLion, Xcode, Visual Studio) sharing one
   client-backed implementation, tested against mock clients only.
 - Offline stdlib-only wheel/sdist builder.
+- Sample buggy project for practice and future adapter tests:
+  [examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md).
 
 ## What does not work yet
 
@@ -60,6 +62,9 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — AutoDebugDemo sample project.** `examples/AutoDebugDemo`
+  (Python + C++, one deliberate bug, VS Code launch configs, sample plan) and
+  `tests/test_examples.py`. Documentation and examples only; no behaviour change.
 - **2026-10-24 — copy-and-paste setup.** `config --write`, invocation-aware
   hints, README rewritten with pasteable Windows/macOS/Linux commands.
 - **2026-10-24 — native Windows evidence storage**

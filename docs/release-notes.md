@@ -4,6 +4,15 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — AutoDebugDemo sample project
+
+- `examples/AutoDebugDemo`: a small sketch-geometry app (Python, plus a C++
+  twin with CMake) whose polygon area changes when the shape is moved. Includes
+  VS Code launch configurations, a step-by-step walkthrough with the answer, and
+  a valid sample `autodebug-plan.json` for the bug.
+- `tests/test_examples.py` checks that the bug reproduces, the documented fix
+  works and the sample plan stages.
+
 ## 2026-10-24 — copy-and-paste setup
 
 - `autodebug config <client> --write [PROJECT_FOLDER]` writes the client
