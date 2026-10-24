@@ -160,8 +160,10 @@ const resolveVariables = (value) => {
   return value;
 };
 
+const installedDebuggers = (process.env.HARNESS_DEBUGGERS ?? 'debugpy').split(',').filter(Boolean);
 const vscode = {
   version: '1.99.0-harness',
+  extensions: { all: [{ id: 'ms-python.debugpy', packageJSON: { contributes: { debuggers: installedDebuggers.map((type) => ({ type })) } } }] },
   env: { appName: process.env.HARNESS_APP || 'Cursor', sessionId: 'harnesssession1' },
   Uri: { file: (fsPath) => ({ fsPath }) },
   Position, Location, SourceBreakpoint,

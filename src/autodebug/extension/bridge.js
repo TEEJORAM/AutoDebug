@@ -15,6 +15,11 @@ const VERSION = '0.2.0';
 const MAX_LINE = 1024 * 1024;
 const APPROVAL_SECONDS = 120;
 const STEP_COMMANDS = { over: 'next', into: 'stepIn', out: 'stepOut' };
+// Extensions to suggest when a launch configuration's debugger is missing.
+const DEBUGGER_EXTENSIONS = {
+  debugpy: 'Python Debugger', python: 'Python Debugger', cppdbg: 'C/C++', cppvsdbg: 'C/C++', lldb: 'CodeLLDB',
+  coreclr: 'C#', java: 'Debugger for Java', go: 'Go', php: 'PHP Debug',
+};
 
 class BridgeError extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -230,6 +235,12 @@ class Bridge {
     const launch = this.launchConfigs(folder).find((c) => c.name === args.launch);
     if (!launch) fail('NOT_FOUND', `no launch configuration named "${args.launch}" in .vscode/launch.json`);
     if (launch.request !== 'launch') fail('BAD_REQUEST', 'only "launch" configurations are supported');
+    const types = this.debuggerTypes();
+    if (types && !types.has(launch.type)) {
+      const extension = DEBUGGER_EXTENSIONS[launch.type];
+      fail('NOT_FOUND', `${this.ide === 'cursor' ? 'Cursor' : 'VS Code'} has no debugger for type "${launch.type}". `
+        + `Ask the developer to install ${extension ? `the ${extension} extension` : 'the extension for it'} and reload the window.`);
+    }
     let task = null;
     if (args.task) {
       task = this.taskDefinitions(folder).find((t) => t.label === args.task);
@@ -246,6 +257,18 @@ class Bridge {
     this.update({});
     this.ask(this.session);
     return { state: this.snapshot() };
+  }
+
+  // Debug types that installed extensions provide; null if the IDE does not say.
+  debuggerTypes() {
+    const all = this.vscode.extensions && this.vscode.extensions.all;
+    if (!Array.isArray(all)) return null;
+    const types = new Set();
+    for (const extension of all) {
+      const debuggers = (extension.packageJSON && extension.packageJSON.contributes && extension.packageJSON.contributes.debuggers) || [];
+      debuggers.forEach((d) => d && d.type && types.add(d.type));
+    }
+    return types;
   }
 
   breakpoint(folder, b) {
