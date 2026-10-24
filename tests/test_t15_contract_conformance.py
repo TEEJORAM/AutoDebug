@@ -104,6 +104,7 @@ DOCUMENTED_FACADE_TOOLS = {
     "autodebug_wait_for_approval",
     "autodebug_run_build",
     "autodebug_wait_for_build",
+    "autodebug_list_variables",
 }
 
 

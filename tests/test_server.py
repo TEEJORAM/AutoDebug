@@ -78,8 +78,8 @@ INITIALIZE = {
 class TestBinding(unittest.TestCase):
     def test_exact_tool_surface_schemas_and_no_approval_channel(self):
         tools = _dispatcher().list_tools()
-        self.assertEqual(len(tools), 19)
-        self.assertEqual(len({t["name"] for t in tools}), 19)
+        self.assertEqual(len(tools), 20)
+        self.assertEqual(len({t["name"] for t in tools}), 20)
         for tool in tools:
             schema = tool["inputSchema"]
             self.assertEqual(schema["type"], "object")
@@ -299,7 +299,7 @@ class _WorkspaceTest(unittest.TestCase):
 class TestSubprocess(_WorkspaceTest):
     def test_help_version_and_required_local_evidence_directory(self):
         env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), PYTHONDONTWRITEBYTECODE="1")
-        for option, expected in (("--help", "Fake-only"), ("--version", "0.1.0")):
+        for option, expected in (("--help", "click Approve in the IDE"), ("--version", "0.1.0")):
             result = subprocess.run([sys.executable, "-m", "autodebug", option], cwd=ROOT, env=env,
                                     capture_output=True, timeout=5, check=True)
             self.assertIn(expected, result.stdout.decode())
@@ -316,7 +316,7 @@ class TestSubprocess(_WorkspaceTest):
         result = process.initialize("2099-01-01")["result"]
         self.assertEqual(result["protocolVersion"], PROTOCOL_VERSION)
         self.assertEqual(result["capabilities"], {"tools": {"listChanged": False}})
-        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 19)
+        self.assertEqual(len(process.request("tools/list")["result"]["tools"]), 20)
         self.assertEqual(process.request("initialize", INITIALIZE)["error"]["code"], -32600)
         self.assertEqual(process.request("unknown")["error"]["code"], -32601)
         health = process.tool("autodebug_health")["result"]

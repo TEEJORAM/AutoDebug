@@ -133,6 +133,9 @@ class Debugging(BridgeFlow):
         self.assertEqual((stop["reason"], stop["location"]), ("breakpoint", "geometry.py:15"))
         frames = self.ok("autodebug_get_stack", frame_limit=5)["frames"]
         self.assertEqual(frames[0]["name"], "polygon_area")
+        listed = self.ok("autodebug_list_variables", frame_id="1")["variables"]
+        self.assertIn({"name": "password", "type": "str"}, listed)
+        self.assertNotIn("hunter2", json.dumps(listed))
         variables = self.ok("autodebug_get_variables", frame_id="1", selected_names=["i", "total", "password"])
         self.assertEqual(variables["variables"]["i"], "0")
         self.assertNotIn("hunter2", json.dumps(variables))
@@ -174,11 +177,29 @@ class Debugging(BridgeFlow):
         self.assertIn("exited", result["error"]["message"])
 
 
+class Guidance(BridgeFlow):
+    def test_every_tool_says_what_it_does(self):
+        tools = self.dispatcher.list_tools()
+        self.assertTrue(all(len(t["description"]) > 20 for t in tools))
+        described = {t["name"]: t["description"] for t in tools}
+        self.assertIn("Approve", described["autodebug_request_approval"])
+        self.assertIn("step_in", described["autodebug_step"])
+
+    def test_bridge_instructions_describe_the_workflow_in_order(self):
+        text = self.dispatcher.instructions
+        order = ["create a case", "stage a schema 0.3 plan", "request approval", "run the build", "arm",
+                 "wait_for_stop", "complete the case"]
+        positions = [text.index(step) for step in order]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("you cannot approve", text)
+
+
 class DemoModeHasNoBridge(unittest.TestCase):
     def test_approval_tools_are_unsupported_in_the_demo(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         dispatcher = build_dispatcher(create_run_dir(Path(tmp.name) / "e"), demo=True)
+        self.assertIn("Synthetic demo", dispatcher.instructions)
         for name, args in (("autodebug_request_approval", {}), ("autodebug_wait_for_approval", {"timeout_seconds": 1})):
             result = dispatcher.call(name, dispatcher.decode(name, {"case_id": "AUTODEBUG-DEMO", **args}))
             self.assertEqual(result["error"]["code"], "CAPABILITY_UNSUPPORTED")

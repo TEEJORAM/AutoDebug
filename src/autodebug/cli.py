@@ -42,8 +42,9 @@ _DESCRIPTION = """\
 AutoDebug: a local MCP server that lets an AI client investigate bugs through
 your IDE's debugger, behind plan-bound human approval.
 
-Fake-only build: only the synthetic demo debugger is operational; real IDE
-debugger control is disabled until the security gate is approved."""
+`serve` drives VS Code or Cursor through the AutoDebug Bridge extension: nothing
+runs until you click Approve in the IDE. `serve --demo` runs the synthetic demo
+debugger instead. CLion, Visual Studio and Xcode are not supported yet."""
 
 _EPILOG = """\
 quick start:
