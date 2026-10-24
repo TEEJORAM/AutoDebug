@@ -102,7 +102,7 @@ class Session(ToolsTest):
         self.assertIn({"name": "total", "before": "0.0", "after": "-1.0"}, result["changed"])
         multi = self.debugger.step("over", count=3)
         self.assertEqual(multi["path"], ["geometry.py:15", "geometry.py:12", "geometry.py:15"])
-        self.assertEqual(multi["steps"], "4 of 50 used")
+        self.assertEqual(multi["steps"], "4 of 100 used")
 
     def test_step_limit(self):
         self.start_paused(max_steps=1)

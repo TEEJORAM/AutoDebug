@@ -78,16 +78,25 @@ Click **Approve** when the IDE asks. Try it on the sample project first:
 | Tool | What it does |
 |---|---|
 | `list_targets` | Launch configurations and build tasks in the open project |
-| `start_session` | Approval, optional build, breakpoints, launch; waits for the first stop |
-| `wait` · `pause` · `stop_session` | Follow, interrupt or end the session |
+| `start_session` | Approval, optional build, breakpoints, launch or attach; waits for the first stop |
+| `wait` · `pause` · `stop_session` | Follow, interrupt or end the session. `wait` can `ask_developer` to reproduce a GUI step |
 | `step` | Over, into or out, 1–20 times, with the variables that changed |
 | `continue` | Run to the next stop and return it |
-| `inspect` · `stack` | Variables of a frame; the call stack |
-| `breakpoints` | Add or remove breakpoints during the session |
+| `inspect` · `stack` · `threads` | Variables (including nested paths), the call stack, and threads |
+| `breakpoints` · `exceptions` | Source and function breakpoints; exception filters |
 | `trace` | Collect variables every time a line runs |
 | `write_report` | Root-cause report in `autodebug-reports/` with an automatic timeline |
 
 How it works, the protocol and the limits: [docs/design.md](docs/design.md).
+
+## Big projects (Blender, FreeCAD)
+
+- Attach to embedded Python with debugpy listening, for example **Attach to Python (port 5678)** in the sample, and pass `process_id` when the configuration asks you to pick a process. Ending the session detaches; the program keeps running.
+- Build through `preLaunchTask` or `build_task`. `build_minutes` (default 30) is the limit for a long compile.
+- In Cursor, use a CodeLLDB configuration (`"type": "lldb"`). The Microsoft C/C++ debugger does not run there.
+- Pass `source_folders` for add-ons that live outside the workspace.
+- Pass `ask_developer` to `wait` when the bug needs a click in the application's own window.
+- Values the agent reads are sent to the AI model, the same as any other tool result. Debug only programs and data you can share with it.
 
 ## Develop
 

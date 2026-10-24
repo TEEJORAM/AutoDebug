@@ -3,6 +3,7 @@ real Python tools over the real protocol. Skipped without Node.js."""
 
 import json
 import os
+import sys
 import queue
 import shutil
 import subprocess
@@ -31,13 +32,22 @@ class HarnessTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.workspace = Path(tmp.name) / "AutoDebugDemo"
+        base = Path(tmp.name).resolve()
+        self.workspace = base / "AutoDebugDemo"
         shutil.copytree(DEMO, self.workspace, ignore=shutil.ignore_patterns("__pycache__", ".cursor", "mcp.json"))
         tasks = {"version": "2.0.0", "tasks": [{"label": "check", "type": "shell", "command": "python", "args": ["-m", "py_compile", "geometry.py"]}]}
         (self.workspace / ".vscode" / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
-        self.bridges = Path(tmp.name) / "state" / "bridges"
+        self.bridges = base / "state" / "bridges"
         env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers,
-                   HARNESS_EDITOR_BP=self.editor_bp)
+                   HARNESS_EDITOR_BP=self.editor_bp, HARNESS_LATE_BP=getattr(self, "late_bp", ""),
+                   HARNESS_BUILD_HANG=getattr(self, "build_hang", ""),
+                   HARNESS_STEP_FAIL=getattr(self, "step_fail", ""),
+                   HARNESS_EXCEPTION=getattr(self, "exception_stop", ""),
+                   HARNESS_BP_MESSAGE=getattr(self, "bp_message", ""),
+                   HARNESS_BUILD_MINUTE_MS=getattr(self, "build_minute_ms", ""),
+                   HARNESS_STACK_THROW=getattr(self, "stack_throw", ""),
+                   HARNESS_SLOW_STACK=getattr(self, "slow_stack", ""),
+                   HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""))
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -102,7 +112,8 @@ class Extension(HarnessTest):
         self.assertTrue(dialog["modal"])
         self.assertEqual(dialog["items"], ["Approve"])
         detail = dialog["detail"]
-        for expected in ("Goal: Find why moving a shape changes its area", "Build first: python -m py_compile geometry.py",
+        for expected in ("Goal: Find why moving a shape changes its area",
+                         'Build first: "check": python -m py_compile geometry.py',
                          '"Debug tests" (debugpy) unittest -v', "Breakpoints: geometry.py:15", "Limits: 7 steps"):
             self.assertIn(expected, detail)
 
@@ -181,6 +192,274 @@ class Extension(HarnessTest):
         self.send("exit")
         self.node.wait(10)
         self.assertEqual(discover(self.bridges), [])
+
+
+class ApprovalDetail(HarnessTest):
+    def _launch(self, config, tasks=()):
+        folder = self.workspace / ".vscode"
+        launch = json.loads((folder / "launch.json").read_text(encoding="utf-8"))
+        launch["configurations"].append(config)
+        (folder / "launch.json").write_text(json.dumps(launch), encoding="utf-8")
+        if tasks:
+            task_file = json.loads((folder / "tasks.json").read_text(encoding="utf-8"))
+            task_file["tasks"].extend(tasks)
+            (folder / "tasks.json").write_text(json.dumps(task_file), encoding="utf-8")
+
+    def test_prelaunch_task_command_is_shown(self):
+        self._launch(
+            {"name": "With pre", "type": "debugpy", "request": "launch", "module": "unittest", "preLaunchTask": "build"},
+            [{"label": "configure", "type": "shell", "command": "cmake", "args": ["-S", ".", "-B", "build"]},
+             {"label": "build", "type": "shell", "command": "cmake", "args": ["--build", "build"], "dependsOn": "configure"}],
+        )
+        dialog = self.start(launch_configuration="With pre", breakpoints=[])
+        self.assertIn(
+            'Before the debugger starts (preLaunchTask): "build": cmake --build build (first: "configure": cmake -S . -B build)',
+            dialog["detail"],
+        )
+
+    def test_input_variable_and_remote_host_are_refused(self):
+        self._launch({"name": "Inputs", "type": "debugpy", "request": "launch", "program": "${input:x}"})
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Inputs", breakpoints=[], goal="x")
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("${input:x}", caught.exception.message)
+        self._launch({"name": "Remote", "type": "debugpy", "request": "launch", "program": "a.py", "host": "example.com"})
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Remote", breakpoints=[], goal="x")
+        self.assertIn("only programs on this computer", caught.exception.message)
+
+    def test_platform_block_is_applied(self):
+        self._launch({"name": "Platform", "type": "debugpy", "request": "launch", "program": "fallback.py",
+                      "linux": {"program": "linux.py"}, "windows": {"program": "win.py"}, "osx": {"program": "osx.py"}})
+        dialog = self.start(launch_configuration="Platform", breakpoints=[])
+        program = {"linux": "linux.py", "win32": "win.py", "darwin": "osx.py"}[sys.platform]
+        self.assertIn(f'"program": "{program}"', dialog["detail"])
+        for key in ("windows", "osx", "linux"):
+            self.assertNotIn(f'"{key}"', dialog["detail"])
+
+    def test_attach_dialog_and_detach(self):
+        self._launch({"name": "Attach py", "type": "debugpy", "request": "attach",
+                      "connect": {"host": "localhost", "port": 5678}})
+        dialog = self.start(launch_configuration="Attach py",
+                            breakpoints=[{"file": "geometry.py", "line": 15}])
+        self.assertIn('attach the debugger for "', dialog["message"])
+        self.assertIn("Attach to: the debugger listening on localhost:5678", dialog["detail"])
+        self.assertIn("the debugger detaches and the program keeps running", dialog["detail"])
+        self.send("approve")
+        self.assertEqual(self.debugger.wait(30)["status"], "paused")
+        self.debugger.stop_session()
+        self.assertIn('"terminateDebuggee":false', self.expect("DISCONNECT"))
+
+    def test_process_id_on_a_launch_configuration_is_refused(self):
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x", process_id=1234)
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("process_id is only for attach", caught.exception.message)
+
+
+class LateBreakpoint(HarnessTest):
+    late_bp = "1"
+
+    def test_unverified_breakpoint_binds_when_the_module_loads(self):
+        _, result = self.approved()
+        self.assertTrue(result["breakpoints"][0]["verified"])
+
+
+class NestedAndThreads(HarnessTest):
+    def test_paths_depth_and_child_redaction(self):
+        self.approved()
+        threads = self.debugger.threads()
+        self.assertEqual([item["name"] for item in threads["threads"]], ["main", "worker"])
+        point = self.debugger.inspect(names=["points[2]"], depth=1)["variables"][0]
+        self.assertEqual(point["value"], "(3, 2)")
+        coordinate = self.debugger.inspect(names=["mesh.verts[2].co"], depth=1)["variables"][0]
+        self.assertEqual(coordinate["value"], "(1, 2, 3)")
+        hidden = self.debugger.inspect(names=["credentials"], depth=1)["variables"][0]["children"][0]
+        self.assertEqual(hidden["name"], "note")
+        self.assertEqual(hidden["value"], "***REDACTED***")
+        self.assertNotIn("visible-child", json.dumps(hidden))
+
+
+class CursorCpp(HarnessTest):
+    def test_microsoft_cpp_debugger_is_refused_in_cursor(self):
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Debug C++ (gdb)", breakpoints=[], goal="x")
+        self.assertIn('("type": "lldb")', caught.exception.message)
+
+
+class BuildChain(HarnessTest):
+    def _write(self, config, tasks):
+        folder = self.workspace / ".vscode"
+        launch = json.loads((folder / "launch.json").read_text(encoding="utf-8"))
+        launch["configurations"].append(config)
+        (folder / "launch.json").write_text(json.dumps(launch), encoding="utf-8")
+        task_file = json.loads((folder / "tasks.json").read_text(encoding="utf-8"))
+        task_file["tasks"].extend(tasks)
+        (folder / "tasks.json").write_text(json.dumps(task_file), encoding="utf-8")
+
+    def test_build_task_shows_its_dependency_chain(self):
+        self._write(
+            {"name": "Built", "type": "debugpy", "request": "launch", "module": "unittest"},
+            [{"label": "prep", "type": "shell", "command": "cmake", "args": ["-S", "cpp"]},
+             {"label": "b2", "type": "shell", "command": "cmake", "args": ["--build", "build"], "dependsOn": "prep"}],
+        )
+        dialog = self.start(launch_configuration="Built", breakpoints=[], build_task="b2")
+        self.assertIn('Build first: "b2": cmake --build build (first: "prep": cmake -S cpp)', dialog["detail"])
+
+    def test_an_unused_task_with_an_input_variable_does_not_block_the_session(self):
+        self._write(
+            {"name": "Plain", "type": "debugpy", "request": "launch", "module": "unittest"},
+            [{"label": "unused", "type": "shell", "command": "echo", "args": ["${input:x}"]}],
+        )
+        dialog = self.start(launch_configuration="Plain", breakpoints=[])
+        self.assertIn("Approve", dialog["items"])
+
+    def test_attach_without_process_id_is_refused(self):
+        self._write(
+            {"name": "Pick", "type": "debugpy", "request": "attach", "processId": "${command:pickProcess}"},
+            [],
+        )
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(launch_configuration="Pick", breakpoints=[], goal="x")
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("pass process_id", caught.exception.message)
+
+
+class AskDeveloper(HarnessTest):
+    def test_the_note_returns_before_the_notification_is_closed_and_is_shown_once(self):
+        self.approved()
+        result = self.debugger.wait(0.4, ask_developer="move the square")
+        self.assertEqual(result["status"], "paused")
+        self.assertEqual(self.expect("INFO", 2), "AutoDebug: the AI agent asks you to: move the square")
+        self.debugger.wait(0.2, ask_developer="move the square")
+        try:
+            extra = self.lines.get_nowait()
+        except queue.Empty:
+            extra = ""
+        self.assertFalse(str(extra).startswith("INFO"))
+
+
+class StepFailure(HarnessTest):
+    step_fail = "1"
+
+    def test_a_rejected_step_stays_paused_and_does_not_spend_a_step(self):
+        self.approved()
+        with self.assertRaises(DebugError):
+            self.debugger.step()
+        state = self.debugger.wait(2)
+        self.assertEqual(state["status"], "paused")
+        self.assertEqual(state["steps"], "0 of 100 used")
+
+
+class HungBuild(HarnessTest):
+    build_hang = "1"
+    build_minute_ms = "40"
+
+    def test_a_build_that_exceeds_build_minutes_is_terminated(self):
+        started = time.monotonic()
+        self.start(build_task="check", build_minutes=1, wait_seconds=0.2)
+        self.send("approve")
+        deadline = time.monotonic() + 5
+        result = {"status": "building"}
+        while result["status"] == "building" and time.monotonic() < deadline:
+            result = self.debugger.wait(1)
+        self.assertEqual(result["status"], "build_failed", result)
+        self.assertEqual(result.get("message"), "the build took longer than 1 minute")
+        self.expect("LOG build terminated", 5)
+        self.assertLess(time.monotonic() - started, 5)
+
+
+class ExceptionStop(HarnessTest):
+    exception_stop = "1"
+
+    def test_exception_details_arrive_with_the_pause(self):
+        _, result = self.approved()
+        self.assertEqual(result["status"], "paused")
+        self.assertEqual(result["exception"]["id"], "AssertionError")
+        self.assertIn("2.0 != 1.0", result["exception"]["description"])
+
+    def test_exception_filters_can_be_listed_and_unknown_ids_are_refused(self):
+        self.start()
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.exceptions()
+        self.assertEqual(caught.exception.code, "NOT_FOUND")
+        self.send("approve")
+        self.assertEqual(self.debugger.wait(30)["status"], "paused")
+        listed = self.debugger.exceptions()
+        self.assertEqual([item["id"] for item in listed["filters"]], ["raised", "uncaught"])
+        self.debugger.exceptions(enable=["uncaught"])
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.exceptions(enable=["nope"])
+        self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.assertIn("unknown exception filters: nope", caught.exception.message)
+        self.assertIn("uncaught", caught.exception.message)
+
+
+class FunctionBreakpoints(HarnessTest):
+    def test_function_breakpoints_are_listed_and_logged(self):
+        _, result = self.approved(function_breakpoints=["polygon_area"])
+        self.assertIn({"at": "function polygon_area", "source": "session", "verified": False}, result["breakpoints"])
+        changed = self.debugger.breakpoints(add_functions=["move"])
+        self.assertIn("function move", [item["at"] for item in changed["breakpoints"]])
+        self.assertTrue(any(event.kind == "breakpoints" and "move" in event.detail for event in self.debugger.timeline))
+        self.debugger.stop_session()
+        self.expect("LOG stopped")
+        self.send("breakpoints")
+        self.assertEqual(self.expect("BREAKPOINTS"), "0")
+
+
+class SourceFolders(HarnessTest):
+    def test_source_folders_allow_an_outside_file_and_reject_the_rest(self):
+        outside = self.workspace.parent / "addon"
+        outside.mkdir()
+        extra = outside / "extra.py"
+        extra.write_text("value = 1\n", encoding="utf-8")
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(
+                launch_configuration="Debug tests", breakpoints=[{"file": str(extra), "line": 1}], goal="x")
+        self.assertEqual(caught.exception.code, "OUTSIDE_WORKSPACE")
+        self.debugger.close()
+        self.debugger = Debugger(find_windows=lambda: discover(self.bridges))
+        dialog = self.start(breakpoints=[{"file": str(extra.resolve()), "line": 1}], source_folders=[str(outside.resolve())])
+        self.assertIn(str(outside.resolve()), dialog["detail"])
+
+
+class UnboundMessage(HarnessTest):
+    bp_message = "No source file named geometry.cpp"
+
+    def test_the_adapter_message_is_kept(self):
+        _, result = self.approved()
+        self.assertEqual(
+            result["breakpoints"][0]["note"],
+            "not bound yet (No source file named geometry.cpp); it may bind when its module loads",
+        )
+
+
+class StopHandling(HarnessTest):
+    stack_throw = "1"
+
+    def test_a_stop_error_is_logged_and_the_pause_is_still_reported(self):
+        _, result = self.approved()
+        self.assertEqual(result["status"], "paused")
+        self.assertNotIn("location", result)
+        logged = []
+        while True:
+            try:
+                logged.append(self.lines.get_nowait())
+            except queue.Empty:
+                break
+        self.assertTrue(any("error handling stopped:" in line and "stack trace failed" in line for line in logged), logged)
+
+
+class StopThenResume(HarnessTest):
+    slow_stack = "80"
+    stop_then_continue = "1"
+
+    def test_a_resume_arriving_during_a_stop_is_not_left_paused(self):
+        self.approved()
+        self.debugger._call("continue")
+        time.sleep(0.3)
+        self.assertEqual(self.debugger.wait(0.5)["status"], "running")
 
 
 class EditorBreakpoint(HarnessTest):

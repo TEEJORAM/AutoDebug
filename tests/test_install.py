@@ -18,7 +18,7 @@ class Package(unittest.TestCase):
     def test_vsix_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = install.build_vsix(Path(tmp))
-            self.assertEqual(path.name, "autodebug.autodebug-0.2.0.vsix")
+            self.assertEqual(path.name, "autodebug.autodebug-0.3.0.vsix")
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(archive.namelist(), ["extension.vsixmanifest", "[Content_Types].xml",
                                                       "extension/package.json", "extension/extension.js",

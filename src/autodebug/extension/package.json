@@ -2,7 +2,7 @@
   "name": "autodebug",
   "displayName": "AutoDebug",
   "description": "Lets an AI agent debug your program with this window's debugger, after you click Approve, and write a root-cause report.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "autodebug",
   "license": "UNLICENSED",
   "engines": {"vscode": "^1.80.0"},

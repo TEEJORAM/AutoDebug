@@ -1,3 +1,3 @@
 """AutoDebug: let an AI agent debug a program with the IDE's own debugger."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

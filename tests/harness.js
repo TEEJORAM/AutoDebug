@@ -23,6 +23,7 @@ const readJson = (name) => { try { return JSON.parse(fs.readFileSync(path.join(w
 class Position { constructor(line, character) { this.line = line; this.character = character; } }
 class Location { constructor(uri, position) { this.uri = uri; this.range = { start: position }; } }
 class SourceBreakpoint { constructor(location, enabled, condition) { this.location = location; this.enabled = enabled; this.condition = condition; } }
+class FunctionBreakpoint { constructor(functionName) { this.functionName = functionName; this.enabled = true; } }
 
 let bridge;
 let tracker;
@@ -38,6 +39,7 @@ const taskListeners = [];
 const byFile = () => {
   const files = new Map();
   for (const b of breakpoints) {
+    if (!b.location || !b.location.uri) continue;
     const file = b.location.uri.fsPath;
     files.set(file, [...(files.get(file) || []), b.location.range.start.line + 1]);
   }
@@ -61,18 +63,44 @@ class ScriptedSession {
   send(message) { tracker.onDidSendMessage(message); }
   event(event, body = {}) { this.send({ type: 'event', event, body }); }
   start() {
+    this.send({ type: 'response', command: 'initialize', request_seq: 0, success: true, body: {
+      supportsExceptionInfoRequest: true,
+      exceptionBreakpointFilters: [
+        { filter: 'raised', label: 'Raised Exceptions', default: false },
+        { filter: 'uncaught', label: 'Uncaught Exceptions', default: true },
+      ],
+    } });
+    const late = process.env.HARNESS_LATE_BP === '1';
+    const placed = [];
     for (const [file, lines] of byFile()) {
       const seq = this.seq++;
       tracker.onWillReceiveMessage({ type: 'request', seq, command: 'setBreakpoints', arguments: { source: { path: file }, breakpoints: lines.map((line) => ({ line })) } });
-      this.send({ type: 'response', request_seq: seq, command: 'setBreakpoints', success: true, body: { breakpoints: lines.map((line) => ({ verified: true, line })) } });
+      const message = process.env.HARNESS_BP_MESSAGE || '';
+      const breakpoints = lines.map((line, index) => ({
+        verified: !late && !message, line, id: 100 + placed.length + index, ...(message ? { message } : {}),
+      }));
+      placed.push(...breakpoints.map((bp, index) => ({ ...bp, file, line: lines[index] })));
+      this.send({ type: 'response', request_seq: seq, command: 'setBreakpoints', success: true, body: { breakpoints } });
     }
-    this.event('process', { name: 'python', systemProcessId: 4242 });
-    setTimeout(() => this.run(), 10);
+    const announce = () => {
+      if (late) {
+        for (const bp of placed) this.event('breakpoint', { reason: 'changed', breakpoint: { id: bp.id, verified: true, line: bp.line } });
+      }
+      this.event('process', { name: 'python', systemProcessId: 4242 });
+      setTimeout(() => this.run(), 10);
+    };
+    if (late) setTimeout(announce, 20);
+    else announce();
   }
   lines() { return (byFile().get(this.file()) || []); }
   run() {
     for (this.pos += 1; this.pos < TRACE.length; this.pos += 1) {
-      if (this.lines().includes(TRACE[this.pos].line)) { this.event('stopped', { reason: 'breakpoint', threadId: 1 }); return; }
+      if (this.lines().includes(TRACE[this.pos].line)) {
+        const reason = process.env.HARNESS_EXCEPTION === '1' && !this.exceptionSent ? 'exception' : 'breakpoint';
+        this.exceptionSent = true;
+        this.event('stopped', { reason, threadId: 1 });
+        return;
+      }
     }
     this.event('output', { category: 'stderr', output: 'FAIL: test_area_does_not_change_when_moved\nAssertionError: 2.0 != 1.0\n' });
     this.event('exited', { exitCode: 1 });
@@ -82,6 +110,10 @@ class ScriptedSession {
     const here = TRACE[this.pos] || TRACE[TRACE.length - 1];
     switch (command) {
       case 'stackTrace':
+        if (process.env.HARNESS_STACK_THROW === '1') throw new Error('stack trace failed');
+        if (process.env.HARNESS_SLOW_STACK) {
+          await new Promise((resolve) => setTimeout(resolve, Number(process.env.HARNESS_SLOW_STACK)));
+        }
         return { stackFrames: [
           { id: 1, name: 'polygon_area', source: { path: this.file() }, line: here.line },
           { id: 2, name: 'test_area_does_not_change_when_moved', source: { path: path.join(workspace, 'test_geometry.py') }, line: 18 },
@@ -90,16 +122,41 @@ class ScriptedSession {
         { name: 'Globals', variablesReference: 9, expensive: false }] };
       case 'variables':
         if (args.variablesReference === 9) return { variables: [{ name: 'Point', value: 'tuple[float, float]', type: 'GenericAlias' }] };
-        return { variables: args.variablesReference === 7 ? Object.entries(here.vars).map(([name, value]) => ({ name, value, type: 'str' })) : [{ name: 'self', value: '<test>', type: 'Test' }] };
+        if (args.variablesReference === 30) return { variables: [{ name: 'verts', value: 'list', type: 'list', variablesReference: 31 }] };
+        if (args.variablesReference === 31) return { variables: [{ name: '2', value: 'Vert', type: 'Vert', variablesReference: 32 }, { name: '[0]', value: 'Vert0', type: 'Vert' }] };
+        if (args.variablesReference === 32) return { variables: [{ name: 'co', value: '(1, 2, 3)', type: 'Vector' }] };
+        if (args.variablesReference === 21) return { variables: [{ name: 'api_token', value: 'secret-token-value', type: 'str' }] };
+        if (args.variablesReference === 23) return { variables: [{ name: 'note', value: 'visible-child', type: 'str' }] };
+        if (args.variablesReference === 20) return { variables: [{ name: '0', value: '(2, 1)', type: 'tuple' }, { name: '[2]', value: '(3, 2)', type: 'tuple' }] };
+        if (args.variablesReference !== 7) return { variables: [{ name: 'self', value: '<test>', type: 'Test' }] };
+        return { variables: [
+          ...Object.entries(here.vars).map(([name, value]) => ({ name, value, type: 'str' })),
+          { name: 'points', value: 'list', type: 'list', variablesReference: 20 },
+          { name: 'settings', value: 'dict', type: 'dict', variablesReference: 21 },
+          { name: 'credentials', value: 'dict', type: 'dict', variablesReference: 23 },
+          { name: 'mesh', value: 'Mesh', type: 'Mesh', variablesReference: 30 },
+        ] };
       case 'next': case 'stepIn': case 'stepOut':
+        if (process.env.HARNESS_STEP_FAIL === '1') throw new Error('adapter rejected the step');
         setTimeout(() => {
           this.pos += 1;
           if (this.pos >= TRACE.length) { this.event('exited', { exitCode: 1 }); this.event('terminated'); } else this.event('stopped', { reason: 'step', threadId: 1 });
         }, 5);
         return {};
-      case 'continue': setTimeout(() => this.run(), 5); return {};
+      case 'continue':
+        setTimeout(() => {
+          if (process.env.HARNESS_STOP_THEN_CONTINUE === '1') {
+            this.pos = Math.min(this.pos + 1, TRACE.length - 1);
+            this.event('stopped', { reason: 'breakpoint', threadId: 1 });
+            this.event('continued', { threadId: 1 });
+          } else this.run();
+        }, 5);
+        return {};
       case 'pause': setTimeout(() => this.event('stopped', { reason: 'pause', threadId: 1 }), 5); return {};
-      case 'threads': return { threads: [{ id: 1, name: 'main' }] };
+      case 'threads': return { threads: [{ id: 1, name: 'main' }, { id: 2, name: 'worker' }] };
+      case 'disconnect': say(`DISCONNECT ${JSON.stringify(args)}`); return {};
+      case 'exceptionInfo': return { exceptionId: 'AssertionError', description: '2.0 != 1.0' };
+      case 'setExceptionBreakpoints': return {};
       default: throw new Error(`scripted session has no ${command}`);
     }
   }
@@ -111,7 +168,9 @@ class DebugpySession {
     this.id = 'dap-1'; this.name = configuration.name; this.configuration = configuration; this.seq = 1;
     this.pending = new Map(); this.buffer = Buffer.alloc(0);
     this.initialized = new Promise((resolve) => { this.onInitialized = resolve; });
-    this.adapter = childProcess.spawn(python, ['-m', 'debugpy.adapter'], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const gdb = Boolean(process.env.HARNESS_GDB);
+    this.gdb = gdb;
+    this.adapter = childProcess.spawn(gdb ? 'gdb' : python, gdb ? ['-i', 'dap'] : ['-m', 'debugpy.adapter'], { stdio: ['pipe', 'pipe', 'inherit'] });
     this.adapter.stdout.on('data', (chunk) => this.receive(chunk));
   }
   write(message) { const body = Buffer.from(JSON.stringify(message)); this.adapter.stdin.write(`Content-Length: ${body.length}\r\n\r\n`); this.adapter.stdin.write(body); }
@@ -150,7 +209,18 @@ class DebugpySession {
     }
   }
   async start() {
-    await this.request('initialize', { clientID: 'vscode', adapterID: 'debugpy', pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true, supportsRunInTerminalRequest: true, supportsVariableType: true });
+    await this.request('initialize', { clientID: 'vscode', adapterID: this.gdb ? 'gdb' : 'debugpy', pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true, supportsRunInTerminalRequest: true, supportsVariableType: true });
+    if (this.gdb) {
+      await this.initialized;
+      for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
+      await this.request('setFunctionBreakpoints', { breakpoints: [] });
+      await this.request('launch', {
+        request: 'launch', program: this.configuration.program, cwd: this.configuration.cwd, args: this.configuration.args || [],
+      });
+      await this.request('configurationDone', {});
+      this.started = true;
+      return;
+    }
     const launched = this.request('launch', { ...this.configuration, python });
     await this.initialized;
     for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
@@ -165,7 +235,7 @@ class DebugpySession {
 // Like VS Code: breakpoint changes during a live session are sent to the debug adapter.
 function sync(changed) {
   if (!(session instanceof DebugpySession) || !session.started) return;
-  const files = new Set(changed.map((b) => b.location.uri.fsPath));
+  const files = new Set(changed.filter((b) => b.location && b.location.uri).map((b) => b.location.uri.fsPath));
   const current = byFile();
   for (const file of files) {
     session.request('setBreakpoints', { source: { path: file }, breakpoints: (current.get(file) || []).map((line) => ({ line })) }).catch(() => {});
@@ -185,7 +255,7 @@ const vscode = {
   extensions: { all: [{ id: 'ms-python.debugpy', packageJSON: { contributes: { debuggers: installedDebuggers.map((type) => ({ type })) } } }] },
   env: { appName: process.env.HARNESS_APP || 'Cursor', sessionId: 'harnesssession1' },
   Uri: { file: (fsPath) => ({ fsPath }) },
-  Position, Location, SourceBreakpoint,
+  Position, Location, SourceBreakpoint, FunctionBreakpoint,
   workspace: {
     workspaceFolders: [{ uri: { fsPath: workspace }, name: path.basename(workspace) }],
     getConfiguration: (section) => ({ get: (key) => readJson(section === 'launch' ? 'launch.json' : 'tasks.json')[key] }),
@@ -195,12 +265,15 @@ const vscode = {
       say(`DIALOG ${JSON.stringify({ message, detail: options.detail, modal: options.modal, items })}`);
       dialogs.push(resolve);
     }),
+    showInformationMessage: (message) => { say(`INFO ${message}`); return new Promise(() => {}); },
   },
   tasks: {
     fetchTasks: async () => (readJson('tasks.json').tasks || []).map((t) => ({ name: t.label, scope: { uri: { fsPath: workspace } } })),
     executeTask: async (task) => {
-      const execution = { task };
-      setTimeout(() => taskListeners.forEach((listener) => listener({ execution, exitCode: buildExit })), 20);
+      const execution = { task, terminate: () => say('LOG build terminated') };
+      if (process.env.HARNESS_BUILD_HANG !== '1') {
+        setTimeout(() => taskListeners.forEach((listener) => listener({ execution, exitCode: buildExit })), 20);
+      }
       return execution;
     },
     onDidEndTaskProcess: (listener) => { taskListeners.push(listener); return { dispose: () => taskListeners.splice(taskListeners.indexOf(listener), 1) }; },
@@ -211,7 +284,7 @@ const vscode = {
     removeBreakpoints: (list) => { list.forEach((b) => { const i = breakpoints.indexOf(b); if (i >= 0) breakpoints.splice(i, 1); }); sync(list); },
     startDebugging: async (folder, configuration) => {
       const config = resolveVariables(configuration);
-      session = python ? new DebugpySession(config) : new ScriptedSession(config);
+      session = (python || process.env.HARNESS_GDB) ? new DebugpySession(config) : new ScriptedSession(config);
       tracker = bridge.tracker(session);
       bridge.sessionStarted(session);
       await session.start();
@@ -226,7 +299,11 @@ const vscode = {
   },
 };
 
-bridge = new Bridge(vscode, { folder: bridgesFolder, log: (line) => say(`LOG ${line}`) });
+bridge = new Bridge(vscode, {
+  folder: bridgesFolder,
+  log: (line) => say(`LOG ${line}`),
+  buildMinuteMs: Number(process.env.HARNESS_BUILD_MINUTE_MS) || 60000,
+});
 bridge.start().then(() => say('READY'), (error) => { say(`ERROR ${error.message}`); process.exit(1); });
 
 readline.createInterface({ input: process.stdin }).on('line', (line) => {

@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "configure C++",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["-S", "cpp", "-B", "build/cpp"]
+    },
+    {
+      "label": "build C++",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build/cpp", "--config", "Debug"],
+      "dependsOn": "configure C++"
+    }
+  ]
+}
