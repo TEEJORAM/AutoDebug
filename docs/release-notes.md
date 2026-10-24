@@ -4,6 +4,18 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — CLI and getting started
+
+- New `autodebug` subcommands: `serve`, `doctor` (machine check, `--json`) and
+  `config` (VS Code, Claude Code, Claude Desktop, Cursor).
+- Evidence defaults to a private per-user folder; each server run gets its own
+  `run-*` folder, so clients can restart the server with `--demo` freely.
+  `--evidence-dir` now selects the base, not the run folder.
+- The demo approval lasts 30 minutes (was 60 seconds).
+- `pip install -e .` works (PEP 660); the console entry point is
+  `autodebug.cli:main`. The legacy `autodebug --evidence-dir DIR` still serves.
+- New [getting-started.md](getting-started.md).
+
 ## 2026-10-24 — quick fixes
 
 - `VisualStudioAdapter` now defaults to host `local-windows` instead of

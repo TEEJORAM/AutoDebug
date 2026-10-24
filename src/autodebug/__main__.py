@@ -1,5 +1,5 @@
-"""Run the fake-only MCP stdio gateway with ``python -m autodebug``."""
+"""`python -m autodebug`: see `autodebug.cli`."""
 
-from autodebug.server import main
+from autodebug.cli import main
 
 raise SystemExit(main())

@@ -299,7 +299,7 @@ class _WorkspaceTest(unittest.TestCase):
 class TestSubprocess(_WorkspaceTest):
     def test_help_version_and_required_local_evidence_directory(self):
         env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), PYTHONDONTWRITEBYTECODE="1")
-        for option, expected in (("--help", "fake-only"), ("--version", "0.1.0")):
+        for option, expected in (("--help", "Fake-only"), ("--version", "0.1.0")):
             result = subprocess.run([sys.executable, "-m", "autodebug", option], cwd=ROOT, env=env,
                                     capture_output=True, timeout=5, check=True)
             self.assertIn(expected, result.stdout.decode())
@@ -307,7 +307,7 @@ class TestSubprocess(_WorkspaceTest):
                                 capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, b"")
-        self.assertIn(b"--evidence-dir", result.stderr)
+        self.assertIn(b"serve", result.stderr)
 
     def test_handshake_negotiates_pinned_version_and_fake_only_lifecycle(self):
         process = self.start()
@@ -332,7 +332,12 @@ class TestSubprocess(_WorkspaceTest):
         self.assertNotIn("token", json.dumps(refused))
         process.process.stdin.close()
         self.assertEqual(process.process.wait(timeout=5), 0)
-        self.assertEqual(process.process.stderr.read(), b"")
+        stderr = process.process.stderr.read().decode().splitlines()
+        # Only the startup banner and evidence location; no tokens or errors.
+        self.assertEqual(len(stderr), 2, stderr)
+        self.assertTrue(stderr[0].startswith("autodebug 0.1.0 | MCP stdio"))
+        self.assertTrue(stderr[1].startswith("autodebug: evidence: "))
+        self.assertNotIn("token", "\n".join(stderr))
 
     def test_large_invalid_line_recovers_then_ping(self):
         process = self.start()
@@ -366,7 +371,8 @@ class TestSubprocess(_WorkspaceTest):
             "case_id": DEMO_CASE_ID, "frame_id": frame_id, "selected_names": ["local_var", "password"],
         })["result"]["structuredContent"]
         self.assertTrue(variables["ok"], variables)
-        events_path = self.workspace / "evidence" / DEMO_CASE_ID / "events.jsonl"
+        (run_dir,) = (self.workspace / "evidence").glob("run-*")
+        events_path = run_dir / DEMO_CASE_ID / "events.jsonl"
         events = [json.loads(line) for line in events_path.read_text().splitlines()]
         self.assertTrue(events)
         completed = process.tool("autodebug_complete_case", {
@@ -377,7 +383,7 @@ class TestSubprocess(_WorkspaceTest):
         self.assertTrue(completed["ok"], completed)
         self.assertEqual(completed["result"]["state"], "finalized")
         for relative in completed["result"]["artifacts"].values():
-            self.assertTrue((self.workspace / "evidence" / relative).is_file())
+            self.assertTrue((run_dir / relative).is_file())
         raw = json.dumps([plan, armed, waited, stack, variables, completed])
         self.assertNotIn('"token"', raw)
         self.assertNotIn("synthetic-private-value", raw)
@@ -406,7 +412,8 @@ class TestSubprocess(_WorkspaceTest):
         self.assertEqual(waiting["error"]["code"], "CANCELLED")
         status = process.tool("autodebug_case_status", {"case_id": DEMO_CASE_ID})["result"]["structuredContent"]
         self.assertEqual(status["result"]["state"], "cancelled")
-        self.assertTrue((self.workspace / "evidence" / DEMO_CASE_ID / "case.json").is_file())
+        (run_dir,) = (self.workspace / "evidence").glob("run-*")
+        self.assertTrue((run_dir / DEMO_CASE_ID / "case.json").is_file())
 
     def test_cancel_case_interrupts_wait_without_blocking_ping(self):
         # An injected in-memory host exercises transport concurrency independently
@@ -462,7 +469,7 @@ class TestOfflinePackaging(_WorkspaceTest):
             self.assertIn("autodebug/__main__.py", wheel.namelist())
             self.assertFalse(any(name.startswith("tests/") or "__pycache__" in name for name in wheel.namelist()))
             dist_info = "autodebug-0.1.0.dist-info"
-            self.assertIn(b"autodebug = autodebug.server:main", wheel.read(f"{dist_info}/entry_points.txt"))
+            self.assertIn(b"autodebug = autodebug.cli:main", wheel.read(f"{dist_info}/entry_points.txt"))
             self.assertIn(b"Requires-Python: >=3.11", wheel.read(f"{dist_info}/METADATA"))
             self.assertNotIn(b"Requires-Dist:", wheel.read(f"{dist_info}/METADATA"))
             records = csv.reader(io.StringIO(wheel.read(f"{dist_info}/RECORD").decode()))

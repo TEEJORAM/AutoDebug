@@ -12,19 +12,19 @@ plan-bound human approval.
 
 ## Quick start
 
-Python 3.11+ on Linux or macOS. No dependencies to install.
+AutoDebug is a command-line MCP server: your AI client starts it for you.
+Python 3.11+ on Linux or macOS (on Windows, use WSL).
 
 ```sh
-# Run the tests
-PYTHONPATH=src python3 -m unittest discover -s tests
-
-# Start the server with the synthetic demo (evidence dir must be outside the repo)
-PYTHONPATH=src python3 -m autodebug --evidence-dir ~/autodebug-evidence/run1 --demo
+pip install -e .                                  # installs the `autodebug` command
+autodebug doctor                                  # check this machine
+autodebug config vscode --demo > .vscode/mcp.json # connect VS Code (or claude-code, claude-desktop, cursor)
 ```
 
-The server speaks newline-delimited JSON-RPC (MCP 2025-11-25) on stdin/stdout;
-it is not an interactive shell. See [docs/installation.md](docs/installation.md)
-for the handshake, Windows notes, packaging and upgrades.
+Then start `autodebug` from your client and ask it to investigate the synthetic
+case `AUTODEBUG-DEMO`. **[docs/getting-started.md](docs/getting-started.md)**
+walks through every step and explains what works today: clients can connect
+now, but AutoDebug cannot yet drive your real IDE debugger.
 
 ## How it works
 
@@ -77,6 +77,7 @@ These are design targets. None is certified yet; current results are in the
 
 | Read | For |
 |---|---|
+| [docs/getting-started.md](docs/getting-started.md) | Install, connect a client, run the demo |
 | [docs/status.md](docs/status.md) | What works, open blockers, verification |
 | [docs/architecture.md](docs/architecture.md) | Components, source layout, investigation flow |
 | [docs/mcp-contract.md](docs/mcp-contract.md) | Tools, data model, approval binding, error codes |
@@ -85,7 +86,7 @@ These are design targets. None is certified yet; current results are in the
 | [docs/compatibility-ledger.md](docs/compatibility-ledger.md) | Per-IDE/OS test results |
 | [docs/test-plan.md](docs/test-plan.md) | Test layers, test cases, certification steps |
 | [docs/traceability.md](docs/traceability.md) | Requirement status and tests |
-| [docs/installation.md](docs/installation.md) | Run, talk to the server, build, upgrade |
+| [docs/installation.md](docs/installation.md) | Raw protocol use, packaging, upgrades |
 | [docs/publication.md](docs/publication.md) | Approvals needed to publish or license |
 | [docs/decisions.md](docs/decisions.md), [docs/risks.md](docs/risks.md) | Design decisions, risk register |
 | [docs/release-notes.md](docs/release-notes.md) | Changes |

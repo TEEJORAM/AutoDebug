@@ -7,8 +7,10 @@ APPROVED**). Publication is **BLOCKED** pending the decisions in
 
 ## What works
 
-- Dependency-free MCP 2025-11-25 stdio server with 15 `autodebug_*` tools
-  (`python -m autodebug`), plus an isolated synthetic demo (`--demo`).
+- `autodebug` CLI: `serve` (dependency-free MCP 2025-11-25 stdio server with 15
+  tools), `doctor` and `config` for VS Code, Claude Code, Claude Desktop and
+  Cursor; installable with `pip install .` / `-e .` / `pipx`.
+- Isolated synthetic demo debugger (`serve --demo`).
 - Case workflow: plan staging and digest, approval verification, arming,
   bounded stop/stack/variable inspection, step/continue, completion and
   cancellation, with redacted local evidence (`events.jsonl`, `case.json`,
@@ -62,6 +64,10 @@ further implementation is authorized until a new task is approved in
 
 ## Change log
 
+- **2026-10-24 — CLI and getting started** (`openspec/changes/cli-usability/`).
+  `serve`/`doctor`/`config` subcommands, default private evidence location with
+  one folder per run, 30-minute demo, editable installs, client snippets, and
+  [getting-started.md](getting-started.md).
 - **2026-10-24 — quick fixes.** `VisualStudioAdapter` defaults to host
   `local-windows` (was `local-mac`); packaging tests skip below Python 3.11; CI
   actions moved to v7 (Node 24); first green CI runs recorded above.

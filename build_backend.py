@@ -50,7 +50,7 @@ def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
     return DIST_INFO
 
 
-def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+def _write_wheel(wheel_directory, *, editable: bool) -> str:
     filename = f"{NAME}-{VERSION}-py3-none-any.whl"
     destination = Path(wheel_directory)
     destination.mkdir(parents=True, exist_ok=True)
@@ -61,9 +61,13 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
             digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
             records.append((name, f"sha256={digest}", str(len(data))))
 
-        for path in sorted((ROOT / "src" / "autodebug").rglob("*.py")):
-            if "__pycache__" not in path.parts:
-                add(path.relative_to(ROOT / "src").as_posix(), path.read_bytes())
+        if editable:
+            # PEP 660: point the environment at this checkout's src/ directory.
+            add(f"__editable__.{NAME}.pth", f"{ROOT / 'src'}\n".encode())
+        else:
+            for path in sorted((ROOT / "src" / "autodebug").rglob("*.py")):
+                if "__pycache__" not in path.parts:
+                    add(path.relative_to(ROOT / "src").as_posix(), path.read_bytes())
         for name, data in _metadata().items():
             add(f"{DIST_INFO}/{name}", data)
         license_path = ROOT / "LICENSE"
@@ -74,6 +78,22 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
         writer.writerows([*records, (f"{DIST_INFO}/RECORD", "", "")])
         wheel.writestr(f"{DIST_INFO}/RECORD", record.getvalue().encode("utf-8"))
     return filename
+
+
+def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+    return _write_wheel(wheel_directory, editable=False)
+
+
+def get_requires_for_build_editable(config_settings=None):
+    return []
+
+
+def prepare_metadata_for_build_editable(metadata_directory, config_settings=None):
+    return prepare_metadata_for_build_wheel(metadata_directory, config_settings)
+
+
+def build_editable(wheel_directory, config_settings=None, metadata_directory=None):
+    return _write_wheel(wheel_directory, editable=True)
 
 
 def build_sdist(sdist_directory, config_settings=None):
