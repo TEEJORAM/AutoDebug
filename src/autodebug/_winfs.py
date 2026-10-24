@@ -64,6 +64,8 @@ INHERIT_ONLY_ACE = 0x08
 SDDL_REVISION_1 = 1
 SID_SYSTEM = "S-1-5-18"
 SID_ADMINISTRATORS = "S-1-5-32-544"
+SID_OWNER_RIGHTS = "S-1-3-4"  # the object's owner; Python 3.12.4+ uses it for private temp dirs
+SID_CREATOR_OWNER = "S-1-3-0"
 
 _DIRECTORY_ACCESS = FILE_LIST_DIRECTORY | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | \
     FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE
@@ -298,6 +300,8 @@ class _Sids:
         self.token_owner = ctypes.c_void_p.from_buffer(self._owner_buffer).value
         self.system = self._well_known(SID_SYSTEM)
         self.administrators = self._well_known(SID_ADMINISTRATORS)
+        self.owner_rights = self._well_known(SID_OWNER_RIGHTS)
+        self.creator_owner = self._well_known(SID_CREATOR_OWNER)
         text = api.w.LPWSTR()
         if not api.ConvertSidToStringSidW(self.user, ctypes.byref(text)):
             raise _error()
@@ -336,7 +340,7 @@ def _sids() -> _Sids:
 
 def _is_private_handle(handle: int) -> bool:
     """Owner is this user (or the token's default owner) and every effective
-    allow-ACE grants only the user, SYSTEM or Administrators."""
+    allow-ACE grants only the user, the owner, SYSTEM or Administrators."""
     api, sids = _api(), _sids()
     owner, dacl, descriptor = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
     status = api.GetSecurityInfo(handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
@@ -348,7 +352,8 @@ def _is_private_handle(handle: int) -> bool:
             return False
         if not dacl.value:  # a NULL DACL grants everyone full access
             return False
-        trusted = (sids.user, sids.token_owner, sids.system, sids.administrators)
+        # OWNER RIGHTS and CREATOR OWNER both resolve to the owner checked above.
+        trusted = (sids.user, sids.token_owner, sids.system, sids.administrators, sids.owner_rights, sids.creator_owner)
         for index in range(_Acl.from_address(dacl.value).count):
             ace = ctypes.c_void_p()
             if not api.GetAce(dacl, index, ctypes.byref(ace)):

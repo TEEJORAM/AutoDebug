@@ -23,3 +23,7 @@ for label, make in (("tempdir", lambda: Path(tempfile.mkdtemp())), ("tempdir-sub
         except BaseException as exc:
             info = repr(exc)
         note(f"{label} FAILED", info + "\n" + traceback.format_exc())
+
+import subprocess
+d = tempfile.mkdtemp()
+note("icacls mkdtemp", subprocess.run(["icacls", d], capture_output=True, text=True).stdout)
