@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoDebug documentation</title>
+<meta name="description" content="AutoDebug lets the AI agent in Cursor or VS Code debug your program with the IDE's own debugger, after you approve, and write a root-cause report.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1c2430;
+    --ink-soft: #4a5565;
+    --paper: #ffffff;
+    --panel: #f5f7f9;
+    --rule: #dce1e7;
+    --slate: #24303f;
+    --slate-text: #c9d2dc;
+    --slate-dim: #8e9bab;
+    --breakpoint: #c4262e;
+    --paused: #fff1a8;
+    --link: #1f5f9e;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "Source Code Pro", Consolas, "SFMono-Regular", monospace;
+    --sidebar: 17rem;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 400 1.0625rem/1.65 var(--sans); }
+  a { color: var(--link); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  code, pre { font-family: var(--mono); font-size: 0.875em; }
+  :not(pre) > code { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; padding: 0.05em 0.3em; }
+
+  /* Sidebar: the manual's table of contents */
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; width: var(--sidebar); overflow-y: auto;
+    background: var(--slate); color: var(--slate-text); padding: 1.75rem 1.5rem 2rem;
+  }
+  .brand { display: flex; align-items: center; gap: 0.6rem; color: #fff; text-decoration: none; }
+  .brand svg { flex: none; }
+  .brand span { font: 650 1.35rem/1 var(--serif); letter-spacing: 0.01em; }
+  .version { margin: 0.5rem 0 1.75rem; font-size: 0.875rem; color: var(--slate-dim); }
+  .sidebar nav p { margin: 1.4rem 0 0.35rem; font: 600 0.8125rem/1.3 var(--sans); color: var(--slate-dim); }
+  .sidebar ul { list-style: none; margin: 0; padding: 0; }
+  .sidebar li a { display: block; padding: 0.22rem 0 0.22rem 0.75rem; border-left: 2px solid transparent; color: var(--slate-text); text-decoration: none; font-size: 0.96rem; }
+  .sidebar li a:hover { color: #fff; border-left-color: var(--slate-dim); }
+  .sidebar li a[aria-current="true"] { color: #fff; border-left-color: var(--breakpoint); }
+  .sidebar .repo { display: block; margin-top: 2rem; font-size: 0.9rem; color: var(--slate-text); }
+
+  /* Reading column */
+  main { margin-left: var(--sidebar); }
+  .page { max-width: 47rem; padding: 3rem 3rem 4rem; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 650; line-height: 1.2; color: var(--ink); }
+  h1 { font-size: 2.75rem; margin: 0 0 0.75rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.75rem; margin: 3.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+  h2 a.anchor, h3 a.anchor { visibility: hidden; margin-left: 0.4rem; color: var(--slate-dim); text-decoration: none; font-weight: 500; }
+  h2:hover a.anchor, h3:hover a.anchor, a.anchor:focus { visibility: visible; }
+  .lede { font: 400 1.3rem/1.5 var(--serif); color: var(--ink-soft); margin: 0 0 2rem; max-width: 38rem; }
+  p, li { max-width: 42rem; }
+
+  /* Hero: the paused line */
+  .editor { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 0 0 1rem; background: var(--paper); }
+  .editor-bar { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.9rem; background: var(--panel); border-bottom: 1px solid var(--rule); font: 400 0.85rem/1.4 var(--sans); color: var(--ink-soft); }
+  .editor-bar strong { font-weight: 600; color: var(--ink); }
+  .code { margin: 0; padding: 0.6rem 0; font: 400 0.9rem/1.7 var(--mono); overflow-x: auto; }
+  .ln { display: grid; grid-template-columns: 1.6rem 2.2rem 1fr; align-items: center; padding-right: 1rem; white-space: pre; }
+  .ln .gutter { display: flex; justify-content: center; }
+  .ln .num { color: #9aa4b1; text-align: right; padding-right: 1rem; }
+  .ln.bp .gutter::before { content: ""; width: 0.62rem; height: 0.62rem; border-radius: 50%; background: var(--breakpoint); }
+  .ln.here { background: var(--paused); }
+  .ln.here .num { color: var(--ink); }
+  .kw { color: #7a3e9d; } .fn { color: #1f5f9e; } .cm { color: #6b7685; font-style: italic; } .nb { color: #a05a00; }
+  .trace { border-top: 1px solid var(--rule); background: var(--panel); padding: 0.7rem 0.9rem 0.8rem; }
+  .trace p { margin: 0 0 0.4rem; font-size: 0.875rem; color: var(--ink-soft); }
+  .trace table { border-collapse: collapse; font: 400 0.85rem/1.5 var(--mono); width: 100%; }
+  .trace th { text-align: left; font: 600 0.8rem/1.5 var(--sans); color: var(--ink-soft); padding: 0.1rem 1.2rem 0.2rem 0; border-bottom: 1px solid var(--rule); }
+  .trace td { padding: 0.18rem 1.2rem 0.18rem 0; white-space: nowrap; }
+  .trace .changed { color: var(--breakpoint); }
+  .caption { font-size: 0.95rem; color: var(--ink-soft); margin: 0 0 2.5rem; }
+  .js .trace tbody tr { opacity: 0; transition: opacity 240ms ease; }
+  .js .trace tbody tr.shown { opacity: 1; }
+
+  /* Steps: a real sequence, so numbered */
+  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+  ol.steps > li { counter-increment: step; position: relative; padding-left: 2.6rem; margin-bottom: 1.1rem; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.05rem; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    border: 1px solid var(--ink); font: 600 0.9rem/1.6rem var(--serif); text-align: center;
+  }
+
+  /* Code blocks with OS switch and copy */
+  .tabs { display: flex; gap: 0.25rem; margin: 1rem 0 -1px; }
+  .tabs button {
+    font: 600 0.9rem/1 var(--sans); color: var(--ink-soft); background: none; border: 1px solid transparent;
+    border-bottom: none; border-radius: 5px 5px 0 0; padding: 0.55rem 0.9rem; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); border-color: var(--rule); }
+  .block { position: relative; margin: 0 0 1.25rem; }
+  .block pre { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 0 5px 5px 5px; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.6; }
+  .block.plain pre { border-radius: 5px; }
+  .copy {
+    position: absolute; top: 0.45rem; right: 0.45rem; font: 600 0.8rem/1 var(--sans); color: var(--ink-soft);
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.35rem 0.6rem; cursor: pointer;
+  }
+  .copy:hover { color: var(--ink); border-color: var(--ink-soft); }
+
+  blockquote { margin: 1rem 0 1.5rem; padding: 0.2rem 0 0.2rem 1.1rem; border-left: 3px solid var(--breakpoint); font: italic 400 1.08rem/1.6 var(--serif); color: var(--ink); }
+  .note { border: 1px solid var(--rule); border-left: 3px solid var(--link); background: var(--panel); padding: 0.8rem 1rem; border-radius: 0 5px 5px 0; margin: 1.25rem 0; }
+  .note p { margin: 0; }
+
+  table.ref { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.98rem; }
+  table.ref th, table.ref td { text-align: left; vertical-align: top; padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
+  table.ref th { font: 600 0.92rem/1.4 var(--sans); color: var(--ink-soft); }
+  table.ref td:first-child code { white-space: nowrap; }
+  table.ref td:first-child { width: 34%; }
+
+  dl.facts { display: grid; grid-template-columns: 12rem 1fr; gap: 0.6rem 1.5rem; margin: 1rem 0; }
+  dl.facts dt { font: 600 1.02rem/1.5 var(--serif); }
+  dl.facts dd { margin: 0; }
+
+  footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); font-size: 0.9rem; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+
+  .menu { display: none; }
+  @media (max-width: 900px) {
+    .sidebar { position: static; width: auto; padding: 1rem 1.25rem; }
+    .sidebar nav, .sidebar .repo, .version { display: none; }
+    .sidebar.open nav, .sidebar.open .repo { display: block; }
+    .sidebar .top { display: flex; justify-content: space-between; align-items: center; }
+    .menu { display: inline-block; font: 600 0.9rem/1 var(--sans); color: #fff; background: none; border: 1px solid var(--slate-dim); border-radius: 4px; padding: 0.45rem 0.7rem; cursor: pointer; }
+    main { margin-left: 0; }
+    .page { padding: 2rem 1.25rem 3rem; }
+    h1 { font-size: 2.2rem; }
+    dl.facts { grid-template-columns: 1fr; gap: 0.2rem; }
+    dl.facts dd { margin-bottom: 0.8rem; }
+    table.ref { display: block; overflow-x: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js .trace tbody tr { opacity: 1; transition: none; }
+  }
+</style>
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="top">
+    <a class="brand" href="#top" aria-label="AutoDebug home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" rx="4" fill="none" stroke="#c9d2dc" stroke-width="1.5"/>
+        <path d="M6 9h14M6 13h9M6 17h11" stroke="#8e9bab" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="4.5" y="11.2" width="17" height="3.6" rx="1" fill="#fff1a8" opacity=".9"/>
+        <path d="M6 13h9" stroke="#24303f" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="21" cy="13" r="2.3" fill="#c4262e"/>
+      </svg>
+      <span>AutoDebug</span>
+    </a>
+    <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
+  </div>
+  <p class="version">Version 0.2, for VS Code and Cursor</p>
+  <nav aria-label="Contents">
+    <p>Start</p>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#setup">Set up</a></li>
+      <li><a href="#first-session">Your first session</a></li>
+    </ul>
+    <p>Use</p>
+    <ul>
+      <li><a href="#approving">Approving a session</a></li>
+      <li><a href="#tools">Agent tools</a></li>
+      <li><a href="#reports">Reports</a></li>
+      <li><a href="#your-project">Your own project</a></li>
+    </ul>
+    <p>Reference</p>
+    <ul>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#safety">Safety</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#commands">Commands</a></li>
+    </ul>
+  </nav>
+  <a class="repo" href="https://github.com/TEEJORAM/AutoDebug">Source on GitHub</a>
+</aside>
+
+<main id="top">
+<div class="page">
+  <h1>AutoDebug</h1>
+  <p class="lede">Let the AI agent in Cursor or VS Code debug your program with the IDE's own debugger, then explain the root cause in a written report. Nothing runs until you click Approve.</p>
+
+  <figure class="editor" aria-label="An AutoDebug session paused in geometry.py">
+    <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span id="status">Paused on breakpoint</span></div>
+    <div class="code" role="presentation">
+<div class="ln" data-line="9"><span class="gutter"></span><span class="num">9</span><span><span class="kw">def</span> <span class="fn">polygon_area</span>(points: list[Point]) -&gt; <span class="nb">float</span>:</span></div>
+<div class="ln" data-line="10"><span class="gutter"></span><span class="num">10</span><span>    <span class="cm">"""Area of a simple polygon, using the shoelace formula."""</span></span></div>
+<div class="ln" data-line="11"><span class="gutter"></span><span class="num">11</span><span>    total = 0.0</span></div>
+<div class="ln" data-line="12"><span class="gutter"></span><span class="num">12</span><span>    <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(<span class="nb">len</span>(points) - 1):</span></div>
+<div class="ln" data-line="13"><span class="gutter"></span><span class="num">13</span><span>        x1, y1 = points[i]</span></div>
+<div class="ln" data-line="14"><span class="gutter"></span><span class="num">14</span><span>        x2, y2 = points[i + 1]</span></div>
+<div class="ln bp here" data-line="15"><span class="gutter"></span><span class="num">15</span><span>        total += x1 * y2 - x2 * y1</span></div>
+<div class="ln" data-line="16"><span class="gutter"></span><span class="num">16</span><span>    <span class="kw">return</span> <span class="nb">abs</span>(total) / 2</span></div>
+    </div>
+    <div class="trace">
+      <p><code>trace</code> of line 15 for the square moved by (2, 1)</p>
+      <table>
+        <thead><tr><th>Pass</th><th>i</th><th>total</th><th>Edge added</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>0</td><td><span class="changed">0.0 → -1.0</span></td><td>(2, 1) to (3, 1)</td></tr>
+          <tr><td>2</td><td>1</td><td><span class="changed">-1.0 → 2.0</span></td><td>(3, 1) to (3, 2)</td></tr>
+          <tr><td>3</td><td>2</td><td><span class="changed">2.0 → 4.0</span></td><td>(3, 2) to (2, 2)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p class="caption">From a real session in Cursor: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
+
+  <h2 id="overview">Overview <a class="anchor" href="#overview" aria-label="Link to this section">#</a></h2>
+  <p>AutoDebug connects your AI agent to the debugger you already use. The agent reads your code, picks breakpoints and asks to run one of your launch configurations. After you approve, it builds the program, stops at the breakpoints and steps through the code. When it understands the fault, it writes the report into your project.</p>
+  <dl class="facts">
+    <dt>It investigates</dt>
+    <dd>Each step reports which variables changed. A trace records every pass through a line, before and after it runs. The report keeps a timeline of everything the debugger showed.</dd>
+    <dt>You stay in control</dt>
+    <dd>Every debug session needs your click on Approve, in a dialog that shows exactly what will run. Step and time limits apply. The agent cannot evaluate code or change variables.</dd>
+    <dt>It stays on your machine</dt>
+    <dd>The extension listens on 127.0.0.1 only, behind a random token. No account, no cloud service, no dependencies.</dd>
+    <dt>It uses your setup</dt>
+    <dd>Your launch configurations and build tasks in <code>.vscode</code>, and any language your IDE can debug.</dd>
+  </dl>
+
+  <h2 id="setup">Set up <a class="anchor" href="#setup" aria-label="Link to this section">#</a></h2>
+  <p>You need Python 3.11 or newer, Git, and Cursor or VS Code with the debugger extension for your language. For Python, that is <strong>Python</strong> and <strong>Python Debugger</strong>.</p>
+  <ol class="steps">
+    <li>
+      <p>Install AutoDebug and connect it to your IDE. Use <code>setup vscode</code> for VS Code.</p>
+      <div class="tabs" role="tablist" aria-label="Operating system">
+        <button type="button" role="tab" id="tab-win" aria-controls="os-win" aria-selected="true">Windows</button>
+        <button type="button" role="tab" id="tab-unix" aria-controls="os-unix" aria-selected="false">macOS and Linux</button>
+      </div>
+      <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
+py -m pip install -e .
+py -m autodebug setup cursor</pre></div>
+      <div class="block" id="os-unix" role="tabpanel" aria-labelledby="tab-unix" hidden><pre>git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m autodebug setup cursor</pre></div>
+      <p><code>setup</code> installs the AutoDebug extension in the IDE and adds the <code>autodebug</code> MCP server for all your projects.</p>
+    </li>
+    <li><p>In the IDE, open the Command Palette and run <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.</p></li>
+    <li><p>Turn on the server. In Cursor: <strong>Cursor Settings</strong>, <strong>MCP</strong>, then switch on <strong>autodebug</strong>. In VS Code: <strong>MCP: List Servers</strong>, <strong>autodebug</strong>, <strong>Start Server</strong>.</p></li>
+  </ol>
+  <p><code>autodebug doctor</code> checks all of this. To update later, run <code>git pull</code> in the AutoDebug folder, then <code>setup</code> again.</p>
+
+  <h2 id="first-session">Your first session <a class="anchor" href="#first-session" aria-label="Link to this section">#</a></h2>
+  <p>The repository includes <code>examples/AutoDebugDemo</code>, a small program with one deliberate bug: moving a shape changes its area. Open that folder in the IDE and ask the agent, in Agent mode:</p>
+  <blockquote>Help me debug AutoDebugDemo: moving a shape changes its area. Use the autodebug tools to find the root cause and write a report.</blockquote>
+  <p>Click Approve when the IDE asks. The agent stops in <code>polygon_area</code>, traces the loop and writes its report to <code>autodebug-reports/</code>.</p>
+
+  <h2 id="approving">Approving a session <a class="anchor" href="#approving" aria-label="Link to this section">#</a></h2>
+  <p>When the agent starts a session, the IDE shows a dialog with its goal, the build command, the program and arguments, the breakpoints, and the step and time limits. Approve runs exactly that, once. Closing the dialog, or two minutes without an answer, refuses. A message in the chat is never an approval.</p>
+  <div class="note"><p>Breakpoints you set yourself in the editor stay in place. The agent sees them listed as editor breakpoints, and can run past them to a line it chooses.</p></div>
+
+  <h2 id="tools">Agent tools <a class="anchor" href="#tools" aria-label="Link to this section">#</a></h2>
+  <table class="ref">
+    <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>list_targets</code></td><td>Launch configurations and build tasks in the open project</td></tr>
+      <tr><td><code>start_session</code></td><td>Asks for approval, builds if needed, sets breakpoints, launches and waits for the first stop</td></tr>
+      <tr><td><code>step</code></td><td>Over, into or out, up to 20 times, with the variables that changed</td></tr>
+      <tr><td><code>continue</code></td><td>Runs to the next stop, or past other breakpoints to a chosen line</td></tr>
+      <tr><td><code>trace</code></td><td>Runs to a line repeatedly and records each variable before and after it runs</td></tr>
+      <tr><td><code>inspect</code>, <code>stack</code></td><td>Local variables of a frame, and the call stack</td></tr>
+      <tr><td><code>breakpoints</code></td><td>Adds or removes breakpoints during the session</td></tr>
+      <tr><td><code>wait</code>, <code>pause</code>, <code>stop_session</code></td><td>Follows, interrupts or ends the session</td></tr>
+      <tr><td><code>write_report</code></td><td>Writes the root-cause report with a timeline of the session</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="reports">Reports <a class="anchor" href="#reports" aria-label="Link to this section">#</a></h2>
+  <p>Each report is a Markdown file in <code>autodebug-reports/</code> in your project. It states the problem, how the program was run, a numbered timeline of every stop, step and trace, the root cause with its confidence, the solution and how it was verified. A cause marked confirmed must say how it was confirmed. Values that look like secrets appear as <code>***REDACTED***</code>.</p>
+
+  <h2 id="your-project">Your own project <a class="anchor" href="#your-project" aria-label="Link to this section">#</a></h2>
+  <p>AutoDebug runs the launch configurations in your project's <code>.vscode/launch.json</code>, and optionally a build task from <code>.vscode/tasks.json</code> first. If the program prints to the terminal, set <code>"console": "internalConsole"</code> so the agent can read its output when it ends. Use a test or a small reproduction, never a production system or real customer data.</p>
+
+  <h2 id="how-it-works">How it works <a class="anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
+  <p>The agent talks to the <code>autodebug</code> MCP server, a small Python program the IDE starts. The server talks to the AutoDebug extension inside the IDE window over a token-protected local connection. The extension drives the IDE's debugger through the public VS Code API and the Debug Adapter Protocol. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+
+  <h2 id="safety">Safety <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
+  <ul>
+    <li>One approval covers one debug session and exactly what the dialog showed.</li>
+    <li>No expression evaluation and no changes to variables.</li>
+    <li>Variables and output that look secret are redacted before the agent or the report sees them.</li>
+    <li>Only 127.0.0.1, with a random token. Breakpoint files must be inside the project.</li>
+    <li>What the agent reads may be sent to its model provider, as with any AI agent. Debug only code and data you are allowed to share with it.</li>
+  </ul>
+
+  <h2 id="troubleshooting">Troubleshooting <a class="anchor" href="#troubleshooting" aria-label="Link to this section">#</a></h2>
+  <table class="ref">
+    <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>No window is running the AutoDebug extension</td><td>Open the project folder in the IDE and check for AutoDebug in the status bar. Run <code>autodebug setup</code> if it is missing.</td></tr>
+      <tr><td>No debugger for type "debugpy"</td><td>Install the Python Debugger extension in the IDE and reload the window.</td></tr>
+      <tr><td>No dialog appears</td><td>It may be behind another window. <strong>AutoDebug: Show Log</strong> lists each request.</td></tr>
+      <tr><td>The agent uses an old server</td><td>Run <code>autodebug doctor</code>; it points out old entries and how to fix them.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="commands">Commands <a class="anchor" href="#commands" aria-label="Link to this section">#</a></h2>
+  <table class="ref">
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>autodebug setup cursor</code></td><td>Install the extension in Cursor and add the MCP server</td></tr>
+      <tr><td><code>autodebug setup vscode</code></td><td>The same for VS Code</td></tr>
+      <tr><td><code>autodebug doctor</code></td><td>Check Python, the IDE configuration and open windows</td></tr>
+      <tr><td><code>autodebug serve</code></td><td>The MCP server itself; the IDE starts it for you</td></tr>
+    </tbody>
+  </table>
+  <p>On Windows, write <code>py -m autodebug</code> instead of <code>autodebug</code>.</p>
+
+  <footer>
+    <span>AutoDebug 0.2</span>
+    <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
+  </footer>
+</div>
+</main>
+
+<script>
+  document.documentElement.classList.add("js");
+
+  // Operating system tabs
+  const tabs = [...document.querySelectorAll(".tabs [role=tab]")];
+  function choose(tab) {
+    for (const t of tabs) {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !selected;
+    }
+  }
+  tabs.forEach((t) => t.addEventListener("click", () => choose(t)));
+  if (!/Windows/.test(navigator.userAgent)) choose(tabs[1]);
+
+  // Copy buttons on code blocks
+  for (const block of document.querySelectorAll(".block")) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.textContent = "Copy";
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(block.querySelector("pre").innerText);
+        button.textContent = "Copied";
+      } catch (_) {
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 1600);
+    });
+    block.appendChild(button);
+  }
+
+  // Small screens: contents toggle
+  const menu = document.querySelector(".menu");
+  const sidebar = document.getElementById("sidebar");
+  menu.addEventListener("click", () => {
+    const open = sidebar.classList.toggle("open");
+    menu.setAttribute("aria-expanded", String(open));
+  });
+  sidebar.querySelectorAll("nav a").forEach((a) => a.addEventListener("click", () => {
+    sidebar.classList.remove("open");
+    menu.setAttribute("aria-expanded", "false");
+  }));
+
+  // Current section in the contents
+  const links = new Map([...sidebar.querySelectorAll("nav a")].map((a) => [a.getAttribute("href").slice(1), a]));
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      links.forEach((a) => a.removeAttribute("aria-current"));
+      const link = links.get(entry.target.id);
+      if (link) link.setAttribute("aria-current", "true");
+    }
+  }, { rootMargin: "0px 0px -70% 0px" });
+  document.querySelectorAll("h2[id]").forEach((h) => observer.observe(h));
+
+  // The one moment of motion: the debugger steps 12 → 15, stops, and the trace fills in.
+  const rows = [...document.querySelectorAll(".trace tbody tr")];
+  const lines = [...document.querySelectorAll(".ln")];
+  const status = document.getElementById("status");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) {
+    rows.forEach((r) => r.classList.add("shown"));
+  } else {
+    const path = [12, 13, 14, 15];
+    lines.forEach((l) => l.classList.remove("here"));
+    status.textContent = "Running";
+    path.forEach((n, i) => setTimeout(() => {
+      lines.forEach((l) => l.classList.toggle("here", Number(l.dataset.line) === n));
+      if (n === 15) {
+        status.textContent = "Paused on breakpoint";
+        rows.forEach((r, j) => setTimeout(() => r.classList.add("shown"), 350 + j * 300));
+      }
+    }, 500 + i * 420));
+  }
+</script>
+</body>
+</html>
