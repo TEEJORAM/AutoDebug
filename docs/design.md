@@ -116,7 +116,7 @@ token closes the connection. Then one JSON object per line:
 thread {id, name}, exception {id, description} | null,
 breakpoints [{file, line} or {function, at: "function name"}, source, verified, message],
 steps_used, max_steps, build {task, status, exit_code} | null, output [last lines],
-output_note, hint}` where `status` is `awaiting_approval`, `denied`, `building`,
+output_note}` where `status` is `awaiting_approval`, `denied`, `building`,
 `build_failed`, `starting`, `running`, `paused` or `ended`. A breakpoint that is
 not bound yet says it may bind when its module or library loads. Frames without
 source are `(no source)`.

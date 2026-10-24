@@ -43,7 +43,11 @@ class HarnessTest(unittest.TestCase):
                    HARNESS_BUILD_HANG=getattr(self, "build_hang", ""),
                    HARNESS_STEP_FAIL=getattr(self, "step_fail", ""),
                    HARNESS_EXCEPTION=getattr(self, "exception_stop", ""),
-                   HARNESS_BP_MESSAGE=getattr(self, "bp_message", ""))
+                   HARNESS_BP_MESSAGE=getattr(self, "bp_message", ""),
+                   HARNESS_BUILD_MINUTE_MS=getattr(self, "build_minute_ms", ""),
+                   HARNESS_STACK_THROW=getattr(self, "stack_throw", ""),
+                   HARNESS_SLOW_STACK=getattr(self, "slow_stack", ""),
+                   HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""))
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -349,17 +353,20 @@ class StepFailure(HarnessTest):
 
 class HungBuild(HarnessTest):
     build_hang = "1"
+    build_minute_ms = "40"
 
     def test_a_build_that_exceeds_build_minutes_is_terminated(self):
+        started = time.monotonic()
         self.start(build_task="check", build_minutes=1, wait_seconds=0.2)
         self.send("approve")
-        deadline = time.monotonic() + 75
+        deadline = time.monotonic() + 5
         result = {"status": "building"}
         while result["status"] == "building" and time.monotonic() < deadline:
-            result = self.debugger.wait(30)
+            result = self.debugger.wait(1)
         self.assertEqual(result["status"], "build_failed", result)
-        self.assertIn("longer than 1 minute", result.get("message", ""))
+        self.assertEqual(result.get("message"), "the build took longer than 1 minute")
         self.expect("LOG build terminated", 5)
+        self.assertLess(time.monotonic() - started, 5)
 
 
 class ExceptionStop(HarnessTest):
@@ -426,6 +433,33 @@ class UnboundMessage(HarnessTest):
             result["breakpoints"][0]["note"],
             "not bound yet (No source file named geometry.cpp); it may bind when its module loads",
         )
+
+
+class StopHandling(HarnessTest):
+    stack_throw = "1"
+
+    def test_a_stop_error_is_logged_and_the_pause_is_still_reported(self):
+        _, result = self.approved()
+        self.assertEqual(result["status"], "paused")
+        self.assertNotIn("location", result)
+        logged = []
+        while True:
+            try:
+                logged.append(self.lines.get_nowait())
+            except queue.Empty:
+                break
+        self.assertTrue(any("error handling stopped:" in line and "stack trace failed" in line for line in logged), logged)
+
+
+class StopThenResume(HarnessTest):
+    slow_stack = "80"
+    stop_then_continue = "1"
+
+    def test_a_resume_arriving_during_a_stop_is_not_left_paused(self):
+        self.approved()
+        self.debugger._call("continue")
+        time.sleep(0.3)
+        self.assertEqual(self.debugger.wait(0.5)["status"], "running")
 
 
 class EditorBreakpoint(HarnessTest):

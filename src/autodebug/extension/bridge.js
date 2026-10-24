@@ -167,11 +167,12 @@ function processName(pid, platform) {
 }
 
 class Bridge {
-  constructor(vscode, { folder, log, platform = process.platform } = {}) {
+  constructor(vscode, { folder, log, platform = process.platform, buildMinuteMs = 60000 } = {}) {
     this.vscode = vscode;
     this.folder = folder || path.join(stateFolder(), 'bridges');
     this.log = log || (() => {});
     this.platform = platform;
+    this.buildMinuteMs = buildMinuteMs;
     this.ide = /cursor/i.test(vscode.env.appName || '') ? 'cursor' : 'vscode';
     const id = String(vscode.env.sessionId || crypto.randomBytes(6).toString('hex')).replace(/[^A-Za-z0-9]/g, '');
     this.window = `${this.ide}-${id.slice(0, 12)}-${process.pid}`;
@@ -601,7 +602,7 @@ class Bridge {
         const timer = setTimeout(() => {
           try { if (s.taskExecution) s.taskExecution.terminate(); } catch (_) { /* already finished */ }
           resolve('timeout');
-        }, s.buildMinutes * 60000);
+        }, s.buildMinutes * this.buildMinuteMs);
         if (timer.unref) timer.unref();
         s.buildTimer = timer;
         const listener = vs.tasks.onDidEndTaskProcess((e) => {
@@ -613,7 +614,8 @@ class Bridge {
       });
       if (this.session !== s || s.status === 'ended') return;
       if (code === 'timeout') {
-        this.update({ status: 'build_failed', message: `the build took longer than ${s.buildMinutes} minutes`,
+        const unit = s.buildMinutes === 1 ? 'minute' : 'minutes';
+        this.update({ status: 'build_failed', message: `the build took longer than ${s.buildMinutes} ${unit}`,
           build: { task: s.task.label, status: 'failed', exit_code: null } });
         return;
       }
@@ -684,7 +686,8 @@ class Bridge {
         } else if (m.type === 'event' && m.event === 'output' && mine()) {
           this.capture(m.body);
         } else if (m.type === 'event' && mine()) {
-          this.event(m);
+          const run = () => this.event(m);
+          this._eventChain = (this._eventChain || Promise.resolve()).then(run, run);
         }
       },
       onExit: (code) => { if (mine() && this.session.status !== 'ended') this.finish('the program exited', code); },
@@ -703,27 +706,37 @@ class Bridge {
 
   async event(m) {
     const s = this.session;
-    if (m.event === 'stopped') {
-      s.threadId = m.body.threadId;
-      const exception = m.body.reason === 'exception' ? await this.readException(s, m.body.threadId) : null;
-      await this.locate(s, m.body.reason, m.body.threadId, exception);
-    } else if (m.event === 'continued') {
-      this.update({ status: 'running', location: null, reason: null, exception: null });
-    } else if (m.event === 'exited') {
-      if (s.status !== 'ended') s.exitCode = m.body.exitCode;
-    } else if (m.event === 'terminated') {
-      if (s.status !== 'ended') this.finish('the program exited', s.exitCode);
+    if (!s) return;
+    try {
+      if (m.event === 'stopped') {
+        const generation = (s.stopGeneration = (s.stopGeneration || 0) + 1);
+        s.threadId = m.body.threadId;
+        const exception = m.body.reason === 'exception' ? await this.readException(s, m.body.threadId) : null;
+        if (this.session !== s || s.stopGeneration !== generation) return;
+        await this.locate(s, m.body.reason, m.body.threadId, exception, generation);
+      } else if (m.event === 'continued') {
+        s.stopGeneration = (s.stopGeneration || 0) + 1;
+        this.update({ status: 'running', location: null, reason: null, exception: null });
+      } else if (m.event === 'exited') {
+        if (s.status !== 'ended') s.exitCode = m.body.exitCode;
+      } else if (m.event === 'terminated') {
+        if (s.status !== 'ended') this.finish('the program exited', s.exitCode);
+      }
+    } catch (error) {
+      this.log(`error handling ${m.event}: ${error && (error.stack || error)}`);
     }
   }
 
-  async locate(s, reason, threadId, exception = null) {
+  async locate(s, reason, threadId, exception = null, generation = null) {
     let location = null;
     try {
       const trace = await s.dap.customRequest('stackTrace', { threadId, startFrame: 0, levels: 1 });
       const frame = trace.stackFrames && trace.stackFrames[0];
       if (frame) location = { file: this.relative(frame.source && frame.source.path), line: frame.line };
-    } catch (_) { /* location stays unknown */ }
-    if (this.session !== s) return;
+    } catch (error) {
+      this.log(`error handling stopped: ${error && (error.stack || error)}`);
+    }
+    if (this.session !== s || (generation != null && s.stopGeneration !== generation)) return;
     const changes = { status: 'paused', reason, location };
     if (exception) changes.exception = exception;
     this.update(changes);
@@ -932,6 +945,7 @@ class Bridge {
     const stepsBefore = s.stepsUsed;
     const pausedAt = { location: s.location, reason: s.reason };
     s.stepsUsed += 1;
+    s.stopGeneration = (s.stopGeneration || 0) + 1;
     this.update({ status: 'running', location: null, reason: null });
     try {
       await s.dap.customRequest(command, { threadId: s.threadId });
@@ -956,6 +970,7 @@ class Bridge {
 
   async resume() {
     const s = this.current('paused');
+    s.stopGeneration = (s.stopGeneration || 0) + 1;
     this.update({ status: 'running', location: null, reason: null, exception: null });
     await s.dap.customRequest('continue', { threadId: s.threadId });
     return { state: this.snapshot() };

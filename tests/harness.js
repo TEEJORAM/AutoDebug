@@ -110,6 +110,10 @@ class ScriptedSession {
     const here = TRACE[this.pos] || TRACE[TRACE.length - 1];
     switch (command) {
       case 'stackTrace':
+        if (process.env.HARNESS_STACK_THROW === '1') throw new Error('stack trace failed');
+        if (process.env.HARNESS_SLOW_STACK) {
+          await new Promise((resolve) => setTimeout(resolve, Number(process.env.HARNESS_SLOW_STACK)));
+        }
         return { stackFrames: [
           { id: 1, name: 'polygon_area', source: { path: this.file() }, line: here.line },
           { id: 2, name: 'test_area_does_not_change_when_moved', source: { path: path.join(workspace, 'test_geometry.py') }, line: 18 },
@@ -139,7 +143,15 @@ class ScriptedSession {
           if (this.pos >= TRACE.length) { this.event('exited', { exitCode: 1 }); this.event('terminated'); } else this.event('stopped', { reason: 'step', threadId: 1 });
         }, 5);
         return {};
-      case 'continue': setTimeout(() => this.run(), 5); return {};
+      case 'continue':
+        setTimeout(() => {
+          if (process.env.HARNESS_STOP_THEN_CONTINUE === '1') {
+            this.pos = Math.min(this.pos + 1, TRACE.length - 1);
+            this.event('stopped', { reason: 'breakpoint', threadId: 1 });
+            this.event('continued', { threadId: 1 });
+          } else this.run();
+        }, 5);
+        return {};
       case 'pause': setTimeout(() => this.event('stopped', { reason: 'pause', threadId: 1 }), 5); return {};
       case 'threads': return { threads: [{ id: 1, name: 'main' }, { id: 2, name: 'worker' }] };
       case 'disconnect': say(`DISCONNECT ${JSON.stringify(args)}`); return {};
@@ -287,7 +299,11 @@ const vscode = {
   },
 };
 
-bridge = new Bridge(vscode, { folder: bridgesFolder, log: (line) => say(`LOG ${line}`) });
+bridge = new Bridge(vscode, {
+  folder: bridgesFolder,
+  log: (line) => say(`LOG ${line}`),
+  buildMinuteMs: Number(process.env.HARNESS_BUILD_MINUTE_MS) || 60000,
+});
 bridge.start().then(() => say('READY'), (error) => { say(`ERROR ${error.message}`); process.exit(1); });
 
 readline.createInterface({ input: process.stdin }).on('line', (line) => {

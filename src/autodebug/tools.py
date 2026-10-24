@@ -113,8 +113,6 @@ class Debugger:
             if result["exception"]["id"] != self._last_exception:
                 self._last_exception = result["exception"]["id"]
                 self._log("exception", result["exception"]["id"], result["exception"]["description"])
-        if raw.get("hint") and "hint" not in result:
-            result["next"] = raw["hint"]
         build = raw.get("build")
         if build and build.get("status") != "running" and build != self._last_build:
             self._last_build = build
