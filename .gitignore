@@ -20,3 +20,4 @@ __pycache__/
 examples/**/.vscode/mcp.json
 examples/**/.cursor/
 examples/**/build/
+examples/**/autodebug-reports/

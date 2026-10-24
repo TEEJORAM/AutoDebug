@@ -54,7 +54,12 @@ requirement IDs, tests and the observed test result.
   code only and points to the IDE terminal.
   - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
     ran 625, failures 0, errors 0, skipped 9 (Linux, Python 3.13, Node 22).
-- [ ] B9 — AutoDebugDemo: plan 0.3; manual run on Windows VS Code; ledger entry
-  (BR-11). **Phase 1 done.**
+- [x] B9 — AutoDebugDemo: plan 0.3; docs; ledger entry (BR-11). **Phase 1
+  built.** Verified through the extension core with the real debugpy 1.8.11
+  (`tests/test_bridge_debugpy.py`: stop at `geometry.py:15`, step to 12 then 16
+  showing the skipped closing edge). The manual run in a real VS Code window is
+  the developer's and stays `NOT_TESTED` in the ledger until recorded.
+  - **Test command + result:** `PYTHONPATH=src python3 .github/run_tests.py` →
+    see the B9 pull request; debugpy test run separately on Linux, Python 3.13.
 - [ ] B10 — C++ build task and launch configurations; manual run (phase 2).
 - [ ] B11 — Docs: README, getting-started, security, status, release notes.

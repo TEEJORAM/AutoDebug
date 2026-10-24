@@ -327,10 +327,11 @@ def render_config(client: str, name: str, spec: dict) -> tuple[str, str]:
         parts += ["--transport", "stdio", name, "--", spec["command"], *spec["args"]]
         return _quote(parts), "Run this in your project folder (add `--scope user` for all projects)."
     body = {_JSON_CLIENTS[client]: {name: client_entry(client, spec)}}
+    demo = " --demo" if "--demo" in spec["args"] else ""
     where = {
-        "vscode": f"Or let AutoDebug write it: `{cmd} config vscode --demo --write PROJECT_FOLDER`.",
-        "cursor": f"Or let AutoDebug write it: `{cmd} config cursor --demo --write PROJECT_FOLDER`.",
-        "claude-desktop": f"Or let AutoDebug write it: `{cmd} config claude-desktop --demo --write`, "
+        "vscode": f"Or let AutoDebug write it: `{cmd} config vscode{demo} --write PROJECT_FOLDER`.",
+        "cursor": f"Or let AutoDebug write it: `{cmd} config cursor{demo} --write PROJECT_FOLDER`.",
+        "claude-desktop": f"Or let AutoDebug write it: `{cmd} config claude-desktop{demo} --write`, "
                           "then restart Claude Desktop.",
     }[client]
     return json.dumps(body, indent=2), where

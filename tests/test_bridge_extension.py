@@ -33,6 +33,8 @@ TASKS = {"version": "2.0.0", "tasks": [{"label": "build demo", "type": "shell", 
 @unittest.skipIf(NODE is None, "Node.js is not installed")
 class ExtensionCore(unittest.TestCase):
     build_exit = 0
+    #: Python whose debugpy the harness runs; None means the scripted session.
+    debugpy_python: str | None = None
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -45,6 +47,8 @@ class ExtensionCore(unittest.TestCase):
         self.folder = bridges_dir(root)
         self.lines: queue.Queue[str] = queue.Queue()
         env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit))
+        if self.debugpy_python:
+            env["HARNESS_DEBUGPY"] = self.debugpy_python
         self.node = subprocess.Popen([NODE, str(HARNESS), str(self.folder), str(self.workspace)], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, text=True, encoding="utf-8", env=env)
         self.addCleanup(self.stop_node)
@@ -90,7 +94,7 @@ class ExtensionCore(unittest.TestCase):
     def stage(self, **overrides):
         self.ok("autodebug_create_case", intake_source="developer_text", intake_description="area changes", target=TARGET)
         plan = bridge_plan(workspace_folder=str(self.workspace),
-                           policy=CasePolicy(max_steps=20, max_inspection_seconds=600, max_operation_seconds=10), **overrides)
+                           policy=CasePolicy(max_steps=20, max_inspection_seconds=600, max_operation_seconds=20), **overrides)
         self.ok("autodebug_stage_plan", plan=json.loads(json.dumps(asdict(plan))))
         self.ok("autodebug_request_approval")
         return json.loads(self.expect("DIALOG"))

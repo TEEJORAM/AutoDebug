@@ -4,6 +4,25 @@ AutoDebug 0.1.0 (evidence schema `0.2-draft`). **Unreleased:** publication,
 licensing and native debugger access are blocked (see
 [publication.md](publication.md)).
 
+## 2026-10-24 — real debugging in VS Code and Cursor (AutoDebug Bridge)
+
+- **AutoDebug Bridge extension** (`autodebug bridge install vscode|cursor`):
+  the AI agent can now set breakpoints, run a launch configuration (and an
+  optional build task) under the IDE's own debugger, step in, over and out,
+  continue, and read the stack and variables. Nothing runs until you click
+  **Approve** in the IDE's dialog, which lists everything that will run.
+- Plain `serve` (and `config vscode --write` without `--demo`) now uses the
+  bridge; `--demo` keeps the synthetic practice debugger.
+- New tools: `autodebug_request_approval`, `autodebug_wait_for_approval`,
+  `autodebug_run_build`, `autodebug_wait_for_build`, `autodebug_list_variables`.
+  `autodebug_complete_case` takes `problem`, `solution` and `verification`.
+- Bridge cases get a structured report (problem, reproduction, debug timeline,
+  root cause, solution, verification), copied to `autodebug-reports/` in the
+  project.
+- Plan schema 0.3; `doctor` shows running bridges. AutoDebugDemo's plan uses it.
+- Limitations: not yet run in a real IDE window; C++ through the bridge is
+  phase 2; the build's terminal output is not captured.
+
 ## 2026-10-24 — AutoDebugDemo sample project
 
 - `examples/AutoDebugDemo`: a small sketch-geometry app (Python, plus a C++

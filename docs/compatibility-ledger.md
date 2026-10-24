@@ -1,8 +1,18 @@
 # IDE/OS compatibility ledger (`IDE-05`)
 
-**All five adapters are implemented and tested only against mocks.** No real
-native debugger has been contacted or certified. The T05 real-debugger gate
-remains **OPEN / NOT APPROVED**. There are **zero `PASS` cells**.
+**VS Code and Cursor** now have a real path, the AutoDebug Bridge
+([ide-debug-bridge](../openspec/changes/ide-debug-bridge/proposal.md); T05 gate
+approved for `vscode-bridge` only on 2026-10-24). It has not yet run in a real
+IDE window, so its cells below stay `NOT_TESTED`. The other adapters are tested
+only against mocks. There are **zero `PASS` cells**.
+
+## AutoDebug Bridge evidence — 2026-10-24
+
+| Check | Environment | Result |
+|---|---|---|
+| Extension core over the real protocol, scripted debug session (`tests/test_bridge_extension.py`) | CI: Windows, macOS, Ubuntu; Python 3.11/3.12/3.14 with Node | Pass |
+| Extension core with the **real Python debugger** debugpy 1.8.11 over real DAP on AutoDebugDemo (`tests/test_bridge_debugpy.py`) | Linux, Python 3.13, Node 22; stand-in IDE API | Pass: breakpoint bound at `geometry.py:15`, real stop, stack, variables, step over and continue, report written |
+| Same in a real VS Code or Cursor window | — | `NOT_TESTED`: first run by the developer |
 
 ## Historical evidence summary — 2026-10-22, T08–T13
 

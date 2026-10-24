@@ -40,7 +40,14 @@ authorization missing.
 | IDE-05 | IMPLEMENTED | T13, T15 | 11-cell ledger with honest states | Cells stay NOT_TESTED/BLOCKED until real tests |
 | CLI-01–06 | IMPLEMENTED | `cli-usability` C1–C6 | `tests/test_cli.py`, `tests/test_server.py` | — |
 | BR-03 | IMPLEMENTED | `ide-debug-bridge` B1 | `tests/test_bridge_plan.py` | Bridge resolution itself arrives in B2/B3 |
-| BR-01, 02, 04–12 | PROPOSED | `ide-debug-bridge` B2–B11 | — | Approved 2026-10-24; not built yet |
+| BR-01, BR-02 | IMPLEMENTED | `ide-debug-bridge` B2, B8 | `tests/test_bridge_protocol.py`, `tests/test_bridge_extension.py` | Real IDE window not yet tested |
+| BR-04 | IMPLEMENTED | B4, B8 | `tests/test_bridge_flow.py`, `tests/test_bridge_extension.py` | Residual risks in security.md |
+| BR-05 | PARTIAL | B5, B8 | `tests/test_bridge_flow.py` (`Build`), `tests/test_bridge_extension.py` | Real bridge records exit code only; task output is not readable through the VS Code API |
+| BR-06–BR-08 | IMPLEMENTED | B3, B4, B8 | `tests/test_bridge_adapter.py`, `tests/test_bridge_flow.py`, `tests/test_bridge_debugpy.py` | debugpy only; C++ is B10 |
+| BR-09 | IMPLEMENTED | B6 | `tests/test_bridge_report.py` | — |
+| BR-10 | IMPLEMENTED | B7 | `tests/test_bridge_flow.py` (`Guidance`) | Agent behaviour depends on the client |
+| BR-11 | PARTIAL | B2, B9 | fake bridge, Node harness, real debugpy | Manual run in VS Code pending |
+| BR-12 | IMPLEMENTED | B4, B8 | `tests/test_bridge_package.py` | — |
 | WIN-01–03 | IMPLEMENTED | `windows-evidence-storage` W1–W4 | `tests/test_windows_evidence.py`, `tests/test_publication_evidence.py` on Windows CI | — |
 
 Test-case IDs `TC-01`–`TC-24` are defined in [test-plan.md](test-plan.md).

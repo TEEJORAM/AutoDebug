@@ -53,6 +53,9 @@ class AutoDebugDemoTests(unittest.TestCase):
         raw = json.loads((DEMO / "autodebug-plan.json").read_text(encoding="utf-8"))
         plan = stage_plan(_decode(raw, TOOLS["autodebug_stage_plan"].parameters["plan"]))
         self.assertEqual(len(plan.digest_sha256), 64)
+        self.assertEqual((plan.schema_version, plan.target.ide), ("0.3", "vscode"))
+        launch = json.loads((DEMO / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+        self.assertIn(plan.launch_configuration_name, [c["name"] for c in launch["configurations"]])
         (breakpoint,) = plan.breakpoints
         lines = (DEMO / breakpoint.file).read_text(encoding="utf-8").splitlines()
         self.assertIn("total +=", lines[breakpoint.line - 1])
