@@ -202,10 +202,10 @@ class DebugpySession {
       await this.initialized;
       for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
       await this.request('setFunctionBreakpoints', { breakpoints: [] });
-      await this.request('configurationDone', {});
       await this.request('launch', {
         request: 'launch', program: this.configuration.program, cwd: this.configuration.cwd, args: this.configuration.args || [],
       });
+      await this.request('configurationDone', {});
       this.started = true;
       return;
     }

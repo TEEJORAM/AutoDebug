@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 
 from tests.test_extension import HarnessTest
@@ -21,6 +22,10 @@ def _gdb_major() -> int:
 
 
 @unittest.skipUnless(_gdb_major() >= 14 and shutil.which("g++"), "needs gdb 14 or later and g++")
+@unittest.skipIf(
+    sys.platform == "win32",
+    "Windows gdb rejects the launch and cannot find sources under the runner temp path; run this test on Linux or macOS",
+)
 class RealCpp(HarnessTest):
     debuggers = "cppdbg"
 
