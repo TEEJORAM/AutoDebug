@@ -26,122 +26,147 @@ application needs the missing pieces listed in
 
 ## 1. Install
 
-Requirements: **Python 3.11+**. There are no dependencies to download.
+Requirements: **Python 3.11 or newer** and **Git**. There are no dependencies
+to download. Run these once, in a terminal opened where you keep projects.
 
-Where each command runs:
-
-| Command | Run it in | Why |
-|---|---|---|
-| `pip install -e .` | Your **AutoDebug folder** (the one containing `pyproject.toml`) | `.` means "this folder". Run it once. |
-| `autodebug doctor` | Any folder | After installing, `autodebug` is a normal command. |
-| `autodebug config vscode --demo` | The **project folder you open in VS Code** (e.g. `D:\Projects\MyApp`), not the AutoDebug folder | VS Code reads `.vscode/mcp.json` only from the folder it has open. |
-
-### Linux / macOS
-
-```sh
-cd ~/Projects/AutoDebug              # your AutoDebug folder
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .                     # or, without a venv: pipx install .
-autodebug --version                  # autodebug 0.1.0
-```
-
-### Windows (PowerShell)
+Windows (PowerShell):
 
 ```powershell
-py --version                         # must be 3.11 or newer
-cd D:\Projects\AutoDebug             # your AutoDebug folder
+git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
 py -m pip install -e .
-py -m autodebug --version            # autodebug 0.1.0
 ```
 
-On Windows, use `py -m autodebug ...` in place of `autodebug ...` in the rest
-of this guide; it works even if Python's `Scripts` folder is not on your PATH.
+macOS / Linux:
+
+```sh
+git clone https://github.com/TEEJORAM/AutoDebug.git
+cd AutoDebug
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+On Windows this guide uses `py -m autodebug`, which works even when Python's
+`Scripts` folder is not on your PATH. On macOS/Linux, `autodebug` works while
+the `.venv` is active (run `source .venv/bin/activate` in new terminals).
 
 ## 2. Check your machine
+
+Windows (PowerShell):
+
+```powershell
+py -m autodebug doctor
+```
+
+macOS / Linux:
 
 ```sh
 autodebug doctor
 ```
 
+Example output (Windows):
+
 ```text
 AutoDebug doctor (autodebug 0.1.0)
 
-  ✔ Python            3.12.3
-  · Platform          Linux 6.8.0
+  ✔ Python            3.14.8
+  · Platform          Windows 11
   ✔ Evidence storage  supported
-  ✔ Evidence folder   /home/you/.local/state/autodebug (created on first run)
+  ✔ Evidence folder   C:\Users\you\AppData\Local\autodebug (created on first run)
   ✔ Demo debugger     synthetic, ready for `serve --demo`
-  · IDE adapters      vscode, cursor, clion target this OS; mock-only, no native debugger client yet
+  · IDE adapters      vscode, cursor, clion, visual_studio target this OS; mock-only, no native debugger client yet
   · Real debuggers    disabled until the T05 security gate is approved
 
-Ready. Next: `autodebug serve --demo`, or `autodebug config vscode --demo` to connect a client.
+Ready. Next: `py -m autodebug config vscode --demo --write PROJECT_FOLDER` to connect VS Code.
 ```
 
 Fix anything marked `✘` before continuing. `doctor` never creates files.
 
 ## 3. Connect your AI client
 
-`autodebug config <client> --demo` prints the exact entry for your client. It
-uses the absolute path of the Python you installed into, so the client doesn't
-depend on your shell's `PATH`. `--demo` arms the synthetic case
-`AUTODEBUG-DEMO` each time the client starts the server.
+Run these from the AutoDebug folder. `config ... --write` adds AutoDebug to the
+client's configuration file, keeps any other servers in it, and saves it as
+UTF-8. The entry uses the absolute path of your Python, so the client does not
+depend on `PATH`. `--demo` arms the synthetic case `AUTODEBUG-DEMO` each time
+the client starts the server.
+
+Without `--write`, `config` only prints the entry so you can add it by hand.
 
 ### VS Code (GitHub Copilot)
 
-Run these in the **project folder you open in VS Code**.
-
-Linux / macOS:
-
-```sh
-mkdir -p .vscode
-autodebug config vscode --demo > .vscode/mcp.json
-```
+Replace the folder with the project you open in VS Code; AutoDebug writes
+`.vscode/mcp.json` there.
 
 Windows (PowerShell):
 
 ```powershell
-mkdir .vscode                                         # skip if it exists
-py -m autodebug config vscode --demo | Set-Clipboard
-code .vscode\mcp.json                                 # paste, then save
+py -m autodebug config vscode --demo --write D:\Projects\MyApp
 ```
 
-Copying and pasting avoids a Windows PowerShell 5.1 trap: `>` saves files as
-UTF-16, which VS Code may not read as JSON. In PowerShell 7 (`pwsh`), `>` saves
-UTF-8 and the Linux/macOS form works as-is.
+macOS / Linux:
 
-If `.vscode/mcp.json` already exists, merge the `autodebug` entry into its
-`servers` object instead of overwriting the file. Then, in VS Code:
+```sh
+autodebug config vscode --demo --write ~/Projects/MyApp
+```
+
+Then, in VS Code with that folder open:
 
 1. Command Palette → **MCP: List Servers** → `autodebug` → **Start Server**.
 2. Open Copilot Chat in **Agent** mode and check the tools list for the
    `autodebug_*` tools.
 
-### Claude Code
+### Cursor
 
-```sh
-autodebug config claude-code --demo   # prints a `claude mcp add ...` command
+Windows (PowerShell):
+
+```powershell
+py -m autodebug config cursor --demo --write D:\Projects\MyApp
 ```
 
-Run the printed command in your project folder, then check with
-`claude mcp list` (or `/mcp` inside a session).
+macOS / Linux:
+
+```sh
+autodebug config cursor --demo --write ~/Projects/MyApp
+```
+
+This writes `.cursor/mcp.json` in that project. Then open Cursor Settings and
+enable `autodebug` under MCP.
 
 ### Claude Desktop
 
-```sh
-autodebug config claude-desktop --demo
+Windows (PowerShell):
+
+```powershell
+py -m autodebug config claude-desktop --demo --write
 ```
 
-Merge the output into `claude_desktop_config.json` (Settings → Developer → Edit
-Config), then quit and restart Claude Desktop.
-
-### Cursor
+macOS:
 
 ```sh
-autodebug config cursor --demo > .cursor/mcp.json
+autodebug config claude-desktop --demo --write
 ```
 
-Or merge it into `~/.cursor/mcp.json` to use it in every project.
+This updates `claude_desktop_config.json` (`%APPDATA%\Claude\` on Windows,
+`~/Library/Application Support/Claude/` on macOS). Quit and restart Claude
+Desktop.
+
+### Claude Code
+
+Windows (PowerShell):
+
+```powershell
+py -m autodebug config claude-code --demo
+```
+
+macOS / Linux:
+
+```sh
+autodebug config claude-code --demo
+```
+
+This prints a `claude mcp add ...` command. Run that command in your project
+folder, then check with `claude mcp list` (or `/mcp` inside a session).
 
 ## 4. Try the demo investigation
 
@@ -202,7 +227,8 @@ Until then, `autodebug doctor` reports every IDE adapter as "mock-only".
 
 | Problem | Fix |
 |---|---|
-| The client doesn't list AutoDebug | Re-run `autodebug config ...` from the environment where AutoDebug is installed, so the absolute Python path is correct, then restart the server or client. |
+| The client doesn't list AutoDebug | Re-run the `config ... --write` command from the AutoDebug folder (macOS/Linux: with `.venv` active), then restart the server or client. |
+| `... is not plain JSON` | Your existing config file has comments; add the entry printed by `config` (without `--write`) by hand. |
 | Where are the server's messages? | AutoDebug logs only to stderr. VS Code: **MCP: List Servers** → `autodebug` → **Show Output**. Claude Desktop: `mcp-server-autodebug.log` in its logs folder. |
 | `serve` waits and prints nothing | That is normal: it waits for an MCP client on stdin. Press Ctrl+C. |
 | `APPROVAL_EXPIRED` | The 30-minute demo approval ended; restart the server. |
@@ -215,7 +241,7 @@ Until then, `autodebug doctor` reports every IDE adapter as "mock-only".
 |---|---|
 | `autodebug serve [--demo] [--evidence-dir DIR] [--log-level LEVEL]` | Run the MCP stdio server (clients run this for you) |
 | `autodebug doctor [--evidence-dir DIR] [--json]` | Check the machine; exit 0 when ready |
-| `autodebug config {vscode,claude-code,claude-desktop,cursor} [--demo] [--evidence-dir DIR] [--name NAME]` | Print client configuration |
+| `autodebug config {vscode,claude-code,claude-desktop,cursor} [--demo] [--write [PROJECT_FOLDER]] [--evidence-dir DIR] [--name NAME]` | Print client configuration, or write it into the client's config file |
 | `autodebug --version` / `autodebug --help` | Version and help |
 
 `python -m autodebug ...` works the same without installing the command.

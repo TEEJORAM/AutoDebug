@@ -34,6 +34,7 @@ PROG = "autodebug"
 EVIDENCE_ENV = "AUTODEBUG_EVIDENCE_DIR"
 CLIENTS = ("vscode", "claude-code", "claude-desktop", "cursor")
 MIN_PYTHON = (3, 11)
+_WINDOWS = os.name == "nt"
 
 _DESCRIPTION = """\
 AutoDebug: a local MCP server that lets an AI client investigate bugs through
@@ -46,7 +47,8 @@ _EPILOG = """\
 quick start:
   autodebug doctor                 check this machine
   autodebug serve --demo           run the server with the synthetic demo case
-  autodebug config vscode --demo   print a VS Code .vscode/mcp.json entry
+  autodebug config vscode --demo --write PROJECT_FOLDER
+                                   connect VS Code (writes .vscode/mcp.json)
 
 docs: docs/getting-started.md in the AutoDebug repository"""
 
@@ -197,7 +199,7 @@ def _doctor(args: argparse.Namespace) -> int:
         print(f"  {symbol} {check.name:<{width}}  {check.detail}")
     print()
     if ready:
-        print(f"Ready. Next: `{PROG} serve --demo`, or `{PROG} config vscode --demo` to connect a client.")
+        print(f"Ready. Next: `{invocation()} config vscode --demo --write PROJECT_FOLDER` to connect VS Code.")
     else:
         print("Not ready: fix the failed checks above. See docs/getting-started.md.")
     return 0 if ready else 1
@@ -234,35 +236,96 @@ def _quote(parts: list[str]) -> str:
     return subprocess.list2cmdline(parts) if os.name == "nt" else shlex.join(parts)
 
 
+_JSON_CLIENTS = {"vscode": "servers", "cursor": "mcpServers", "claude-desktop": "mcpServers"}
+
+
+def client_entry(client: str, spec: dict) -> dict:
+    """The server entry in `client`'s documented JSON format."""
+    return spec if client == "claude-desktop" else {"type": "stdio", **spec}
+
+
 def render_config(client: str, name: str, spec: dict) -> tuple[str, str]:
     """Return `(output, where_to_put_it)` for one client."""
+    cmd = invocation()
     if client == "claude-code":
         parts = ["claude", "mcp", "add"]
         for key, value in spec.get("env", {}).items():
             parts += ["--env", f"{key}={value}"]
         parts += ["--transport", "stdio", name, "--", spec["command"], *spec["args"]]
         return _quote(parts), "Run this in your project folder (add `--scope user` for all projects)."
-    if client == "vscode":
-        body = {"servers": {name: {"type": "stdio", **spec}}}
-        where = "Save as .vscode/mcp.json in your workspace, or run 'MCP: Open User Configuration' and merge it."
-    elif client == "cursor":
-        body = {"mcpServers": {name: {"type": "stdio", **spec}}}
-        where = "Save as .cursor/mcp.json in your project, or ~/.cursor/mcp.json for all projects."
-    else:
-        body = {"mcpServers": {name: spec}}
-        location = {
-            "Windows": r"%APPDATA%\Claude\claude_desktop_config.json",
-            "Darwin": "~/Library/Application Support/Claude/claude_desktop_config.json",
-        }.get(platform.system(), "claude_desktop_config.json")
-        where = f"Merge into {location} (Settings > Developer > Edit Config), then restart Claude Desktop."
+    body = {_JSON_CLIENTS[client]: {name: client_entry(client, spec)}}
+    where = {
+        "vscode": f"Or let AutoDebug write it: `{cmd} config vscode --demo --write PROJECT_FOLDER`.",
+        "cursor": f"Or let AutoDebug write it: `{cmd} config cursor --demo --write PROJECT_FOLDER`.",
+        "claude-desktop": f"Or let AutoDebug write it: `{cmd} config claude-desktop --demo --write`, "
+                          "then restart Claude Desktop.",
+    }[client]
     return json.dumps(body, indent=2), where
+
+
+def config_path(client: str, project: str) -> Path:
+    """Where `config --write` puts `client`'s configuration."""
+    if client in ("vscode", "cursor"):
+        folder = Path(project or ".").expanduser().absolute()
+        if not folder.is_dir():
+            raise ValueError(f"project folder not found: {folder}")
+        return folder / (".vscode" if client == "vscode" else ".cursor") / "mcp.json"
+    if client == "claude-desktop":
+        if project:
+            raise ValueError("claude-desktop has one global configuration; use --write without a folder")
+        system = platform.system()
+        if system == "Windows":
+            base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+        elif system == "Darwin":
+            base = Path.home() / "Library" / "Application Support"
+        else:
+            raise ValueError(f"no known Claude Desktop configuration location on {system}")
+        return base / "Claude" / "claude_desktop_config.json"
+    raise ValueError("Claude Code is configured with `claude mcp add`; run the command printed without --write")
+
+
+def _read_json(path: Path) -> dict:
+    raw = path.read_bytes()
+    encoding = "utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"
+    try:
+        data = json.loads(raw.decode(encoding)) if raw.strip() else {}
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{path} is not plain JSON ({exc}); add the entry by hand") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} does not contain a JSON object; add the entry by hand")
+    return data
+
+
+def write_config(path: Path, top_key: str, name: str, entry: dict) -> None:
+    """Add or replace `name` under `top_key`, keeping every other setting.
+    Writes UTF-8 atomically; an existing UTF-16 or BOM file is converted."""
+    data = _read_json(path) if path.exists() else {}
+    servers = data.setdefault(top_key, {})
+    if not isinstance(servers, dict):
+        raise ValueError(f"{path}: '{top_key}' is not a JSON object; add the entry by hand")
+    servers[name] = entry
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def _config(args: argparse.Namespace) -> int:
     spec = server_spec(demo=args.demo, evidence_dir=args.evidence_dir)
-    output, where = render_config(args.client, args.name, spec)
-    print(output)
-    _err(f"\n{PROG}: {where}")
+    if args.write is not None:
+        path = config_path(args.client, args.write)
+        write_config(path, _JSON_CLIENTS[args.client], args.name, client_entry(args.client, spec))
+        _err(f"{PROG}: wrote {path}")
+        next_step = {
+            "vscode": "In VS Code: Command Palette > MCP: List Servers > autodebug > Start Server.",
+            "cursor": "Open Cursor Settings and enable autodebug under MCP.",
+            "claude-desktop": "Quit and restart Claude Desktop.",
+        }[args.client]
+        _err(f"{PROG}: next: {next_step}")
+    else:
+        output, where = render_config(args.client, args.name, spec)
+        print(output)
+        _err(f"\n{PROG}: {where}")
     if not secure_storage_supported():
         _err(f"{PROG}: warning: evidence storage is not available on {platform.system()}; "
              "the server starts but every case fails.")
@@ -270,6 +333,13 @@ def _config(args: argparse.Namespace) -> int:
 
 
 # -- entry point --------------------------------------------------------------
+
+
+def invocation() -> str:
+    """How the user ran AutoDebug, so printed hints can be pasted as-is."""
+    if os.path.basename(sys.argv[0]) == "__main__.py":
+        return "py -m autodebug" if _WINDOWS else "python3 -m autodebug"
+    return PROG
 
 
 def _err(message: str) -> None:
@@ -305,12 +375,16 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true", help="machine-readable output")
     doctor.set_defaults(handler=_doctor)
 
-    config = sub.add_parser("config", help="print MCP client configuration",
-                            description="Print a ready-to-use configuration entry for an MCP client.")
+    config = sub.add_parser("config", help="print or write MCP client configuration",
+                            description="Print a ready-to-use configuration entry for an MCP client, "
+                                        "or write it into the client's configuration file with --write.")
     config.add_argument("client", choices=CLIENTS)
     config.add_argument("--demo", action="store_true", help="configure the server to start the synthetic demo")
     _add_evidence_option(config)
     config.add_argument("--name", default="autodebug", help="server name shown in the client (default: autodebug)")
+    config.add_argument("--write", nargs="?", const="", metavar="PROJECT_FOLDER",
+                        help="write the entry into the client's config file, keeping other servers "
+                             "(vscode/cursor: PROJECT_FOLDER, default current folder; claude-desktop: no folder)")
     config.set_defaults(handler=_config)
     return parser
 

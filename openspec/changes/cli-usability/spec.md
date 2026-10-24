@@ -34,6 +34,16 @@ the running interpreter with `-m autodebug serve`; a source checkout adds
 `PYTHONPATH`. On a platform without secure evidence storage it also warns on
 stderr that cases will fail.
 
+### CLI-06 Writing client configuration
+`config <client> --write [PROJECT_FOLDER]` adds or replaces the AutoDebug entry
+in the client's configuration file (VS Code `PROJECT_FOLDER/.vscode/mcp.json`,
+Cursor `PROJECT_FOLDER/.cursor/mcp.json`, Claude Desktop's global file; Claude
+Code is refused because it is configured by command). Other entries and
+settings are kept; the file is written atomically as UTF-8, converting an
+existing UTF-16/BOM file. A file that is not plain JSON is left untouched and
+the command fails. Printed hints use the same invocation the user ran
+(`py -m autodebug`, `python3 -m autodebug` or `autodebug`).
+
 ### CLI-05 Installation
 `pip install .` installs the `autodebug` command; `pip install -e .` installs an
 editable copy. No dependencies are added.
