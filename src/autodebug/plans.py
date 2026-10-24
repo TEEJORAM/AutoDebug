@@ -1,4 +1,4 @@
-"""Plan validation and canonical digest (RP-03, RP-05, RP-06).
+"""Plan validation and canonical digest (RP-03, RP-05, RP-06, BR-03).
 
 Plans are frozen dataclasses; this module validates their content and
 computes the digest that later detects any change. Malformed input raises
@@ -10,9 +10,23 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+from collections.abc import Mapping
 from dataclasses import asdict, replace
+from pathlib import PurePosixPath, PureWindowsPath
 
-from autodebug.models import CasePlan, ReproductionPlan, SCHEMA_VERSION
+from autodebug.models import BRIDGE_SCHEMA_VERSION, CasePlan, CasePolicy, ReproductionPlan, SCHEMA_VERSION
+
+#: IDEs the bridge backend runs in (ide-debug-bridge proposal, phase 1).
+BRIDGE_IDES = ("vscode", "cursor")
+#: Fields that exist only in schema 0.3, with the default older plans must keep.
+_BRIDGE_DEFAULTS = {
+    "workspace_folder": None, "launch_configuration_name": None, "build_task": None,
+    "report_to_workspace": True, "resolved_inputs": (),
+}
+_DEFAULT_BUILD_SECONDS = CasePolicy.max_build_seconds
+_MAX_RESOLVED_BYTES = 1024 * 1024
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def validate_reproduction_plan(reproduction: ReproductionPlan) -> None:
@@ -51,7 +65,7 @@ def validate_case_plan(plan: CasePlan) -> None:
     """Structural checks on an immutable staged plan (RP-03, RP-06)."""
     if not plan.case_id:
         raise ValueError("case_id is required")
-    if plan.schema_version not in ("0.1-draft", SCHEMA_VERSION):
+    if plan.schema_version not in ("0.1-draft", SCHEMA_VERSION, BRIDGE_SCHEMA_VERSION):
         raise ValueError("unsupported plan schema version")
     if not plan.source_revision:
         raise ValueError("source_revision is required")
@@ -83,6 +97,117 @@ def validate_case_plan(plan: CasePlan) -> None:
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 0 < duration <= 30:
         raise ValueError("policy.max_operation_seconds must be finite and in (0, 30]")
     validate_reproduction_plan(plan.reproduction)
+    if plan.schema_version == BRIDGE_SCHEMA_VERSION:
+        _validate_bridge_fields(plan)
+    elif any(getattr(plan, name) != default for name, default in _BRIDGE_DEFAULTS.items()) or not (
+        type(plan.policy.max_build_seconds) is int and plan.policy.max_build_seconds == _DEFAULT_BUILD_SECONDS
+    ):
+        raise ValueError(f"workspace, launch-name, build and resolved-input fields need schema {BRIDGE_SCHEMA_VERSION}")
+
+
+def _bounded_text(value: object, maximum: int) -> bool:
+    return (isinstance(value, str) and bool(value.strip()) and len(value) <= maximum
+            and not any(ord(c) < 32 or ord(c) == 127 for c in value))
+
+
+def _is_relative_inside(path: str) -> bool:
+    """A breakpoint path relative to the workspace that cannot leave it:
+    no root, drive or UNC prefix, and no empty, `.` or `..` segment."""
+    if not _bounded_text(path, 2000) or re.match(r"[A-Za-z]:", path):
+        return False
+    return all(part not in ("", ".", "..") for part in re.split(r"[\\/]", path))
+
+
+def _expected_input_names(plan: CasePlan) -> set[str]:
+    names = {"launch"} | {f"file:{bp.file}" for bp in plan.breakpoints}
+    return names | {"task"} if plan.build_task is not None else names
+
+
+def _validate_bridge_fields(plan: CasePlan) -> None:
+    """BR-03 — schema 0.3: launch a named configuration from one absolute
+    workspace folder, with breakpoints inside it."""
+    if plan.target.ide not in BRIDGE_IDES:
+        raise ValueError(f"schema {BRIDGE_SCHEMA_VERSION} plans target one of {', '.join(BRIDGE_IDES)}")
+    folder = plan.workspace_folder
+    if not _bounded_text(folder, 2000) or not (
+        PurePosixPath(folder).is_absolute() or PureWindowsPath(folder).is_absolute()
+    ):
+        raise ValueError("workspace_folder must be a bounded absolute path")
+    if not _bounded_text(plan.launch_configuration_name, 200):
+        raise ValueError("launch_configuration_name must name one launch configuration (at most 200 characters)")
+    if plan.build_task is not None and not _bounded_text(plan.build_task, 200):
+        raise ValueError("build_task must be a task label of at most 200 characters")
+    if plan.process_running or plan.launch_configuration:
+        raise ValueError("bridge plans launch a named configuration; attach and inline configurations are refused")
+    if not all(_is_relative_inside(bp.file) for bp in plan.breakpoints):
+        raise ValueError("breakpoint files must be relative paths inside the workspace folder")
+    if not isinstance(plan.report_to_workspace, bool):
+        raise ValueError("report_to_workspace must be true or false")
+    seconds = plan.policy.max_build_seconds
+    if type(seconds) is not int or not 1 <= seconds <= 900:
+        raise ValueError("policy.max_build_seconds must be an integer in [1, 900]")
+    if plan.resolved_inputs:
+        _validate_resolved_inputs(plan, plan.resolved_inputs)
+
+
+def _validate_resolved_inputs(plan: CasePlan, inputs: object) -> None:
+    if (
+        not isinstance(inputs, tuple)
+        or any(not isinstance(p, tuple) or len(p) != 2 or not all(isinstance(v, str) for v in p) for p in inputs)
+        or len(dict(inputs)) != len(inputs)
+    ):
+        raise ValueError("resolved_inputs must be unique (name, sha256) pairs")
+    if set(dict(inputs)) != _expected_input_names(plan):
+        raise ValueError("resolved_inputs must cover the launch configuration, build task and every breakpoint file")
+    if not all(_SHA256.fullmatch(digest) for _, digest in inputs):
+        raise ValueError("resolved_inputs digests must be lowercase SHA-256 hex")
+
+
+def _sha256_json(value: object) -> str:
+    try:
+        data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("resolved configuration must be plain JSON") from exc
+    if len(data) > _MAX_RESOLVED_BYTES:
+        raise ValueError("resolved configuration is larger than 1 MiB")
+    return hashlib.sha256(data).hexdigest()
+
+
+def resolve_inputs(
+    plan: CasePlan, *, launch: Mapping, task: Mapping | None, files: Mapping[str, bytes]
+) -> tuple[tuple[str, str], ...]:
+    """BR-03 — hash what the bridge resolved for `plan`: the launch
+    configuration, the build task and each breakpoint file's bytes.
+
+    Refuses attach configurations and anything that does not match the plan."""
+    if plan.schema_version != BRIDGE_SCHEMA_VERSION:
+        raise ValueError(f"only schema {BRIDGE_SCHEMA_VERSION} plans have resolved inputs")
+    if not isinstance(launch, Mapping) or launch.get("name") != plan.launch_configuration_name:
+        raise ValueError("resolved launch configuration does not match launch_configuration_name")
+    if launch.get("request") != "launch":
+        raise ValueError("only launch configurations are allowed; attach is refused")
+    if plan.build_task is None:
+        if task is not None:
+            raise ValueError("a build task was resolved but the plan names none")
+    elif not isinstance(task, Mapping) or task.get("label") != plan.build_task:
+        raise ValueError("resolved build task does not match build_task")
+    wanted = {bp.file for bp in plan.breakpoints}
+    if not isinstance(files, Mapping) or set(files) != wanted or not all(isinstance(b, bytes) for b in files.values()):
+        raise ValueError("file contents must be given for exactly the breakpoint files")
+    inputs = {"launch": _sha256_json(dict(launch))}
+    if task is not None:
+        inputs["task"] = _sha256_json(dict(task))
+    inputs.update({f"file:{name}": hashlib.sha256(data).hexdigest() for name, data in files.items()})
+    return tuple(sorted(inputs.items()))
+
+
+def bind_resolved_inputs(plan: CasePlan, inputs: tuple[tuple[str, str], ...]) -> CasePlan:
+    """Attach the bridge's resolved-input hashes to a staged schema 0.3 plan
+    and return it with a new digest. A plan is bound once."""
+    if plan.schema_version != BRIDGE_SCHEMA_VERSION or plan.resolved_inputs:
+        raise ValueError("only an unbound schema 0.3 plan can be bound to resolved inputs")
+    _validate_resolved_inputs(plan, inputs)
+    return stage_plan(replace(plan, resolved_inputs=inputs, digest_sha256=None))
 
 
 def compute_plan_digest(plan: CasePlan) -> str:
@@ -92,6 +217,11 @@ def compute_plan_digest(plan: CasePlan) -> str:
     """
     payload = asdict(plan)
     payload.pop("digest_sha256", None)
+    if plan.schema_version != BRIDGE_SCHEMA_VERSION:
+        # Older plans keep the digest they had before schema 0.3 existed.
+        for name in _BRIDGE_DEFAULTS:
+            payload.pop(name, None)
+        payload["policy"].pop("max_build_seconds", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

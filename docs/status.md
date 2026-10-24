@@ -67,6 +67,9 @@ Tasks run one at a time, in order.
 
 ## Change log
 
+- **2026-10-24 — ide-debug-bridge B1.** Plan schema 0.3 (workspace folder,
+  named launch configuration, build task, report export) with resolved-input
+  hashes in the digest. Validation only; nothing contacts an IDE yet.
 - **2026-10-24 — user guide.** `autodebug guide`, `site/index.html`, and
   `.github/workflows/pages.yml` (`openspec/changes/user-guide/`). Setup steps
   for Windows, macOS and Linux. Real debugger control stays disabled.

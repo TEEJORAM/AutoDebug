@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 SCHEMA_VERSION = "0.2-draft"
+#: Plan schema for the IDE bridge backend (ide-debug-bridge BR-03).
+BRIDGE_SCHEMA_VERSION = "0.3"
 
 
 class CapabilityState(str, Enum):
@@ -148,6 +150,8 @@ class CasePolicy:
     max_inspection_seconds: int
     max_operation_seconds: float = 5.0
     max_evidence_records: int = 200
+    #: Schema 0.3 only: limit for the plan's build task (BR-05).
+    max_build_seconds: int = 300
 
 
 @dataclass(frozen=True)
@@ -165,6 +169,14 @@ class CasePlan:
     digest_sha256: str | None = None
     launch_configuration: tuple[tuple[str, str], ...] = ()
     process_running: bool = False
+    # Schema 0.3 (BR-03). Paths in `breakpoints` are relative to the workspace.
+    workspace_folder: str | None = None
+    launch_configuration_name: str | None = None
+    build_task: str | None = None
+    report_to_workspace: bool = True
+    #: (name, sha256) of what the bridge resolved: "launch", "task" and
+    #: "file:<path>" per breakpoint file. Set by the bridge, never the caller.
+    resolved_inputs: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
