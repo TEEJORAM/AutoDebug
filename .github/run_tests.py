@@ -15,4 +15,7 @@ problems = sorted(result.failures + result.errors, key=lambda item: ("windows" n
 for test, trace in problems[:10]:
     message = trace[-3000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
     print(f"::error title={test.id()}::{message}")
+skipped = sorted({reason for _, reason in result.skipped})
+print(f"::notice title=Test summary::ran {result.testsRun}, failures {len(result.failures)}, "
+      f"errors {len(result.errors)}, skipped {len(result.skipped)} ({'; '.join(skipped) or 'none'})")
 sys.exit(0 if result.wasSuccessful() else 1)
