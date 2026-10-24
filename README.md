@@ -74,9 +74,52 @@ your real IDE debugger. **[docs/getting-started.md](docs/getting-started.md)**
 covers Cursor, Claude Desktop and Claude Code, the full demo walkthrough and
 troubleshooting.
 
-**Need a project to practise on?**
-[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) is a small Python and
-C++ app with one deliberate bug, ready to debug in VS Code, Visual Studio or CLion.
+### 4. Try the demo project
+
+[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) is a small Python app
+(with a C++ twin) that has one deliberate bug: moving a shape changes its area.
+It comes with the AutoDebug repository, so there is nothing extra to download.
+
+**Get it.** If you cloned AutoDebug before the demo existed, update first. Run
+from the AutoDebug folder:
+
+```sh
+git pull
+```
+
+**See the bug.** Still in the AutoDebug folder:
+
+**Windows (PowerShell):**
+
+```powershell
+cd examples\AutoDebugDemo
+py report.py
+py -m unittest -v
+```
+
+**macOS / Linux** (with `.venv` active from step 1):
+
+```sh
+cd examples/AutoDebugDemo
+python3 report.py
+python3 -m unittest -v
+```
+
+`report.py` ends with `3 of 3 shapes change area when moved.` and one test
+fails with `AssertionError: 2.0 != 1.0`. That is expected; it is the bug.
+
+**Debug it in VS Code.**
+
+1. **File → Open Folder** → the `examples/AutoDebugDemo` folder inside AutoDebug
+   (for example `D:\Projects\AutoDebug\examples\AutoDebugDemo`). Install the
+   recommended Python extensions if VS Code offers them.
+2. Open `geometry.py` and click left of line 15 to set a breakpoint.
+3. **Run and Debug** → choose **Debug tests** → press `F5`.
+4. At each stop, watch `i`, `len(points)` and `total` in **Variables**.
+
+The [demo walkthrough](examples/AutoDebugDemo/README.md) has the answer, the
+C++ build steps (CMake, Visual Studio, CLion) and how to connect AutoDebug to
+this folder.
 
 ## How it works
 
