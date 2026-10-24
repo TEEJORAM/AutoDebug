@@ -219,9 +219,9 @@ AutoDebug checkout and private to you.
 ## Practise on a real bug
 
 [examples/AutoDebugDemo](../examples/AutoDebugDemo/README.md) is a small Python
-and C++ app with one deliberate bug. Debug it yourself in VS Code, Visual Studio
-or CLion now; its `autodebug-plan.json` is the plan AutoDebug will use once it
-can drive the VS Code debugger.
+and C++ app. Moving a shape keeps its area. Debug it yourself in VS Code,
+Visual Studio or CLion; its `autodebug-plan.json` is the plan AutoDebug will
+use once it can drive the VS Code debugger.
 
 ## Connecting a real IDE debugger
 

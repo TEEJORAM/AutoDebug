@@ -1,4 +1,4 @@
-"""Tests for geometry.py. One of them fails until the bug is fixed:
+"""Tests for geometry.py.
 
     python -m unittest -v
 """

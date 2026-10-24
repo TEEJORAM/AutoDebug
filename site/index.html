@@ -213,7 +213,7 @@ autodebug config claude-code --demo</pre>
       </tr>
     </tbody>
   </table>
-  <p class="note"><code>examples/AutoDebugDemo</code> is a small Python and C++ program with one deliberate area bug (<code>geometry.py</code> line 15). Debugging it in an IDE teaches the bug. It does not make AutoDebug control that debugger. On macOS and Linux, <code>autodebug doctor</code> lists which of the five adapters target that OS; all of them stay mock-only.</p>
+  <p class="note"><code>examples/AutoDebugDemo</code> is a small Python and C++ program. <code>geometry.py</code> keeps a shape's area when the shape is moved. Debugging it in an IDE does not make AutoDebug control that debugger. On macOS and Linux, <code>autodebug doctor</code> lists which of the five adapters target that OS; all of them stay mock-only.</p>
 
   <h2>If something fails</h2>
   <table>

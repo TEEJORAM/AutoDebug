@@ -79,8 +79,8 @@ troubleshooting.
 ### 4. Try the demo project
 
 [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) is a small Python app
-(with a C++ twin) that has one deliberate bug: moving a shape changes its area.
-It comes with the AutoDebug repository, so there is nothing extra to download.
+(with a C++ twin). Moving a shape keeps its area. It comes with the AutoDebug
+repository, so there is nothing extra to download.
 
 **Get it.** If you cloned AutoDebug before the demo existed, update first. Run
 from the AutoDebug folder:
@@ -89,7 +89,7 @@ from the AutoDebug folder:
 git pull
 ```
 
-**See the bug.** Still in the AutoDebug folder:
+**Run it.** Still in the AutoDebug folder:
 
 **Windows (PowerShell):**
 
@@ -107,21 +107,20 @@ python3 report.py
 python3 -m unittest -v
 ```
 
-`report.py` ends with `3 of 3 shapes change area when moved.` and one test
-fails with `AssertionError: 2.0 != 1.0`. That is expected; it is the bug.
+`report.py` ends with `0 of 3 shapes change area when moved.` and both tests
+pass.
 
 **Debug it in VS Code.**
 
 1. **File → Open Folder** → the `examples/AutoDebugDemo` folder inside AutoDebug
    (for example `D:\Projects\AutoDebug\examples\AutoDebugDemo`). Install the
    recommended Python extensions if VS Code offers them.
-2. Open `geometry.py` and click left of line 15 to set a breakpoint.
+2. Open `geometry.py`. The area term is on line 16.
 3. **Run and Debug** → choose **Debug tests** → press `F5`.
 4. At each stop, watch `i`, `len(points)` and `total` in **Variables**.
 
-The [demo walkthrough](examples/AutoDebugDemo/README.md) has the answer, the
-C++ build steps (CMake, Visual Studio, CLion) and how to connect AutoDebug to
-this folder.
+The [demo walkthrough](examples/AutoDebugDemo/README.md) has the C++ build
+steps (CMake, Visual Studio, CLion) and how to connect AutoDebug to this folder.
 
 ## How it works
 

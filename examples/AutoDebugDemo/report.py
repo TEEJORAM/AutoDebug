@@ -1,6 +1,6 @@
 """Print the area of a few sketch shapes, before and after moving them.
 
-Moving a shape must never change its area, but here it does. Run:
+Moving a shape must never change its area. Run:
 
     python report.py
 """
