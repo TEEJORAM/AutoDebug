@@ -225,9 +225,9 @@ class TestConfigWrite(_TempDir):
             cli.config_path("claude-desktop", "")
 
     def test_hints_match_how_autodebug_was_started(self):
-        with patch.object(cli.sys, "argv", ["C:/x/autodebug/__main__.py"]), patch.object(cli.os, "name", "nt"):
+        with patch.object(cli.sys, "argv", ["C:/x/autodebug/__main__.py"]), patch.object(cli, "_WINDOWS", True):
             self.assertEqual(cli.invocation(), "py -m autodebug")
-        with patch.object(cli.sys, "argv", ["/x/autodebug/__main__.py"]), patch.object(cli.os, "name", "posix"):
+        with patch.object(cli.sys, "argv", ["/x/autodebug/__main__.py"]), patch.object(cli, "_WINDOWS", False):
             self.assertEqual(cli.invocation(), "python3 -m autodebug")
         with patch.object(cli.sys, "argv", ["/usr/bin/autodebug"]):
             self.assertEqual(cli.invocation(), "autodebug")

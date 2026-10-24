@@ -34,6 +34,7 @@ PROG = "autodebug"
 EVIDENCE_ENV = "AUTODEBUG_EVIDENCE_DIR"
 CLIENTS = ("vscode", "claude-code", "claude-desktop", "cursor")
 MIN_PYTHON = (3, 11)
+_WINDOWS = os.name == "nt"
 
 _DESCRIPTION = """\
 AutoDebug: a local MCP server that lets an AI client investigate bugs through
@@ -336,8 +337,8 @@ def _config(args: argparse.Namespace) -> int:
 
 def invocation() -> str:
     """How the user ran AutoDebug, so printed hints can be pasted as-is."""
-    if Path(sys.argv[0]).name == "__main__.py":
-        return "py -m autodebug" if os.name == "nt" else "python3 -m autodebug"
+    if os.path.basename(sys.argv[0]) == "__main__.py":
+        return "py -m autodebug" if _WINDOWS else "python3 -m autodebug"
     return PROG
 
 
