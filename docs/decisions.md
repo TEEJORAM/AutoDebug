@@ -1,21 +1,21 @@
-# AutoDebug — Architecture decision records (ADRs)
+# Architecture decision records
 
 These record the *why* behind long-lived design choices. Changing a decision requires a reviewed new ADR and, where behavior changes, an updated capability spec.
 
 ## ADR-001 — One Python MCP gateway; no custom debugger engine
-- **Status:** Proposed — part of G00 review.
+- **Status:** Accepted (G00, 2026-10-22).
 - **Decision:** Build a typed, versioned gateway that routes to existing **native IDE debugger** bridges.
 - **Reason:** Native IDEs differ; a full debugger implementation adds huge scope, while common contracts allow reuse.
 - **Tradeoff:** Adapter capabilities depend on backend versions.
 
 ## ADR-002 — Five adapters at foundation; platform-specific certification
-- **Status:** Proposed.
+- **Status:** Accepted (G00).
 - **Decision:** Five module definitions from T01; support target of VS Code/Cursor/CLion on Windows/macOS/Linux, Visual Studio on Windows, Xcode on macOS.
 - **Reason:** Architectural coverage from day one without claiming complete implementations.
 - **Tradeoff:** Tenants without certain IDEs return not applicable/unavailable; 11-case matrix needs separate lab work.
 
 ## ADR-003 — AI investigator lives in client, not AutoDebug
-- **Status:** Proposed.
+- **Status:** Accepted (G00).
 - **Decision:** Client agent owns Jira/doc retrieval, source analysis, hypothesis evaluation and RCA narrative. Server owns tool execution, session safety and evidence storage.
 - **Reason:** Any compliant AI client can use the same debugger tools; avoid embedding a second agent/model.
 
@@ -25,7 +25,7 @@ These record the *why* behind long-lived design choices. Changing a decision req
 - **Reason:** Avoid injecting unverified application runtime code or promising automation without a supported invocation path.
 
 ## ADR-005 — Explicit, bound approval and native session identity
-- **Status:** Proposed, **requires security validation**.
+- **Status:** Accepted (G00); **real use requires security validation**.
 - **Decision:** Agent cannot approve itself. Approvals are tied to immutable plan/script hash and selected native session with expiry.
 - **Reason:** Wrong debugger/process or script can have destructive consequences.
 - **Blocking tradeoff:** An agent with unrestricted same-user shell access can spoof naive approval files; OS-enforced trusted user-presence isolation must be designed before real process controls are enabled.
@@ -63,7 +63,7 @@ External sources cited by the decisions above. Record exact versions and integra
 
 **MCP and IDE sources** (ADR-001, ADR-002, ADR-006)
 - [Model Context Protocol — official](https://modelcontextprotocol.io/)
-- [Official Python SDK for MCP](https://github.com/modelcontextprotocol/python-sdk) — prospective gateway library, pinned only at T07
+- [Official Python SDK for MCP](https://github.com/modelcontextprotocol/python-sdk) — not used; the stdio binding is original and dependency-free
 - [Microsoft DebugMCP](https://github.com/microsoft/DebugMCP) — external VS Code extension; **do not copy** source into AutoDebug
 - [VS Code Extension API](https://code.visualstudio.com/api/references/vscode-api)
 - [Cursor API/extension documentation](https://docs.cursor.com/) — verify against the current Cursor version

@@ -1,10 +1,9 @@
-# AutoDebug — Architecture explained by ownership
+# Architecture
 
-**Status: fake-only MCP stdio operational; native deployment blocked.** A bounded
-Python facade, standalone synthetic backend and five mock-validated adapters
-exist; no real native-debugger integration is certified. The architecture separates **agent
-reasoning**, **AutoDebug execution controls**, and **the existing native IDE
-debugger**. AutoDebug itself does not contain an LLM.
+AutoDebug separates **agent reasoning** (the AI client), **execution controls**
+(AutoDebug) and **the existing native IDE debugger**. AutoDebug contains no
+LLM. Today only the synthetic backend is operational; the five IDE adapters
+are mock-tested and no native integration is certified.
 
 ## One picture
 
@@ -36,7 +35,7 @@ flowchart TB
     U[Developer reviews plan in trusted local UI / CLI] -->|Binding approval record| P
 ```
 
-The five bottom IDEs are **alternatives**, not five debuggers connected to the same application simultaneously. A AutoDebug process on each computer connects to its locally running IDEs. Remote cross-computer debugging is **not in v1**.
+The five bottom IDEs are **alternatives**, not five debuggers connected to the same application simultaneously. An AutoDebug process on each computer connects to its locally running IDEs. Remote cross-computer debugging is **not in v1**.
 
 ## Which process does what?
 
@@ -49,45 +48,36 @@ The five bottom IDEs are **alternatives**, not five debuggers connected to the s
 | Application | Runs actual app code and optionally its **existing** scripting mechanism | Automatically accept undisclosed injected code |
 | Developer | Approves reviewed plan/script, chooses target, runs native Fusion script/UI steps | Be replaced by an agent's assertion of approval |
 
-## Recommended repo modules (to create as coding tasks)
+## Source layout
 
 ```text
 src/autodebug/
-  server.py              # Publish one local MCP interface
-  models.py              # Versioned typed data contracts
-  sessions.py            # Discover and pin IDE + debugger + PID identities
-  router.py              # Session-specific adapter selection
-  plans.py               # Immutable reviewed plan and script digest
-  approvals.py           # Trusted local approval verification
-  workflow.py            # Enforce state transitions and action limits
-  evidence.py            # Sanitized JSONL observations; Markdown reports
+  server.py        MCP stdio transport, tool schemas, CLI (`python -m autodebug`)
+  facade.py        The 15 autodebug_* tools; all re-checks and error envelopes
+  workflow.py      Case state machine and legal transitions
+  plans.py         Plan validation and canonical SHA-256 digest
+  approvals.py     Approval broker prototype and authorize_and_arm
+  router.py        Reuse / attach / launch / decline decision (GW-06)
+  sessions.py      Session identity, ownership, leases, quarantine
+  operations.py    Bounded backend calls with cancellation and late cleanup
+  evidence.py      Redaction, bounded output, private evidence store, report
+  models.py        Typed, versioned data contracts
+  errors.py        Stable error codes
+  synthetic.py     Isolated in-memory debugger for the --demo
   adapters/
-    base.py              # Adapter Protocol + capability definition
-    vscode.py
-    cursor.py
-    clion.py
-    visual_studio.py
-    xcode.py
-  policy.py              # Security defaults, quotas, cancellation
-
-tests/
-  unit/
-  contracts/
-  integration/
-  fixtures/
+    base.py        BaseAdapter, capability probing, ClientBackedAdapter
+    vscode.py  cursor.py  clion.py  visual_studio.py  xcode.py
+build_backend.py   Stdlib-only PEP 517 builder
+tests/             unittest suites; fixtures/ holds fake adapters and clients
 ```
 
-**Historical technology proposal:** Python 3.11+, an approved/pinned MCP SDK,
-`pytest` and `ruff`. The current source-tree tests instead use standard-library
-`unittest`, with Python 3.11/3.12 configured in CI; no MCP SDK, `pytest`, or `ruff`
-is required or installed by the documented setup. Enterprise toolchain/package
-acceptance and real deployment support remain unverified. See `README.md`.
+Python 3.11+, standard library only, tests with `unittest`.
 
 ## Adapter protocol — original interface
 
 Every adapter should implement the **same core operations** with typed results:
 
-1. `probe()` — installed? reachable? IDE/debugger version? exact supported capabilities?
+1. `probe_capabilities()` — installed? reachable? IDE/debugger version? exact supported capabilities?
 2. `list_sessions()` — enumerate **actual** debugger sessions, not guess from process names.
 3. `launch_or_attach(target, reviewed_configuration)` — only when approved and supported.
 4. `set_breakpoints(session, resolved_locations)` — return individual **verified/bound** status.
@@ -160,6 +150,9 @@ Next action for the developer
 
 **Never claim a cause is confirmed solely because a suspicious variable was observed.** Confirmation needs a verified causal path or a distinguishing regression/controlled test — see the `DE-06` bar in the debugging-and-evidence spec.
 
-## Design review gates
+## Gates before real use
 
-Before implementation: validate active-native-session access in each IDE version, approved software dependencies, acceptance criteria, and trusted user approval mechanism. Before real debugger control: pass tests against fakes and make a user approve the precise selected target. Before shipping: complete the 11-case compatibility report with `PASS / PARTIAL / UNSUPPORTED / NOT_TESTED`, never blanket checkmarks.
+Before real debugger control: a trusted user-approval mechanism, approved
+dependencies and verified native-session access per IDE version. Before
+shipping: the 11-cell compatibility ledger filled with real results, never
+blanket checkmarks.

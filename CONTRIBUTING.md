@@ -1,62 +1,33 @@
-# Contributing to AutoDebug
+# Contributing
 
-**Publication and external contribution terms are pending authorization.** There is
-no assigned `LICENSE`; this guide is not permission to redistribute code or submit
-company-owned material publicly. Obtain Autodesk ownership/copyright, OSSA/Legal,
-and applicable security approvals first. See
-[the license review](docs/license-and-dependency-review.md).
+There is no assigned license and external contributions are not yet
+authorized; see [docs/publication.md](docs/publication.md).
 
-## Frozen publication candidate
+## Workflow
 
-Implementation and security remediation are complete for this iteration.
-The finalization pass is documentation-only; it does not authorize new features,
-refactoring, native debugger access or another audit cycle. The workflow below
-applies to future separately authorized changes, not a request to reopen them now.
+1. Read `README.md`, `CLAUDE.md` and `docs/status.md`.
+2. Read the relevant spec, design and task in
+   `openspec/changes/autodebug-foundation/`. Requirements there are normative.
+3. Get explicit human approval for one named task. A behaviour change needs a
+   new reviewed proposal, requirements delta, design and tasks first.
+4. State the linked requirement IDs, then add or update fake-backed tests with
+   the change.
+5. Run `PYTHONPATH=src python3 -m unittest discover -s tests` on Python 3.11+.
+   Record the interpreter, command and result; a configured CI job is not a run.
+6. Update the related docs, `tasks.md` and `docs/status.md`. Leave review gates
+   unchecked until the required human review happens.
 
-Before public contributions or personal-account/equipment development, obtain
-the four [publication authorizations](docs/ossa-legal-approval-request.md).
-Use the [publication procedure](docs/installation.md#publication-after-permission)
-only after permission. Preserve legitimate authorship and ownership records;
-do not copy private history, evidence, credentials or local review artifacts.
+## Safety and data
 
-## Review-first workflow
+- Real debugger control stays disabled until the T05 gate is approved. Agent
+  tool calls and chat strings are never human authorization.
+- Fusion and other applications: use only their existing script UI or already
+  approved facilities; no in-app helper, embedded server or injection.
+- Use synthetic fixtures and disposable applications only. Never commit Jira
+  exports, customer data, debugger captures, tokens, employee identities or
+  internal locations.
+- Keep case data outside Git; ignore rules do not remove tracked history.
+- Do not copy, fork or vendor DebugMCP or internal bridge code. Dependencies,
+  external MCP services and model/data routing need Autodesk approval.
 
-1. Read `README.md`, `CLAUDE.md`, and `docs/status.md`.
-2. Read the foundation proposal, relevant complete capability specs, design, and
-   task in `openspec/changes/autodebug-foundation/`. Requirements there are normative;
-   `docs/` explains them.
-3. Obtain explicit human approval for one named task before implementing it.
-   A material behavior change needs a new reviewed proposal, requirements delta,
-   design, and tasks before code.
-4. State the linked requirement IDs and bounded approach. Add or update
-   deterministic fake-backed tests alongside the change.
-5. Run the standard-library test command in `README.md` on Python 3.11 or 3.12.
-   Record the actual interpreter, command, result, and untested platforms; do not
-   present configured CI jobs as completed runs.
-6. Update directly related docs, `tasks.md`, and `docs/status.md`. Leave unchecked
-   gates pending the required independent human/policy review. Submit changes
-   only through an authorized review channel; do not publish or push by default.
-
-## Safety and data boundaries
-
-- All five IDE adapters are mock-validated only. MCP stdio and the standalone
-  synthetic adapter are operational; no real native IDE support is certified.
-  The T05 fake-backend gate remains
-  **OPEN / NOT APPROVED** for real debugger control.
-- AI tool calls and chat approval strings are not trusted human authorization.
-  Do not launch/attach, arm breakpoints, step/continue, evaluate, or run a
-  reproduction without the required reviewed authorization.
-- Preserve the historical Fusion restriction: the developer uses the existing
-  Scripts and Add-Ins UI or already-approved supported facilities. Do not add
-  an in-app helper, embedded server, or undocumented injection.
-- Use synthetic fixtures and disposable applications only. Do not submit Jira
-  exports, customer data, debugger captures, tokens, employee identities,
-  workstation paths, or internal repository/wiki/configuration details.
-- Keep case data private and outside Git. Ignore rules do not remove already
-  tracked content or history. Review staged content before submitting.
-- Do not copy, fork, or vendor Microsoft DebugMCP or internal bridge code.
-  Dependency installation, external MCP services, and model/data routing require
-  applicable Autodesk approval; this guide grants none.
-
-Report suspected vulnerabilities privately following [SECURITY.md](SECURITY.md),
-not in public issues or pull requests.
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).

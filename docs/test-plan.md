@@ -1,6 +1,10 @@
-# AutoDebug — Test plan and definition of done
+# Test plan
 
-**Status (as of T15):** the deterministic test cases below (`TC-01`–`TC-24`) and many more are implemented and passing — `PYTHONPATH=src python3 -m unittest discover -s tests -v` runs the full suite (see `docs/status.md` for the exact, currently-verified count). All of it runs against fake/mock backends only; no real native IDE debugger has been contacted by any test in this repository, and the per-IDE integration layer (section 3 below) has not been run against a real IDE for any of the 11 target combinations — see `docs/compatibility-ledger.md`. Each acceptance scenario under `openspec/changes/autodebug-foundation/specs/` is a testable requirement.
+All tests run against fake or mock backends:
+`PYTHONPATH=src python3 -m unittest discover -s tests`. No real IDE debugger
+has been contacted (see [compatibility-ledger.md](compatibility-ledger.md)).
+Each acceptance scenario in `openspec/changes/autodebug-foundation/specs/` is
+a testable requirement.
 
 ## 1. Test layers
 
@@ -40,7 +44,7 @@
 | TC-21 | GW-06 | Fake backend: app-not-running / running-not-attached / existing-session / unsupported-config | Correct launch, attach, existing-session reuse, and `UNSUPPORTED` decline respectively; ready-to-reproduce only after bound confirmation |
 | TC-22 | DE-09 | Cancel a case mid-`wait_for_stop`; cancel the same case twice | First cancel returns `CANCELLED` and interrupts the pending wait; second cancel returns the same `CANCELLED` status idempotently; fake app/session untouched |
 | TC-23 | RP-08 | Fake case: developer reports script run, no instrumentation configured | Evidence/report mark `execution_confidence: developer_reported`, not independently verified |
-| TC-24 | IDE-02, GW-02 | VS Code/Cursor/CLion's `probe_capabilities()`/`Router.arm_target` driven with `host_os` forced to each of Windows/macOS/Linux in turn, against their existing mocks | Identical `AVAILABLE`/`GW-06` behavior across all three — proves adapter *logic* has no OS dependency of its own; does not prove real Windows/Linux native-debugger behavior (`tests/test_cross_platform_certification.py`, T13) |
+| TC-24 | IDE-02, GW-02 | VS Code/Cursor/CLion's `probe_capabilities()`/`Router.arm_target` driven with `host_os` forced to each of Windows/macOS/Linux in turn, against their existing mocks | Identical `AVAILABLE`/`GW-06` behavior across all three — proves adapter *logic* has no OS dependency of its own; does not prove real Windows/Linux native-debugger behavior (`tests/test_cross_platform_certification.py`) |
 
 **Implementation rule:** add tests alongside each task, not a bulk test-writing phase at the end. A test is *passing* only when actually executed, with exit status/observed output recorded. Mark blocked OS test as `NOT_TESTED`.
 
@@ -60,23 +64,16 @@ For each IDE/OS:
 8. Verify evidence file and final report; check no data leak and correct native session identity.
 9. Exit/restart application; test stale session and reconnect safely.
 
-## 4. Compatibility ledger — every combination starts untested
+## 4. Compatibility states
 
-This table is a quick-glance summary only. [docs/compatibility-ledger.md](compatibility-ledger.md) is the authoritative `IDE-05` record (test dates, exact IDE/backend versions, evidence pointers, limitations per cell) — created during T08 Phase 1 preparation. Updated through T13: all five adapters are now implemented (mocked-only); every macOS/Windows cell reflects an actual evidenced finding from T08–T12, not a placeholder. Windows/Linux cells for VS Code/Cursor/CLion remain `NOT_TESTED` — no Windows or Linux host exists in this development environment (T13, 2026-10-22).
+The [compatibility ledger](compatibility-ledger.md) is the authoritative
+`IDE-05` record. `PASS` requires all eight `IDE-04-B` points; a connection or
+tool list alone never counts.
 
-| IDE | Windows | macOS | Linux |
-|---|---|---|---|
-| VS Code | NOT_TESTED | BLOCKED | NOT_TESTED |
-| Cursor | NOT_TESTED | BLOCKED | NOT_TESTED |
-| CLion | NOT_TESTED | UNSUPPORTED | NOT_TESTED |
-| Visual Studio (full IDE) | BLOCKED | N/A | N/A |
-| Xcode | N/A | UNSUPPORTED | N/A |
+## 4a. Certifying an IDE on a real host
 
-Allowed test states: `PASS` (all native-session minimum ops, meeting the `IDE-04-B` 8-point bar: session identification, breakpoint binding, debugger stop, stack inspection, variable inspection, step/continue, unsupported-op handling, no hidden second session), `PARTIAL` (some work), `UNSUPPORTED`, `BLOCKED`, `NOT_TESTED`, `N/A`. Include dates, test evidence and backend versions next to any later change in status. A connection/ping alone never counts as `PASS`.
-
-## 4a. Reproducible Windows/Linux certification procedure (T13)
-
-This development environment is macOS-only — there is no Windows or Linux host to run any of the steps below. This procedure exists so that whoever next has access to a real Windows or Linux machine can actually certify VS Code, Cursor, and CLion there, using the same adapters, fixtures, and acceptance bar already built and reviewed (T08–T12), without re-deriving the approach. Running this procedure is what turns a `NOT_TESTED` cell in `docs/compatibility-ledger.md` into real evidence — it does not itself produce any evidence, and nothing in this repository claims it has been run.
+Use this on a real machine with the IDE installed to turn a ledger cell into
+evidence. Nothing in this repository claims it has been run.
 
 **Prerequisites before starting:**
 1. A real Windows or Linux machine, with the target IDE (VS Code, Cursor, or CLion) actually installed — confirm the exact IDE version first (`code --version`, `cursor --version`, or the JetBrains Toolbox/about dialog for CLion).
@@ -86,8 +83,8 @@ This development environment is macOS-only — there is no Windows or Linux host
 5. **The T05 real-debugger security gate remains OPEN / NOT APPROVED.** This procedure covers steps 1–3 below (discovery/capability-probing only) without needing the gate to close. Steps 4+ (any real `launch_or_attach`/breakpoint/step/continue call) require the gate to be closed first — do not attempt them under this procedure alone.
 
 **Procedure (per IDE):**
-1. Build a real `<Vscode|Cursor|CLion>DebugClient` implementing the adapter's existing `Protocol` (already defined in `src/autodebug/adapters/{vscode,cursor,clion}.py`) against the real extension/bridge discovered above. Do not modify the `Protocol` itself without a reviewed design change — if the real tool's shape doesn't fit, that mismatch is itself a finding to record, not something to silently paper over.
-2. Run the adapter's existing mocked test suite (`tests/test_{vscode,cursor,clion}_adapter.py`) unmodified against the new real client, by substituting it for the fake fixture in a throwaway local script (not a repository change) — this sanity-checks the real client satisfies the same `Protocol` shape the mock does, before trusting any further result.
+1. Build a real client implementing the adapter's `Protocol` (in `src/autodebug/adapters/<ide>.py`) against the real extension/bridge discovered above. Do not modify the `Protocol` itself without a reviewed design change — if the real tool's shape doesn't fit, that mismatch is itself a finding to record, not something to silently paper over.
+2. Run the adapter's mocked suite (`tests/test_ide_adapters.py`) against the real client by substituting it for the fake one in a throwaway local script (not a repository change) — this sanity-checks the real client satisfies the same `Protocol` shape the mock does, before trusting any further result.
 3. Call `probe_capabilities()` with the real backend and `host_os=platform.system()` (no override needed — this is now the real host). Record the exact reported `CapabilityState` per `CORE_OPERATIONS` operation. This alone is **read-only** and does not require the T05 gate.
 4. **Only once the T05 gate has a reviewed, approved path to closure for this backend** (see `docs/security-gate-closure-proposal.md`): exercise the full `IDE-04-B` 8-point bar against a disposable test application (never a real Autodesk product, customer code, or customer data) — session identification, breakpoint binding, debugger stop, stack inspection, variable inspection, step/continue, unsupported-op handling, and explicit confirmation no hidden second session was created.
 5. Record the result in `docs/compatibility-ledger.md`: exact test date, exact IDE/backend version, which of the 8 points passed, a pointer to evidence, and any limitation found. `PASS` requires all 8; anything less is `PARTIAL` with the specific gaps named. A successful connection or tool listing alone is never `PASS` (`IDE-04-B`).

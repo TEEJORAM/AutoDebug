@@ -42,7 +42,7 @@ Keep this file short; open the other Markdown docs only when relevant to the cur
 - Session identity must include host, IDE instance, backend session and process identity. No guessing by process name.
 - Persist sanitized event evidence with stable IDs. Root-cause reports must distinguish `confirmed`, `likely` and `inconclusive` findings.
 - Pin and review dependencies before adding; do not install globally without user approval.
-- Suggested future checks after scaffolding: `python -m pytest` and `python -m ruff check .`; these are **not yet configured or runnable**.
+- Checks: `PYTHONPATH=src python3 -m unittest discover -s tests` (stdlib only; no pytest or ruff configured).
 
 ## Response template for an implementation task
 Summarize: (1) requirement IDs, (2) files planned/changed, (3) test results **actually run**, (4) limitations, (5) next task, (6) any decision needing developer review. Stop after one approved task.

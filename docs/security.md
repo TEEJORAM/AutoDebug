@@ -1,4 +1,4 @@
-# AutoDebug — Security, approvals and privacy requirements
+# Security, approvals and privacy
 
 **A debugger is privileged software.** It can read customer data, secrets, memory and potentially execute code through evaluation. An MCP endpoint that can drive a debugger needs more than ordinary agent chat approval.
 
@@ -52,63 +52,52 @@ Plan approval should be mediated by a separate human-controlled local CLI/UI. Th
 - For internal Visual Studio adapter code, verify reuse and distribution permissions with maintainers. Do not publish Autodesk internal source or Jira data.
 - Keep dependency versions pinned and routinely reviewed. Check how `xcrun mcpbridge`, CLion MCP, and Cursor extension access behave under enterprise policies before enabling them.
 
-## Security acceptance gates
+## Implemented controls
 
-### Current hardening boundary
+Beyond the threat table, the code enforces:
 
-The publication-hardening delta adds explicit read/wait scopes, live pause
-checks, per-session leases around inspection, a monotonic inspection budget,
-case/plan/target binding, and exclusive no-follow evidence storage. See
-`openspec/changes/publication-hardening/` and `tests/test_publication_security.py`,
-`tests/test_publication_evidence.py`. The strict follow-up adds active-session
-ownership and arming serialization, returned-target/late authorization checks,
-bounded recursive sensitive-name sanitization, backend-disconnect recovery,
-retryable atomic snapshots and stop-confirmed completion. See
-`tests/test_strict_final_security.py`. This does not close the real-debugger gate.
-The technical-closure delta adds full UTF-8 script integrity, reviewed
-launch/attach configuration, process-start/stop/frame identities, structured
-variable sanitization, bounded backend waits, cancellation and late-result
-quarantine. Stop/stack/variable records share an integrity ledger and citations.
-Evidence bases must be private, current-user-owned and outside the source Git
-checkout. See [technical closure](technical-closure-report.md).
-An abandoned Python daemon call cannot be forcibly undone; its target stays
-quarantined and no late result becomes evidence. This is **not** proof of native
-interruptibility. Secure Windows persistence, trusted OS user presence, native
-certification, owner-approved retention/data routing and independent human
-review remain external gates. Pattern redaction cannot identify arbitrary
-confidential prose or proprietary documents.
+- Separate approval scopes per operation (`op:arm_case`, `op:wait_for_stop`,
+  `op:get_stack`, `op:get_variables`, `op:step`, `op:continue`); arming grants
+  no read scope.
+- Re-checks of cancellation, session identity and ownership, plan digest,
+  approval, expiry and budgets before and after every backend call, under a
+  per-session lease.
+- Full UTF-8 script content (≤64 KiB) with recomputed SHA-256, reviewed
+  launch/attach configuration and process state inside the plan digest.
+- Process-start, stop and frame identities; a changed stop discards the read.
+- Bounded backend calls; abandoned targets are quarantined and late results
+  discarded. Python cannot undo a noncooperative external call.
+- Recursive redaction of nested values before stringification, and of report
+  prose before it is written.
 
-- `[SEC-01]` An unapproved `arm` call cannot reach a debugger backend (test using a spy adapter). — Verified: `FakeAdapter.launch_or_attach_calls` stays `0` across every unapproved/forged-approval path (`tests/test_facade.py`, `tests/test_approvals.py`).
-- `[SEC-02]` Edited staged plan/digest fails closed with `PLAN_CHANGED`.
-  Full UTF-8 script content and its recomputed SHA-256 are now mandatory in
-  API-script plans; reviewed configuration/process state and all modeled
-  budgets are hashed. See `tests/test_technical_closure.py` and plan/approval tests.
-- `[SEC-03]` A forged chat approval string is rejected. — Verified: `tests/test_approvals.py::test_forged_approval_never_issued_by_broker_is_rejected` and related.
-- `[SEC-04]` Wrong PID/session generation is rejected before stepping. — Verified: `test_reassigned_session_identity_blocks_step` across `test_facade.py` and all four real-adapter test files.
-- `[SEC-05]` Cancellation/disconnection stops active AutoDebug work, leaving sanitized partial evidence. — Verified: `tests/test_t14_bug_to_evidence_demo.py` (`TestCancellationDemonstration`, `TestIncompleteInvestigationDemonstration`) and `tests/test_t15_security_release_gate.py` (`TestDE08ApprovalExpirationDuringInvestigation`).
-- `[SEC-06]` Logs and output do not contain injected test secrets. — Verified: `tests/test_evidence.py`, `tests/test_t14_bug_to_evidence_demo.py::TestRedactionDemonstration`.
+These do not close the real-debugger gate (see
+[security-gate-closure-proposal.md](security-gate-closure-proposal.md)).
 
-## T15 case-data handling review
+## Security acceptance tests
 
-**Historical review snapshot, not current release clearance.** The implementation
-observations below describe the prior T15 review. Publication-preparation
-hardening and its actual verification are tracked in `docs/status.md`; these
-historical assertions must not be taken as a fresh security review or proof that
-all output paths are safe. Pattern-based redaction is not a guarantee against
-arbitrary confidential data. Policy decisions and independent review remain
-required even when code adds defense-in-depth checks.
+| ID | Requirement | Tests |
+|---|---|---|
+| SEC-01 | An unapproved `arm` never reaches a backend | `test_facade.py`, `test_approvals.py` (spy adapter call count stays 0) |
+| SEC-02 | An edited plan or script fails with `PLAN_CHANGED` | `test_plans.py`, `test_approvals.py`, `test_technical_closure.py` |
+| SEC-03 | A forged chat approval is rejected | `test_approvals.py::test_forged_approval_never_issued_by_broker_is_rejected` |
+| SEC-04 | Wrong PID or session generation is refused before stepping | `test_reassigned_session_identity_blocks_step` in `test_facade.py` and `test_ide_adapters.py` |
+| SEC-05 | Cancel/disconnect stops work and keeps sanitized partial evidence | `test_t14_bug_to_evidence_demo.py`, `test_t15_security_release_gate.py` |
+| SEC-06 | Injected test secrets never reach outputs or files | `test_evidence.py`, `test_t14_bug_to_evidence_demo.py::TestRedactionDemonstration` |
 
-Reviewed `EvidenceStore` (`src/autodebug/evidence.py`) and `AutoDebugFacade`'s wiring of it against this document's "Case artifacts in a private, access-restricted directory outside the Git repo" and "never persist a user's raw document, crash dump or full customer dataset" requirements.
+Pattern-based redaction cannot recognise arbitrary confidential prose or
+proprietary documents.
 
-**Confirmed correct:**
-- `EvidenceStore` never picks a default location — `evidence_base_dir` is always caller-supplied (constructor docstring, `facade.py:124`); no path anywhere in `src/autodebug` defaults into this repository.
-- `events.jsonl` is append-only and capped (`DEFAULT_MAX_EVIDENCE_PER_CASE = 200`); redaction (`DE-07`) runs before anything is written, never after.
-- Jira/source-control credentials have no field anywhere in `src/autodebug/models.py` — `record_intake` stores only a source label and free-text description.
-- `.gitignore` already excludes `__pycache__/`, `*.pyc`, `*.egg-info/`, `.venv/`, `.DS_Store`. Case data has no default path, but callers can configure `evidence_base_dir` inside the repository; that location is not currently enforced, and the repository-location policy remains open.
+## Case-data policy
 
-**Missing policy decisions — each requires an explicit Autodesk policy/security decision before any code implements it; none has been invented, assumed, or silently selected here:**
-1. **Evidence storage outside the repository.** `EvidenceStore` now rejects case IDs that are not a single path component and verifies that the resolved case directory is a direct child of the caller-supplied base directory. It still does not check whether that base itself is outside the repository or access-restricted. **Requires an explicit policy decision before adding that check:** "outside the repo" is ambiguous (outside this checkout only, or any Git working tree anywhere? how are symlinks handled? what happens to an existing case folder if policy changes?), and enforcing it would add a caller-facing refusal mode to a stable tool contract. No existing `RP-*`/`DE-*`/`GW-*`/`IDE-*` scenario defines that policy, so the implementation does not choose it.
-2. **File-permission requirements.** `case_dir.mkdir(parents=True, exist_ok=True)` and file writes use default process umask — nothing calls `os.chmod`. **Requires a policy decision:** what permission model (owner-only `0700`/`0600`? group-readable for a shared dev machine?) is appropriate varies by OS and deployment context, and a wrong choice could itself be a availability regression (locking out a legitimate process) or a security gap (too permissive) — not something to pick without an explicit security-team answer.
-3. **Evidence retention/deletion policy.** Nothing in AutoDebug ever deletes, archives, or ages out old case data — it accumulates indefinitely under whatever `evidence_base_dir` the caller chose. **Requires a policy decision:** how long sanitized debugging evidence should persist is a product/compliance question (data-minimization obligations, local disk growth, audit requirements), not a technical one — no spec requirement names a retention period, and none should be invented here.
+Implemented: the caller always supplies the evidence base; it must be outside
+the source repository, owned by the current user and private (`0700`, files
+`0600`); each case directory is created exclusively and never reused; artifacts
+are opened without following links; evidence is append-only and capped.
 
-These are not choices for the implementer to make unilaterally. They remain blockers for T15's approved-case-data acceptance criterion until an authorized policy owner makes and records each decision.
+Still requiring an authorized policy decision:
+
+1. **Retention and deletion.** Nothing ages out or deletes case data; how long
+   evidence may persist is a compliance decision.
+2. **Formal sign-off** that the outside-repository rule and the permission model
+   above match Autodesk policy (part of the T15 review in
+   [publication.md](publication.md)).

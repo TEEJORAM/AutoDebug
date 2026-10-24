@@ -1,14 +1,9 @@
-# Proposed T05 security-gate closure design (T08 Phase 1 preparation)
+# Security-gate closure proposal (T05, draft)
 
 **Status: PROPOSAL / DRAFT. NOT APPROVED. NOT IMPLEMENTED.** This document proposes candidate designs for the four unresolved, hard-blocking items from `tasks.md` T05's security gate. It does not change any code. `src/autodebug/approvals.py`'s `FAKE_BACKEND_KIND = "fake"` restriction and its unconditional refusal of any other `backend_kind` are **unchanged and must remain unchanged** until a specific proposal below is reviewed, explicitly approved, and implemented as its own small, tested task — the same discipline applied to every prior task in this project.
 
-**Publication-preparation note (2026-10-23):** the internal single-developer scope
-and proportionality arguments below are historical, unapproved design proposals,
-not a legal verdict or an exemption from Autodesk ownership/copyright,
-OSSA/Legal, dependency/license, security-policy, or distribution review. They do
-not authorize publication or change required safety behavior. No `LICENSE` is
-assigned. Fusion remains a historical example with its existing-UI/no-helper
-restriction intact.
+These are unapproved design candidates, not a legal verdict or an exemption
+from Autodesk review.
 
 Each section below presents candidate options and explicitly flags the decision as open. None of these candidates is a recommendation to implement as-is; each needs independent security review before any code is written against it.
 
@@ -80,11 +75,11 @@ Not every `autodebug_*` tool carries the same risk, and this gate-closure effort
 - **Read-only, no approval gate today** (per `docs/mcp-contract.md`'s existing classification): `autodebug_health`, `autodebug_probe_adapters`, `autodebug_list_sessions`. These never launch, attach, bind a breakpoint, step, continue, or evaluate anything — they report whether a backend is installed/reachable and what it advertises. Once the DebugMCP extension is actually installed under Autodesk approval (still unresolved — see §0), running `probe_capabilities()` against it to *discover* its advertised operations carries materially lower risk than any mutating call, since nothing is armed, no process is touched, and no approval is consumed either way.
 - **Approval-gated, mutating** (per `docs/mcp-contract.md`): `autodebug_arm_case`, `autodebug_step`, `autodebug_continue`, and the launch/attach/breakpoint-bind sequence `autodebug_arm_case` performs internally. These are exactly what gate items 1–4 exist to block until closed — probing does not shortcut this.
 
-**Proposed sequencing implication:** once DebugMCP installation is actually Autodesk-approved (§0, still open), a narrowly-scoped read-only probe (confirm the extension is installed, reachable, and report its advertised capabilities — resolving the `docs/vscode-debugmcp-mapping.md` unknowns) could reasonably proceed **before** gate items 1–4 are fully closed, since it makes no mutating call and consumes no approval. Any launch/attach/breakpoint/step/continue call remains fully blocked until the gate closes. This is a sequencing proposal only — it does not authorize installing DebugMCP, which is still pending approval.
+**Proposed sequencing implication:** once DebugMCP installation is actually Autodesk-approved (§0, still open), a narrowly-scoped read-only probe (confirm the extension is installed, reachable, and report its advertised capabilities — resolving the `docs/ide-integrations.md` unknowns) could reasonably proceed **before** gate items 1–4 are fully closed, since it makes no mutating call and consumes no approval. Any launch/attach/breakpoint/step/continue call remains fully blocked until the gate closes. This is a sequencing proposal only — it does not authorize installing DebugMCP, which is still pending approval.
 
 ## 6. Disposable application and synthetic data for initial integration tests
 
-Once real T08 testing is approved and begins, it must use a **disposable local application built solely for this purpose** (e.g., a trivial throwaway script with a couple of known variables) — never a real Autodesk product, customer code, or customer data. Variable/stack contents observed during the test must be **synthetic** (values the test itself creates, like `"test_counter = 1"`), never real secrets, credentials, or customer-derived data. This satisfies `CLAUDE.md`'s "Never connect a debugger to production processes or customer data by default. No secrets in tool arguments, logs or test fixtures" using data that cannot possibly violate it, by construction — the same principle already applied throughout T01–T07's fake-backend test suite, now carried forward to the first real-backend test. `docs/compatibility-ledger.md` and `docs/vscode-debugmcp-mapping.md` have been updated to state this explicitly.
+Once real T08 testing is approved and begins, it must use a **disposable local application built solely for this purpose** (e.g., a trivial throwaway script with a couple of known variables) — never a real Autodesk product, customer code, or customer data. Variable/stack contents observed during the test must be **synthetic** (values the test itself creates, like `"test_counter = 1"`), never real secrets, credentials, or customer-derived data. This satisfies `CLAUDE.md`'s "Never connect a debugger to production processes or customer data by default. No secrets in tool arguments, logs or test fixtures" using data that cannot possibly violate it, by construction — the same principle already applied throughout T01–T07's fake-backend test suite, now carried forward to the first real-backend test. `docs/compatibility-ledger.md` and `docs/ide-integrations.md` have been updated to state this explicitly.
 
 ## Explicit preservation statement
 

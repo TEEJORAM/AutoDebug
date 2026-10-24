@@ -1,14 +1,14 @@
 # How the AutoDebug specs are organized
 
-This folder uses a **plain-Markdown OpenSpec-style structure**. It works with Claude Code **without** installing OpenSpec. The `/opsx:*` commands work **only if** you separately install/configure the OpenSpec CLI and relevant integrations; do not assume they are available from this ZIP.
+This folder uses a plain-Markdown OpenSpec-style structure that works without installing OpenSpec. The `/opsx:*` commands work only if the OpenSpec CLI is installed separately.
 
 - `changes/autodebug-foundation/proposal.md` — why this product exists and initial scope.
 - `changes/autodebug-foundation/specs/*/spec.md` — testable requirements for this proposed change, using Given/When/Then.
 - `changes/autodebug-foundation/design.md` — implementation choices, interfaces, alternatives and constraints.
 - `changes/autodebug-foundation/tasks.md` — implementation sequence and approval gates.
-- `specs/` — eventual canonical capability specs after the change has been implemented and reviewed.
+- `specs/` (not created yet) — canonical capability specs once the change is closed.
 
-**The foundation change is a DRAFT.** Never begin implementation until a human approves the proposal, design, requirements and task order. Commit the reviewed Markdown first. Each task thereafter requires tests and a small code review.
+The foundation change was approved (G00, 2026-10-22) and implemented through T14; T15 awaits independent sign-off. Later changes live alongside it: `publication-hardening/` and `technical-closure/`.
 
 For future changes, create a new `changes/<feature>/` directory rather than continuously extending the giant foundation proposal. Where requirements change, update the relevant capability spec and reference a new design decision record.
 

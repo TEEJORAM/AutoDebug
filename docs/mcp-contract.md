@@ -1,16 +1,11 @@
-# AutoDebug — MCP contract (v0 draft)
+# MCP contract (v0 draft)
 
-This is AutoDebug's independent tool API, **not** the Microsoft DebugMCP API. Names and data types are intentionally stable at the gateway boundary; each adapter translates to actual supported backend operations. Version all externally observable schemas.
-
-**Implementation status:** `server.py` binds all 15 facade tools to MCP
-2025-11-25 stdio with JSON schemas, initialization, cancellation and strict
-JSON-RPC errors. No SDK dependency or HTTP listener exists. Real backends remain
-denied. `SENSITIVE_OUTPUT_BLOCKED` rejects colliding sanitized variable names.
-`stop_observed`, `stack_observed` and `variable_observed` records persist exact
-synthetic stop/process/plan context; native stop identity remains uncertified.
-Output schema is `0.2-draft`; `0.1-draft` plan inputs retain structural
-compatibility but must satisfy current integrity rules. Existing case folders
-are never resumed as a new investigation.
+AutoDebug's own tool API, **not** the Microsoft DebugMCP API. Tool names and
+fields are stable at the gateway; each adapter translates them to real backend
+operations. `server.py` binds all 15 tools to MCP 2025-11-25 stdio. There is no
+SDK dependency or HTTP listener, and real backends are refused. Output schema
+is `0.2-draft`; `0.1-draft` plan input is accepted under current integrity
+rules.
 
 ## Minimal tool set
 
@@ -32,7 +27,7 @@ are never resumed as a new investigation.
 | `autodebug_complete_case` | Local write | Finish, persist JSONL + Markdown artifacts; no auto-Jira update |
 | `autodebug_cancel_case` | Control | Per `DE-09`: stop AutoDebug operations, interrupt pending waits, revoke approval scope, retain partial evidence; idempotent on repeat; does not implicitly terminate app/IDE |
 
-**Trust boundary:** `autodebug_stage_plan` is **not approval**, and AutoDebug must not expose an MCP tool that lets the agent self-approve a plan. A distinct trusted local CLI/UI controlled by the human records the signed/bound approval. The CLI syntax/UI implementation remains a task to design and test; do not treat example commands as working.
+**Trust boundary:** `autodebug_stage_plan` is **not approval**, and no MCP tool lets the agent approve a plan. Approval must come from a separate trusted local CLI/UI controlled by the developer; that interface is not built yet (only the `--demo` fixture issues a synthetic approval).
 
 **Runtime bounds:** backend calls return within the smaller of the monotonic
 case deadline and operation budget (default 5 seconds, maximum 30). Cancellation
@@ -52,25 +47,22 @@ allow at most 64 KiB UTF-8. No approval, token, adapter object, shell or evaluat
 parameter can be provided through MCP. The fixed CLI `--demo` seeds only the
 isolated synthetic target; no tool grants approval.
 
-### Strict-review completion and ownership clarification (2026-10-24)
+## Arming and completion
 
-Arming claims an active session exclusively and serializes target resolution and
-breakpoint binding. An existing session is not disconnected by failed reuse;
-only a newly created session is rolled back. Returned session identity and
-authorization are rechecked before binding.
+Arming claims the session exclusively and serializes target resolution and
+breakpoint binding. A failed arm rolls back only a session it created; an
+existing session is never disconnected. The returned session identity and the
+approval are re-checked before binding.
 
 Completion serializes against inspection. `reproduced=True` requires a prior
-confirmed pause (not proof of an actual native stop reason). Persistence must
-succeed before memory becomes FINALIZED; failed completion is retryable.
-Successful completion returns `state`, a concise `summary`, and `artifacts`:
-`case.json`, `events.jsonl`, `report.md` mapped to paths relative to the configured
-evidence base, such as `CASE-2026-001/report.md`. Zero-observation completion
-creates an empty event log. Snapshot files use atomic replacement individually,
-not one crash-atomic multi-file transaction.
+confirmed pause. Evidence must persist before the case becomes `finalized`; a
+failed completion can be retried. Success returns `state`, a short `summary`
+and `artifacts` (`case.json`, `events.jsonl`, `report.md`) as paths relative to
+the evidence base, e.g. `CASE-2026-001/report.md`. Each snapshot file is
+replaced atomically, not as one multi-file transaction.
 
-Stack sanitization is recursive, with a 64 KiB UTF-8 output budget and 4,096
-visited-node limit, plus existing depth/width bounds and explicit truncation.
-Case IDs must be preserved unchanged by sanitization and fit 255 UTF-8 bytes.
+Stack output is sanitized recursively within a 64 KiB budget and 4,096 nodes.
+Case IDs must survive sanitization unchanged and fit 255 UTF-8 bytes.
 
 ## Core data model
 
@@ -122,8 +114,6 @@ The illustrative `pid`, file path and digest are **not** live values and cannot 
 
 ## Approval binding
 
-### Publication-hardening clarification (2026-10-23)
-
 Case/plan/approval IDs and routed targets must agree. Inspection uses the stored
 arm approval but requires separate `op:wait_for_stop`, `op:get_stack`, and
 `op:get_variables` scopes; `op:arm_case` alone grants none of these. Every poll,
@@ -137,8 +127,7 @@ authorization/deadline checks also reject late results. Continue invalidates the
 cached pause. A later wait must confirm the stopped state before reading again.
 Stacks allow 1-50 frames; variable requests select 1-50 names of at most 500
 characters. Returned stack metadata, variable names and values are sanitized.
-`SENSITIVE_OUTPUT_BLOCKED` now rejects collisions between sanitized variable
-names; the earlier reserved/unused description is historical.
+`SENSITIVE_OUTPUT_BLOCKED` rejects collisions between sanitized variable names.
 
 Evidence directories are exclusive to one investigation and cannot be reopened
 as a new store. Review existing evidence through its owning store; a new case
@@ -149,8 +138,10 @@ unavailable. This is not a verified cross-platform or native-IDE certification.
 Reports may be finalized after continuation using already-recorded evidence;
 finalization does not inspect a running debugger.
 
-- Canonicalize the exact plan using a defined JSON canonicalization algorithm **chosen in design review**, including absolute target identity, ordered breakpoints, script contents hash, source revision, allowed operations, expiration, and output scope.
-- Produce a cryptographic digest of that canonical representation. Do not hash whitespace-dependent ad-hoc string formats.
+- The plan digest is SHA-256 over sorted-key, separator-free JSON of the whole
+  plan except the digest field (`plans.compute_plan_digest`): target identity,
+  breakpoints, full script and hash, source revision, launch configuration,
+  process state and policy limits.
 - Show the **complete plan and full script** to the developer in an independently trusted local surface. User approves **that digest**, subject to policy and short lifetime.
 - Agent cannot invoke approval on the user's behalf. If any signed field changes, `PLAN_CHANGED` or `APPROVAL_EXPIRED` is returned.
 - Re-check approval + session identity on **every** privileged call. After attach, the resulting native session must be explicitly bound under the reviewed target scope; otherwise re-approve.
@@ -169,7 +160,7 @@ finalization does not inspect a running debugger.
 }
 ```
 
-Proposed error codes:
+Error codes:
 
 `CAPABILITY_UNSUPPORTED`, `BACKEND_UNAVAILABLE`, `SESSION_AMBIGUOUS`, `SESSION_STALE`, `TARGET_MISMATCH`, `NOT_APPROVED`, `PLAN_CHANGED`, `APPROVAL_EXPIRED`, `BREAKPOINT_UNBOUND`, `NOT_PAUSED`, `TIMEOUT`, `PERMISSION_DENIED`, `POLICY_LIMIT`, `SENSITIVE_OUTPUT_BLOCKED`, `CANCELLED`, `INTERNAL_ERROR`.
 

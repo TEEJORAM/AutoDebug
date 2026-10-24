@@ -1,4 +1,4 @@
-# Known risks, blockers and assumptions
+# Risks and assumptions
 
 This is a **risk register**, not a collection of features silently promised to the developer.
 
@@ -19,11 +19,11 @@ This is a **risk register**, not a collection of features silently promised to t
 | R13 | Autodesk restrictions prevent code/Jira/data transfer to AI service | High | Check enterprise policy, approval and data classification before real internal use |
 | R14 | Developer-reported script execution cannot be independently verified without instrumentation | Medium | Default `execution_confidence` to `developer_reported` (`RP-08`, ADR-009); consider an optional Fusion-side confirmation signal in a future change |
 
-## Decision gate before T08–T12 (real IDE integration)
+## Gate before enabling real debugger control
 
 Do not enable live mutating debugger tools until: (1) approvals policy is reviewed; (2) user-visible target/plan binding is enforced; (3) low-privilege disposable C++ fixture works; (4) dependency and company policy reviewed; (5) actual tool API discovered. An adapter connecting successfully is not enough.
 
-## Assumptions to verify in first review
+## Assumptions to verify
 
 - Developer has **Claude Desktop Code** capability enabled in Enterprise, not only general Claude Chat.
 - Supported IDE versions exist on the target OS and expose required native debug APIs.

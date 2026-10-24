@@ -1,32 +1,42 @@
-# Requirements → tasks → verification traceability
+# Requirements traceability and status
 
-A requirement is not “done” because code compiles; its **acceptance scenario must have a test/result**. IDs are defined in the four specs under `openspec/changes/autodebug-foundation/specs/`.
+Requirement IDs are defined in `openspec/changes/autodebug-foundation/specs/`.
+A requirement counts only when its acceptance scenario has a test that ran.
 
-| Requirement(s) | Primary implementation tasks | Acceptance evidence |
-|---|---|---|
-| GW-01 | T01, T07 | MCP schema/client contract tests |
-| GW-02 | T02, T08–T13 | Capability probe, unknown/unsupported handling |
-| GW-03 | T03 | Unique session, PID reuse/staleness tests |
-| GW-04 | T03, T08–T13 | Verified **native active IDE session** tests |
-| GW-05 | T03 (lease primitive), **T15** (facade actually acquires it in `autodebug_step`/`autodebug_continue`) | Concurrent step/continue serialization test |
-| GW-06 | T03, T07 (fake backend), T08–T12 (real IDE) | TC-21: launch, attach, existing-session reuse, unsupported-decline |
-| RP-01 | T04, T14 | Pasted bug intake without Jira token |
-| RP-02 | T14 | Source/API docs provenance; unknown method fallback |
-| RP-03 | T04, T14 | API-vs-manual plan test |
-| RP-04, RP-05 | T05 | Unapproved, forged approval, changed-script, fake-approval-replayed (RP-05-C) rejection |
-| RP-06 | T04, T14 | Breakpoint-binding readiness gate |
-| RP-07 | T14 | No in-app script injection; human-triggered Fusion script |
-| RP-08 | T04, T14 | TC-23: `execution_confidence` labeling in evidence/report |
-| DE-01 | T07, T14 | Real/native pause vs timeout |
-| DE-02, DE-03 | T06, T07 | Selected values, truncation, quota and timeouts |
-| DE-04 | T07 | Expression evaluation denied |
-| DE-05, DE-06 | T06, T14, **T15** (evidence-ID citation integrity check) | JSONL/Markdown evidence and honest RCA against the `CONFIRMED`/`LIKELY`/`INCONCLUSIVE` bar |
-| DE-07 | **T05** (authorization/target rejection — prohibited target denied before any debugger call) **and T06** (sanitization/storage mechanics — redaction, size caps) **as two distinct test suites**; one passing suite does not prove the other | No secret leaks (T06); no prohibited-target action reaches a backend (T05) |
-| DE-08 | T06, T15 | Incomplete case recovery |
-| DE-09 | T05 (approval/permission revocation), T06 (evidence retention), T07 (in-flight call interruption) — three distinct scopes, see `tasks.md` | TC-22: cancellation idempotency and safe-state tests |
-| IDE-01, IDE-02 | T01, T02 | Five adapter declarations, OS matrix |
-| IDE-03 | T08, T09, T12 | External bridge integrations with no copied sources |
-| IDE-04 | T08–T12 | Real native session fixtures, stack/locals/step; `PASS` requires the `IDE-04-B` 8-point bar, not a bare connection |
-| IDE-05 | T13, T15 | Signed/versioned 11-combination ledger |
+**Status key:** IMPLEMENTED = gateway mechanism and fake-backend acceptance
+behaviour work (not native certification). PARTIAL = depends on a native
+backend, client or policy that is not available. BLOCKED = external proof or
+authorization missing.
 
-Use test IDs `TC-01`–`TC-24` in `docs/test-plan.md`. As of `T15`, the full unittest suite (see `docs/status.md` for the exact, currently-verified count) is implemented and passing against fake/mock backends — real native-IDE verification for `IDE-04`/`IDE-05` remains outstanding per `docs/compatibility-ledger.md`.
+| ID | Status | Tasks | Evidence (tests) | Remaining boundary |
+|---|---|---|---|---|
+| GW-01 | PARTIAL | T01, T07 | MCP contract and server tests | Native routing blocked by the T05 gate |
+| GW-02 | IMPLEMENTED | T02, T08–T13 | Capability probing, unknown/unsupported handling | Real inventories need installed backends |
+| GW-03 | PARTIAL | T03 | Unique session, PID reuse, staleness | No certified native identity provider |
+| GW-04 | PARTIAL | T03, T08–T13 | No hidden/headless fallback | Live IDE session proof unavailable |
+| GW-05 | IMPLEMENTED | T03, T15 | Concurrent step/continue serialization, bounded waits | No forced native interruption claimed |
+| GW-06 | PARTIAL | T03, T07, T08–T12 | TC-21: launch, attach, reuse, unsupported | Native launch/attach APIs unavailable |
+| RP-01 | IMPLEMENTED | T04, T14 | Bug intake without Jira credentials | — |
+| RP-02 | PARTIAL | T14 | Source revision and reviewable plan | Source/API analysis belongs to the client |
+| RP-03 | IMPLEMENTED | T04, T14 | API-script vs manual plan, full script hash | — |
+| RP-04 | PARTIAL | T05 | Unapproved/forged approval refused | No OS-trusted local review surface |
+| RP-05 | BLOCKED (real use) | T05 | Changed script, replayed fake approval (RP-05-C) | Boolean cannot attest human presence |
+| RP-06 | PARTIAL | T04, T14 | Exact binding set required before ready | Real binding proof unavailable |
+| RP-07 | PARTIAL | T14 | No script-run or injection tool | Developer runs scripts in the app's own UI |
+| RP-08 | IMPLEMENTED | T04, T14 | TC-23: `execution_confidence` labels | No instrumentation; never claims verified |
+| DE-01 | PARTIAL | T07, T14 | Stop identity, timeout, re-stop rejection | Native stop source unverified |
+| DE-02 | IMPLEMENTED | T06, T07 | 1–50 frames/names, recursive bounds, redaction | — |
+| DE-03 | IMPLEMENTED | T06, T07 | Step/time/data budgets, bounded waits | — |
+| DE-04 | IMPLEMENTED | T07 | No evaluation tool; conditional breakpoints refused | — |
+| DE-05 | PARTIAL | T06, T14, T15 | JSONL ledger and three artifacts | Windows secure storage unavailable |
+| DE-06 | IMPLEMENTED | T06, T14, T15 | Owned citations; CONFIRMED needs causal validation | Truth of the client's narrative is the client's |
+| DE-07 | PARTIAL | T05, T06 | Prohibited targets refused (T05); no secret leaks (T06) | Host check is a naming heuristic |
+| DE-08 | IMPLEMENTED | T06, T15 | Incomplete recovery with partial evidence | — |
+| DE-09 | IMPLEMENTED | T05, T06, T07 | TC-22: idempotent cancel, revoked scope, retained evidence | Native detach unproven |
+| IDE-01 | IMPLEMENTED | T01 | Five adapters, honest unavailable results | — |
+| IDE-02 | IMPLEMENTED | T02 | OS applicability matrix | — |
+| IDE-03 | PARTIAL | T08, T09, T12 | Original injected clients, nothing vendored | Real backend APIs/terms need approval |
+| IDE-04 | BLOCKED | T08–T12 | Mock suites only | No `IDE-04-B` 8-point native certification |
+| IDE-05 | IMPLEMENTED | T13, T15 | 11-cell ledger with honest states | Cells stay NOT_TESTED/BLOCKED until real tests |
+
+Test-case IDs `TC-01`–`TC-24` are defined in [test-plan.md](test-plan.md).

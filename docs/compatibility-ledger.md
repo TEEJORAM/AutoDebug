@@ -1,4 +1,4 @@
-# AutoDebug — IDE/OS compatibility ledger (`IDE-05`)
+# IDE/OS compatibility ledger (`IDE-05`)
 
 **All five adapters are implemented and tested only against mocks.** No real
 native debugger has been contacted or certified. The T05 real-debugger gate

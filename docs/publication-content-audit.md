@@ -1,9 +1,12 @@
 # Publication content audit - 2026-10-24
 
-> The file list below predates the 2026-10-24 strict-review cleanup, which
-> merged the five adapter test files and five fake clients into
-> `tests/test_ide_adapters.py` and `tests/fixtures/fake_ide_clients.py`.
-> Re-run the classification against the current tree before any release.
+> The file list below predates the 2026-10-24 cleanup. The five adapter test
+> files and five fake clients are now `tests/test_ide_adapters.py` and
+> `tests/fixtures/fake_ide_clients.py`. The publication, license, release and
+> closure documents are merged into `docs/publication.md` and
+> `docs/traceability.md`; upgrade steps into `docs/installation.md`; the DebugMCP
+> mapping into `docs/ide-integrations.md`. Re-run the classification against
+> the current tree before any release.
 
 ## Classification rules
 

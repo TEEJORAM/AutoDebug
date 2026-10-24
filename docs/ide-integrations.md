@@ -1,6 +1,9 @@
-# AutoDebug — Five IDE integrations and 11 platform targets
+# IDE integrations
 
-**All five adapter modules are in scope from day one.** An adapter can initially report `NOT_INSTALLED`, `UNAVAILABLE`, or `UNSUPPORTED`; working support is earned through tests, not by declaring a class.
+Five adapters cover 11 IDE/OS targets. Each adapter delegates to an injected,
+IDE-specific client (`ClientBackedAdapter` in `src/autodebug/adapters/base.py`)
+and is tested only against mocks. Support is earned through real tests; see the
+[compatibility ledger](compatibility-ledger.md).
 
 ## Target matrix
 
@@ -49,29 +52,36 @@
 
 Apple setup reference: https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode
 
-## Discovery output (illustrative, NOT currently implemented)
+## Adapter-to-client mapping (all adapters)
 
-```json
-{
-  "adapter": "xcode",
-  "host_os": "macos",
-  "detected": true,
-  "mcp_connected": true,
-  "native_debugger_discovered": false,
-  "capabilities": {
-    "list_sessions": "unsupported",
-    "get_stack": "unknown",
-    "set_breakpoint": "unknown"
-  },
-  "evidence": "Xcode present; native debugger tools not yet verified"
-}
-```
+Client method names are AutoDebug's own `Protocol`, not any IDE's real tool
+names. Every real tool/schema name is **unknown until confirmed at runtime**
+against an installed, approved backend.
 
-`unknown` is different from `unsupported`: unknown means untested/undiscovered; unsupported means the tested backend doesn't provide the required capability.
+| Adapter operation | Client call | Risk tier |
+|---|---|---|
+| `list_sessions()` | `list_sessions()` | Read |
+| `launch_or_attach(target, config)` | `start_or_attach(target, config)` | Mutating, approval-gated |
+| `set_breakpoints(session, locations)` | `set_breakpoints(id, breakpoints)` → per-breakpoint `BreakpointBindingResult` | Mutating, approval-gated |
+| `is_paused(id)` / `wait_for_stop(session, timeout)` | `is_paused(id)` (wait loops over it) | Read, bounded |
+| `get_stack(session, limit)` | `get_stack(id, limit)` | Sensitive read |
+| `get_variables(session, frame, names)` | `get_variables(id, frame, names)` (raw; the facade redacts) | Sensitive read |
+| `step(session, kind)` / `continue_execution(session)` | `step(id, kind)` / `continue_execution(id)` | Mutating, approval-gated |
+| `disconnect(session)` | `disconnect(id)` | Control |
+
+With no client attached, every operation fails with `BACKEND_UNAVAILABLE`.
+When a client reports no session generation, the adapter keeps its own
+per-session counter for GW-03 identity checks. There is no `evaluate` call.
+
+Open questions to settle against a real backend (VS Code/DebugMCP first):
+exact tool names and schemas; stable window/session identifiers; whether
+binding failures are reported per breakpoint; whether the backend serializes
+operations; whether it ever opens a hidden second session (`IDE-04-B` point 8);
+and how to detect DebugMCP's standalone DAP-hosting mode.
 
 ## Rules for adapter changes
 
 - Every adapter change needs a **contract test** with the common AutoDebug adapter protocol.
 - Add a version-specific **integration test** on the applicable OS; cannot claim coverage by running unit tests on only macOS.
-- Update `docs/test-plan.md`, `docs/traceability.md`, capability docs and the relevant feature spec when behavior changes.
+- Update `docs/test-plan.md`, `docs/traceability.md`, the compatibility ledger and the relevant spec when behavior changes.
 - Do not mark an adapter production-ready if it merely connects to MCP but cannot control an **already-running** native debugger.

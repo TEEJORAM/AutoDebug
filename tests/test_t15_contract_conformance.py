@@ -14,7 +14,7 @@ from autodebug.errors import ErrorCode
 from autodebug.facade import AutoDebugFacade
 from autodebug.models import CaseState, EvidenceRecord, ExecutionConfidence, RootCauseConfidence
 
-#: Exact set documented in docs/mcp-contract.md's "Proposed error codes" line.
+#: Exact set documented in docs/mcp-contract.md's "Error codes" line.
 DOCUMENTED_ERROR_CODES = {
     "CAPABILITY_UNSUPPORTED",
     "BACKEND_UNAVAILABLE",

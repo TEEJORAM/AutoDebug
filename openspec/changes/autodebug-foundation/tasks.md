@@ -354,4 +354,9 @@ scope or security-gate change. Adapter implementations, fake clients and
 adapter tests were consolidated (see `docs/status.md`). Test references to
 `tests/test_<ide>_adapter.py` and `tests/fixtures/fake_<ide>_client.py` in
 the entries above are historical; those files are now
-`tests/test_ide_adapters.py` and `tests/fixtures/fake_ide_clients.py`.
+`tests/test_ide_adapters.py` and `tests/fixtures/fake_ide_clients.py`. Likewise,
+`docs/license-and-dependency-review.md`, `docs/release-readiness-checklist.md`,
+`docs/ossa-legal-approval-request.md`, `docs/publication-readiness-assessment.md`
+and `docs/technical-closure-report.md` are merged into `docs/publication.md` and
+`docs/traceability.md`; `docs/upgrade-rollback.md` into `docs/installation.md`;
+`docs/vscode-debugmcp-mapping.md` into `docs/ide-integrations.md`.
