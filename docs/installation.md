@@ -1,25 +1,32 @@
-# Install, run and upgrade
+# Installation and protocol reference
 
 AutoDebug needs only Python 3.11+ and a POSIX host (Linux or macOS). There are
 no runtime dependencies, and nothing here enables native debugger access.
 
-## Run from the source tree
+Start with [getting-started.md](getting-started.md). This page covers the
+details behind it.
 
-```sh
-PYTHONPATH=src python3 -m autodebug --help
-PYTHONPATH=src python3 -m unittest discover -s tests
-python3 -m compileall -q src tests build_backend.py
-```
+## Install options
 
-Evidence goes to a private directory **outside the checkout**. An existing
-base must be owned by you with mode `0700`; a new one is created that way.
-Every case needs a fresh case ID, so use a fresh base for each demo run.
+| Method | Command | Use when |
+|---|---|---|
+| Editable (developers) | `pip install -e .` | You change the code |
+| Regular | `pip install .` | You only run it |
+| Isolated tool | `pipx install .` | You want `autodebug` on your `PATH` without a venv |
+| No install | `PYTHONPATH=src python3 -m autodebug ...` | Quick checks from the checkout |
 
-```sh
-PYTHONPATH=src python3 -m autodebug --evidence-dir ~/autodebug-evidence/run1 --demo
-```
+Run the checks with `PYTHONPATH=src python3 -m unittest discover -s tests`.
 
-`--demo` seeds the synthetic case `AUTODEBUG-DEMO` with a local 60-second
+## Evidence folders
+
+`serve` stores evidence under `--evidence-dir`, else `$AUTODEBUG_EVIDENCE_DIR`,
+else `~/.local/state/autodebug` (Linux, or `$XDG_STATE_HOME/autodebug`),
+`~/Library/Application Support/autodebug` (macOS) or `%LOCALAPPDATA%\autodebug`
+(Windows). Each run creates a new private `run-<UTC time>-<random>` folder there,
+so clients can restart the server freely. The base must be outside the
+AutoDebug checkout; folders are created owner-only (`0700`).
+
+`--demo` seeds the synthetic case `AUTODEBUG-DEMO` with a local 30-minute
 approval, five steps and a predetermined stop. It never touches a real
 debugger. Without `--demo`, cases can be drafted but every debugger action is
 refused for lack of approval.
@@ -27,7 +34,12 @@ refused for lack of approval.
 ## Talk to the server
 
 The server reads one UTF-8 JSON-RPC message per line on stdin and writes
-responses to stdout (diagnostics go to stderr). Request IDs must be unique.
+responses to stdout. Diagnostics go to stderr: one startup line, the evidence
+folder, and warnings (`--log-level` adjusts them). Request IDs must be unique.
+
+```sh
+autodebug serve --demo
+```
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"local-review","version":"1"}}}
@@ -38,14 +50,15 @@ responses to stdout (diagnostics go to stderr). Request IDs must be unique.
 ```
 
 Completion returns paths to `case.json`, `events.jsonl` and `report.md`
-relative to the evidence directory. Closing stdin (EOF) cancels unfinished
+relative to the run folder. Closing stdin (EOF) cancels unfinished
 cases without touching any application.
 
 ## Windows
 
-Run contract tests with `$env:PYTHONPATH = "src"`. Evidence storage relies on
-POSIX descriptor-relative, no-follow file opens, so on Windows it fails closed
-by design. Do not replace it with ordinary path opens.
+`autodebug doctor` and `config` work. Evidence storage relies on POSIX
+descriptor-relative, no-follow file opens, so cases fail closed on Windows and
+`serve --demo` refuses to start; use WSL. Run contract tests with
+`$env:PYTHONPATH = "src"`. Do not replace the storage with ordinary path opens.
 
 ## Build offline packages
 
@@ -54,9 +67,8 @@ python3 -c "import build_backend; print(build_backend.build_wheel('dist')); prin
 ```
 
 The wheel contains the package and metadata only. Install it locally with
-`pip install --no-index --no-deps dist/autodebug-0.1.0-py3-none-any.whl`; this
-provides the `autodebug` command. Building is not permission to distribute
-(see [publication.md](publication.md)).
+`pip install --no-index --no-deps dist/autodebug-0.1.0-py3-none-any.whl`.
+Building is not permission to distribute (see [publication.md](publication.md)).
 
 ## Upgrade and roll back
 

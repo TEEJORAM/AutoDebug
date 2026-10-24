@@ -12,7 +12,6 @@ https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import math
@@ -46,6 +45,9 @@ MAX_OUTPUT_BYTES = 1024 * 1024
 MAX_IN_FLIGHT = 8
 MAX_REQUESTS = 10_000
 DEMO_CASE_ID = "AUTODEBUG-DEMO"
+#: Lifetime of the synthetic demo approval and inspection budget. Long enough
+#: for an MCP client that starts the server at launch to use the demo later.
+DEMO_SECONDS = 1800
 _LOG = logging.getLogger(__name__)
 
 
@@ -520,7 +522,9 @@ class StdioServer:
                 thread.join(max(0, deadline - time.monotonic()))
 
 
-def _cli_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
+def build_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
+    """Wire the synthetic adapter, broker, registry and facade for the CLI.
+    With `demo`, seed and arm the fixed synthetic case locally."""
     from autodebug.synthetic import SyntheticAdapter
 
     adapter = SyntheticAdapter()
@@ -535,7 +539,7 @@ def _cli_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
             schema_version=SCHEMA_VERSION, case_id=DEMO_CASE_ID, source_revision="synthetic-demo-v1",
             target=target, breakpoints=(Breakpoint(file="/synthetic/demo.py", line=7),),
             reproduction=ReproductionPlan(mode="manual", steps=("Observe the predetermined synthetic stop.",)),
-            policy=CasePolicy(max_steps=5, max_inspection_seconds=60),
+            policy=CasePolicy(max_steps=5, max_inspection_seconds=DEMO_SECONDS),
         )
         created = facade.autodebug_create_case(
             case_id=DEMO_CASE_ID, intake_source=IntakeSource.DEVELOPER_TEXT,
@@ -550,7 +554,7 @@ def _cli_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
             plan, reviewer="local-cli-synthetic-demo", backend_kind="fake",
             target_identity=target_identity_for(target),
             scope=(SCOPE_ARM, SCOPE_STEP, SCOPE_CONTINUE, SCOPE_WAIT, SCOPE_STACK, SCOPE_VARIABLES),
-            ttl_seconds=60, human_presence_confirmed=True,
+            ttl_seconds=DEMO_SECONDS, human_presence_confirmed=True,
         )
         armed = facade.autodebug_arm_case(
             case_id=DEMO_CASE_ID, approval=approvals[DEMO_CASE_ID],
@@ -566,25 +570,7 @@ def _cli_dispatcher(evidence_dir: Path, *, demo: bool) -> ToolDispatcher:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="AutoDebug fake-only MCP stdio server; no network listener.")
-    parser.add_argument("--version", action="version", version=f"autodebug {SERVER_VERSION}")
-    parser.add_argument("--evidence-dir", type=Path, required=True, help="Private local base directory for evidence.")
-    parser.add_argument("--demo", action="store_true", help=(
-        "Locally authorize only the predetermined AUTODEBUG-DEMO synthetic plan for 60 seconds. "
-        "Startup arms it and confirms its synthetic stop. "
-        "Never enables a real adapter; no MCP approval tool exists."
-    ))
-    args = parser.parse_args(argv)
-    try:
-        evidence_dir = args.evidence_dir.expanduser().absolute()
-        evidence_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if not evidence_dir.is_dir() or evidence_dir.is_symlink():
-            raise ValueError("Invalid evidence directory")
-        dispatcher = _cli_dispatcher(evidence_dir, demo=args.demo)
-        StdioServer(dispatcher).serve()
-    except (OSError, ValueError):
-        print("AutoDebug: local evidence or startup failure", file=sys.stderr)
-        return 1
-    except KeyboardInterrupt:
-        return 130
-    return 0
+    """Backward-compatible entry point; see `autodebug.cli`."""
+    from autodebug.cli import main as cli_main
+
+    return cli_main(argv)

@@ -58,7 +58,7 @@ Completion serializes against inspection. `reproduced=True` requires a prior
 confirmed pause. Evidence must persist before the case becomes `finalized`; a
 failed completion can be retried. Success returns `state`, a short `summary`
 and `artifacts` (`case.json`, `events.jsonl`, `report.md`) as paths relative to
-the evidence base, e.g. `CASE-2026-001/report.md`. Each snapshot file is
+the run folder, e.g. `CASE-2026-001/report.md`. Each snapshot file is
 replaced atomically, not as one multi-file transaction.
 
 Stack output is sanitized recursively within a 64 KiB budget and 4,096 nodes.

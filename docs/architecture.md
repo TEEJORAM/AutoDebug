@@ -52,7 +52,8 @@ The five bottom IDEs are **alternatives**, not five debuggers connected to the s
 
 ```text
 src/autodebug/
-  server.py        MCP stdio transport, tool schemas, CLI (`python -m autodebug`)
+  cli.py           `autodebug serve | doctor | config` command line
+  server.py        MCP stdio transport and tool schemas
   facade.py        The 15 autodebug_* tools; all re-checks and error envelopes
   workflow.py      Case state machine and legal transitions
   plans.py         Plan validation and canonical SHA-256 digest

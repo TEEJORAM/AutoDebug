@@ -38,5 +38,7 @@ authorization missing.
 | IDE-03 | PARTIAL | T08, T09, T12 | Original injected clients, nothing vendored | Real backend APIs/terms need approval |
 | IDE-04 | BLOCKED | T08–T12 | Mock suites only | No `IDE-04-B` 8-point native certification |
 | IDE-05 | IMPLEMENTED | T13, T15 | 11-cell ledger with honest states | Cells stay NOT_TESTED/BLOCKED until real tests |
+| CLI-01–05 | IMPLEMENTED | `cli-usability` C1–C6 | `tests/test_cli.py`, `tests/test_server.py` | — |
 
 Test-case IDs `TC-01`–`TC-24` are defined in [test-plan.md](test-plan.md).
+`CLI-*` requirements are in `openspec/changes/cli-usability/spec.md`.

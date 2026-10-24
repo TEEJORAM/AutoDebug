@@ -59,6 +59,22 @@ _SENSITIVE_VALUE_PATTERNS = (
 )
 
 
+def secure_storage_supported() -> bool:
+    """Whether this platform offers the descriptor-relative, no-follow opens
+    that `EvidenceStore` requires (Linux and macOS; not Windows)."""
+    return os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW")
+
+
+def inside_source_checkout(path: Path) -> bool:
+    """Whether `path` lies inside any Git working tree containing this
+    module. Evidence must never be stored there."""
+    resolved = Path(path).resolve()
+    return any(
+        (parent / ".git").exists() and resolved.is_relative_to(parent)
+        for parent in Path(__file__).resolve().parents
+    )
+
+
 def redact_value(name: str, value: str) -> tuple[str, bool]:
     """DE-07: return `(value_or_placeholder, was_redacted)`. A sensitive
     name or a secret-shaped value independently triggers redaction."""
@@ -261,7 +277,7 @@ class EvidenceStore:
 
     def __init__(self, base_dir: Path, case_id: str, *, max_events: int = DEFAULT_MAX_EVIDENCE_PER_CASE) -> None:
         validate_case_id(case_id)
-        if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        if not secure_storage_supported():
             raise OSError("secure evidence persistence requires descriptor-relative no-follow opens")
         if not isinstance(max_events, int) or isinstance(max_events, bool) or max_events < 1:
             raise ValueError("max_events must be a positive integer")
@@ -270,9 +286,8 @@ class EvidenceStore:
         self._lock = threading.RLock()
         self._record_digests: dict[str, str] = {}
         base_path = Path(base_dir).resolve()
-        for parent in Path(__file__).resolve().parents:
-            if (parent / ".git").exists() and base_path.is_relative_to(parent):
-                raise ValueError("evidence must be outside the source repository")
+        if inside_source_checkout(base_path):
+            raise ValueError("evidence must be outside the source repository")
         base_path.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.case_dir = base_path / case_id
         base_fd = os.open(base_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)

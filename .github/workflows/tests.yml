@@ -53,7 +53,7 @@ jobs:
           tests.test_adapters tests.test_capability_probing tests.test_sessions
           tests.test_router tests.test_plans tests.test_workflow
           tests.test_approvals tests.test_cross_platform_certification
-          tests.test_t15_contract_conformance tests.test_server.TestBinding
+          tests.test_t15_contract_conformance tests.test_cli tests.test_server.TestBinding
           tests.test_server.TestOfflinePackaging -v
       - name: Compile all Python source and tests
         run: python -m compileall -q src tests build_backend.py
