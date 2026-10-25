@@ -1,7 +1,9 @@
 'use strict';
 // AutoDebug extension entry point. The relay is in relay.js; the logic is in the Python server.
+const path = require('path');
 const vscode = require('vscode');
 const { Relay } = require('./relay');
+const mcp = require('./mcp');
 
 let relay;
 
@@ -24,6 +26,11 @@ function activate(context) {
     { dispose: () => relay.stop() },
   );
   relay.start().then(() => status.show(), (error) => log(`could not start: ${error.message}`));
+  try {
+    mcp.register(vscode, context, { stateFolder: path.dirname(relay.folder), log });
+  } catch (error) {
+    log(`MCP: could not register the autodebug server: ${error.message}`);
+  }
 }
 
 function deactivate() {

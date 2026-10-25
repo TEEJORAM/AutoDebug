@@ -127,6 +127,7 @@ def _setup(args: argparse.Namespace) -> int:
              "autodebug setup cursor|vscode|visualstudio|claude")
         return 1
     print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
+    install.write_server_file()
     failed, left = False, []
     for name in targets:
         if name == "visualstudio":
@@ -312,6 +313,12 @@ def _doctor(args: argparse.Namespace) -> int:
     else:
         _bad(f"Python {sys.version.split()[0]}: AutoDebug needs 3.11 or newer")
         problems += 1
+    server = install.read_config(install.server_file())
+    if server.get("command") == sys.executable:
+        _ok(f"VS Code and Cursor windows can register the server themselves ({install.server_file()})")
+    else:
+        print(f"  -     {install.server_file()} is missing or names another Python; run `autodebug setup` so "
+              "VS Code and Cursor windows can register the server themselves")
     for ide, name in TARGETS.items():
         for folder in [None] + ([args.folder] if args.folder else []):
             entry = install.configured_entry(ide, folder)

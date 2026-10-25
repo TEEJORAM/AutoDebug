@@ -18,11 +18,11 @@ class Package(unittest.TestCase):
     def test_vsix_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = install.build_vsix(Path(tmp))
-            self.assertEqual(path.name, "autodebug.autodebug-0.4.0.vsix")
+            self.assertEqual(path.name, "autodebug.autodebug-0.5.0.vsix")
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(archive.namelist(), ["extension.vsixmanifest", "[Content_Types].xml",
                                                       "extension/package.json", "extension/extension.js",
-                                                      "extension/relay.js", "extension/readme.md"])
+                                                      "extension/relay.js", "extension/mcp.js", "extension/readme.md"])
                 ET.fromstring(archive.read("extension.vsixmanifest"))
                 self.assertEqual(json.loads(archive.read("extension/package.json"))["main"], "./extension.js")
             self.assertEqual(path.read_bytes(), install.build_vsix(Path(tmp) / "again").read_bytes())

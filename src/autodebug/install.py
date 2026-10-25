@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape
 
 EXTENSION_DIR = Path(__file__).with_name("extension")
 _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
-          ("relay.js", "relay.js"), ("README.md", "readme.md"))
+          ("relay.js", "relay.js"), ("mcp.js", "mcp.js"), ("README.md", "readme.md"))
 #: Earlier extension IDs to remove so two versions never run side by side.
 OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
 SERVER_NAME = "autodebug"
@@ -222,6 +222,25 @@ def server_entry(ide: str) -> dict:
 def claude_present() -> bool:
     """Claude Code is installed: its command, or the files it keeps in the home folder."""
     return bool(shutil.which("claude")) or (Path.home() / ".claude.json").is_file() or (Path.home() / ".claude").is_dir()
+
+
+def server_file() -> Path:
+    from autodebug.connection import state_folder
+
+    return state_folder() / "server.json"
+
+
+def write_server_file() -> Path:
+    """How to start the MCP server, for the extension to register it with VS Code or Cursor itself."""
+    entry = server_entry("any")
+    data = {"command": entry["command"], "args": entry["args"], "env": entry.get("env", {}),
+            "version": manifest()["version"]}
+    path = server_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
 
 
 def config_file(ide: str, folder: str | None = None) -> Path:
