@@ -29,12 +29,16 @@ jobs:
       - name: Check the package
         shell: pwsh
         run: |
-          $vsix = Get-ChildItem -Recurse -Filter AutoDebug.VisualStudio.vsix src/autodebug/visualstudio/Extension/bin | Select-Object -First 1
-          if (-not $vsix) { throw "no .vsix was built" }
+          $vsix = Get-ChildItem -Recurse -Filter *.vsix src/autodebug/visualstudio/Extension | Select-Object -First 1
+          if (-not $vsix) {
+            $built = (Get-ChildItem -Recurse -File src/autodebug/visualstudio/Extension/bin -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ', '
+            "::error::no .vsix was built; bin has: $built"
+            exit 1
+          }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $names = [IO.Compression.ZipFile]::OpenRead($vsix.FullName).Entries.FullName
           foreach ($needed in "extension.vsixmanifest", "AutoDebug.VisualStudio.dll", "AutoDebug.VisualStudio.pkgdef") {
-            if ($names -notcontains $needed) { throw "the package has no $needed (it has: $($names -join ', '))" }
+            if ($names -notcontains $needed) { "::error::$($vsix.Name) has no $needed; it has: $($names -join ', ')"; exit 1 }
           }
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $vsix.FullName out/AutoDebug.VisualStudio.vsix
