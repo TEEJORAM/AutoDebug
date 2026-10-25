@@ -73,7 +73,7 @@ jobs:
         if: env.OVSX_TOKEN != ''
         run: |
           # The first release creates the namespace (it already exists on later ones).
-          npx --yes ovsx@0.10.1 create-namespace autodebug -p "$OVSX_TOKEN" || true
+          npx --yes ovsx@0.10.1 create-namespace SwagatTeejoram -p "$OVSX_TOKEN" || true
           npx --yes ovsx@0.10.1 publish out/*.vsix -p "$OVSX_TOKEN"
       - name: VS Code Marketplace
         if: env.VSCE_PAT != ''

@@ -24,7 +24,7 @@ if (ide === 'vscode') {
   vscode.lm = { registerMcpServerDefinitionProvider: (id, p) => {
     calls.push(['provider', id, p.provideMcpServerDefinitions().map((d) => d.args)]); return { dispose() {} }; } };
 }
-const context = { subscriptions: [], globalStorageUri: { fsPath: home + '/User/globalStorage/autodebug.autodebug' } };
+const context = { subscriptions: [], globalStorageUri: { fsPath: home + '/User/globalStorage/SwagatTeejoram.autodebug' } };
 const result = mcp.register(vscode, context, { stateFolder: state, log: () => {}, home });
 context.subscriptions.forEach((s) => s.dispose && s.dispose());
 console.log(JSON.stringify({ result, calls }));
