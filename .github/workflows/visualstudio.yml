@@ -17,7 +17,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: microsoft/setup-msbuild@v2
       - name: Build the extension package
-        run: msbuild src/autodebug/visualstudio/Extension/AutoDebug.VisualStudio.csproj -restore -p:Configuration=Release -v:minimal -nologo
+        shell: pwsh
+        run: |
+          msbuild src/autodebug/visualstudio/Extension/AutoDebug.VisualStudio.csproj -restore -p:Configuration=Release -v:minimal -nologo | Tee-Object -FilePath build.log
+          $code = $LASTEXITCODE
+          # Show compiler errors and warnings in the run summary.
+          Select-String -Path build.log -Pattern ': (error|warning) ' | Select-Object -First 40 | ForEach-Object {
+            $level = if ($_.Line -match ': error ') { 'error' } else { 'warning' }
+            "::$level::$($_.Line.Trim())"
+          }
+          exit $code
       - name: Check the package
         shell: pwsh
         run: |
