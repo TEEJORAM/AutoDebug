@@ -14,8 +14,6 @@ from autodebug import __version__, install
 from autodebug.connection import discover, state_folder, version_problem
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
-PROMPT = ("Help me debug AutoDebugDemo: moving a shape changes its area. Use the autodebug tools to find the "
-          "root cause and write a report.")
 
 
 def _ok(text: str) -> None:
@@ -26,8 +24,29 @@ def _bad(text: str) -> None:
     print(f"  FIX   {text}")
 
 
-def _setup_visual_studio(args: argparse.Namespace) -> int:
-    print("Setting up AutoDebug for Visual Studio\n")
+#: What `setup` can connect: the three IDEs with an extension, plus agents that only need the MCP entry.
+TARGETS = {**IDES, "claude": "Claude Code"}
+#: The one step per app that setup cannot do for you (nothing for Claude Code).
+LEFT_FOR_YOU = {
+    "cursor": "Cursor: Developer: Reload Window, then Cursor Settings → Customize → MCPs → turn on autodebug "
+              "(Cursor starts every new MCP server switched off).",
+    "vscode": "VS Code: Developer: Reload Window. The first time the agent uses AutoDebug, allow it to start.",
+    "visualstudio": "Visual Studio: open your solution. For Copilot in Visual Studio: chat → Tools → tick autodebug "
+                    "(Visual Studio starts MCP tools switched off). Cursor and Claude Code need nothing more.",
+}
+
+
+def detect() -> list[str]:
+    """The IDEs and agents installed on this computer that setup can connect."""
+    found = [ide for ide in ("vscode", "cursor") if install.ide_command(ide)]
+    if install.vsix_installer():
+        found.append("visualstudio")
+    if install.claude_present():
+        found.append("claude")
+    return found
+
+
+def _setup_visual_studio(args: argparse.Namespace) -> tuple[bool, list[str]]:
     failed = False
     if not args.no_install:
         installer = install.vsix_installer()
@@ -56,50 +75,25 @@ def _setup_visual_studio(args: argparse.Namespace) -> int:
                 elif result.returncode == install.VSIX_BLOCKED:
                     _bad("Visual Studio or one of its helper processes is still running; wait a few seconds after "
                          "closing it, then run setup again")
+                    failed = True
                 else:
                     _bad(f"VSIXInstaller could not install it (exit code {result.returncode}); its log is the newest "
                          r"dd_VSIXInstaller_*.log in %TEMP%")
                     failed = True
     path = install.write_config("visualstudio", args.folder)
-    _ok(f"MCP server `autodebug` added to {path} (Visual Studio's agent mode)")
-    _instructions(args.folder)
-    print(f"""
-Next:
-  1. Start Visual Studio and open your solution. View → Output → "AutoDebug" says it is listening.
-  2. Set the startup project you want to debug, with a Debug configuration.
-  3. Ask an agent to debug it: Copilot in agent mode in Visual Studio (enable the autodebug tools), or
-     Cursor / Claude Code with `autodebug setup cursor` done. For example:
-     "Use the autodebug tools to find why <the bug> happens and write a report."
-  4. Click Approve when Visual Studio asks.""")
-    return 1 if failed else 0
+    _ok(f"Visual Studio: MCP server added to {path} (for Copilot in Visual Studio)")
+    return failed, [LEFT_FOR_YOU["visualstudio"]]
 
 
-def _instructions(folder: str | None) -> None:
-    if folder:
-        _ok(f"agent instructions written to {install.write_agent_instructions(folder, run_command())}")
-    else:
-        print("  -     for agents whose app drops MCP tools, also run: autodebug agents <your project folder>")
-
-
-def _agents(args: argparse.Namespace) -> int:
-    path = install.write_agent_instructions(args.folder, run_command())
-    _ok(f"AutoDebug section written to {path}")
-    print(f"  Agents that read AGENTS.md (Cursor, Copilot, Codex, ...) now know to run `{run_command()} run ...`\n"
-          "  when the MCP tools are missing. Claude Code reads CLAUDE.md: add the line @AGENTS.md there.")
-    return 0
-
-
-def _setup(args: argparse.Namespace) -> int:
-    if args.ide == "visualstudio":
-        return _setup_visual_studio(args)
-    name = IDES[args.ide]
-    print(f"Setting up AutoDebug for {name}\n")
+def _setup_editor(ide: str, args: argparse.Namespace) -> tuple[bool, list[str]]:
+    """VS Code or Cursor: install the extension with the IDE's own command, then write the MCP entry."""
+    name = IDES[ide]
     failed = False
     if not args.no_install:
         vsix = install.build_vsix(state_folder() / "extension")
-        command = install.ide_command(args.ide)
+        command = install.ide_command(ide)
         if command is None:
-            _bad(f"could not find the `{'code' if args.ide == 'vscode' else 'cursor'}` command. In {name}: "
+            _bad(f"could not find the `{'code' if ide == 'vscode' else 'cursor'}` command. In {name}: "
                  f"Extensions → ··· → Install from VSIX… → {vsix}")
             failed = True
         else:
@@ -109,19 +103,58 @@ def _setup(args: argparse.Namespace) -> int:
             else:
                 _bad(f"{name} could not install the extension: {(result.stderr or result.stdout).strip()[:300]}")
                 failed = True
-    path = install.write_config(args.ide, args.folder)
-    scope = "this project" if args.folder else "every project"
-    _ok(f"MCP server `autodebug` added to {path} ({scope})")
-    _instructions(args.folder)
+    path = install.write_config(ide, args.folder)
+    _ok(f"{name}: MCP server added to {path} ({'this project' if args.folder else 'every project'})")
+    return failed, [LEFT_FOR_YOU[ide]]
+
+
+def _setup_claude(args: argparse.Namespace) -> tuple[bool, list[str]]:
+    path = install.write_config("claude", args.folder)
+    _ok(f"Claude Code: MCP server added to {path} ({'this project' if args.folder else 'every project'})")
+    return False, []
+
+
+def _setup(args: argparse.Namespace) -> int:
+    target, folder = args.ide, args.folder
+    if target and target not in TARGETS and target != "all":
+        if folder:
+            raise ValueError(f"unknown IDE {target!r}; use one of: {', '.join(TARGETS)}")
+        target, folder = None, target  # `autodebug setup C:\path\to\project`
+    args.folder = folder
+    targets = detect() if target in (None, "all") else [target]
+    if not targets:
+        _bad("found none of VS Code, Cursor, Visual Studio 2022/2026 or Claude Code; install one, or name it: "
+             "autodebug setup cursor|vscode|visualstudio|claude")
+        return 1
+    print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
+    failed, left = False, []
+    for name in targets:
+        if name == "visualstudio":
+            bad, steps = _setup_visual_studio(args)
+        elif name == "claude":
+            bad, steps = _setup_claude(args)
+        else:
+            bad, steps = _setup_editor(name, args)
+        failed |= bad
+        left += steps
+    if folder:
+        _ok(f"agent instructions written to {install.write_agent_instructions(folder, run_command())}")
+    print("\nLeft for you:" if left else "\nNothing left to set up.")
+    for number, step in enumerate(left, 1):
+        print(f"  {number}. {step}")
     print(f"""
-Next, in {name}:
-  1. Command Palette → Developer: Reload Window in every open window (Restart Extension Host is not
-     enough: the window keeps the old extension). The status bar shows "AutoDebug".
-  2. {"Cursor Settings → MCP: turn on autodebug." if args.ide == "cursor" else "Command Palette → MCP: List Servers → autodebug → Start Server."}
-  3. Open your project folder and ask the agent, for example:
-     "{PROMPT}"
-  4. Click Approve when {name} asks.""")
+Then open your project, start a new agent chat and ask, for example:
+  "Use the autodebug tools to find why <the bug> happens and write a report."
+Click Approve when the IDE asks. Check everything with: autodebug doctor""")
     return 1 if failed else 0
+
+
+def _agents(args: argparse.Namespace) -> int:
+    path = install.write_agent_instructions(args.folder, run_command())
+    _ok(f"AutoDebug section written to {path}")
+    print(f"  Agents that read AGENTS.md (Cursor, Copilot, Codex, ...) now know to run `{run_command()} run ...`\n"
+          "  when the MCP tools are missing. Claude Code reads CLAUDE.md: add the line @AGENTS.md there.")
+    return 0
 
 
 def _serve(args: argparse.Namespace) -> int:
@@ -279,7 +312,7 @@ def _doctor(args: argparse.Namespace) -> int:
     else:
         _bad(f"Python {sys.version.split()[0]}: AutoDebug needs 3.11 or newer")
         problems += 1
-    for ide, name in IDES.items():
+    for ide, name in TARGETS.items():
         for folder in [None] + ([args.folder] if args.folder else []):
             entry = install.configured_entry(ide, folder)
             where = install.config_file(ide, folder)
@@ -331,13 +364,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="autodebug",
         description="Let an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio.",
-        epilog="Start here: autodebug setup cursor   (or: setup vscode, setup visualstudio)",
+        epilog="Start here: autodebug setup",
     )
     parser.add_argument("--version", action="version", version=f"autodebug {__version__}")
     commands = parser.add_subparsers(dest="command", metavar="<command>")
-    setup = commands.add_parser("setup", help="install the extension and connect the IDE's AI agent")
-    setup.add_argument("ide", choices=sorted(IDES))
-    setup.add_argument("folder", nargs="?", help="write the MCP entry for this project only")
+    setup = commands.add_parser("setup", help="connect every IDE and agent found (or the one named)")
+    setup.add_argument("ide", nargs="?", metavar="ide", help="cursor, vscode, visualstudio or claude (default: all found)")
+    setup.add_argument("folder", nargs="?", help="a project folder: its own MCP entries and AGENTS.md")
     setup.add_argument("--no-install", action="store_true", help="only write the MCP entry")
     setup.add_argument("--vsix", help="Visual Studio: install this extension package instead of downloading it")
     setup.set_defaults(handler=_setup)

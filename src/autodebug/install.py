@@ -219,7 +219,14 @@ def server_entry(ide: str) -> dict:
     return entry
 
 
+def claude_present() -> bool:
+    """Claude Code is installed: its command, or the files it keeps in the home folder."""
+    return bool(shutil.which("claude")) or (Path.home() / ".claude.json").is_file() or (Path.home() / ".claude").is_dir()
+
+
 def config_file(ide: str, folder: str | None = None) -> Path:
+    if ide == "claude":  # Claude Code: user scope in ~/.claude.json, project scope in <folder>/.mcp.json
+        return (Path(folder).expanduser().resolve() / ".mcp.json") if folder else Path.home() / ".claude.json"
     if ide == "visualstudio":  # Visual Studio's agent mode: <solution>/.mcp.json or %USERPROFILE%\.mcp.json
         return (Path(folder).expanduser().resolve() if folder else Path.home()) / ".mcp.json"
     if folder:
@@ -234,7 +241,7 @@ def config_file(ide: str, folder: str | None = None) -> Path:
 
 
 def _top_key(ide: str) -> str:
-    return "mcpServers" if ide == "cursor" else "servers"
+    return "mcpServers" if ide in ("cursor", "claude") else "servers"
 
 
 def read_config(path: Path) -> dict:
