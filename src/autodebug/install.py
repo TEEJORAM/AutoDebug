@@ -14,10 +14,33 @@ from xml.sax.saxutils import escape
 
 EXTENSION_DIR = Path(__file__).with_name("extension")
 _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
-          ("relay.js", "relay.js"), ("README.md", "readme.md"))
+          ("relay.js", "relay.js"), ("mcp.js", "mcp.js"), ("README.md", "readme.md"))
 #: Earlier extension IDs to remove so two versions never run side by side.
 OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
 SERVER_NAME = "autodebug"
+#: MIT, as in the repository's LICENSE (kept here too: an installed package has no repository files).
+LICENSE_TEXT = """MIT License
+
+Copyright (c) 2026 TEEJORAM
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
 #: Where CI publishes the Visual Studio extension package for each version.
 VS_RELEASE = "https://github.com/TEEJORAM/AutoDebug/releases/download/visualstudio-v{version}/AutoDebug.VisualStudio.vsix"
 
@@ -60,6 +83,7 @@ def build_vsix(folder: Path) -> Path:
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/readme.md" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
   </Assets>
 </PackageManifest>
 """
@@ -71,6 +95,7 @@ def build_vsix(folder: Path) -> Path:
                      '<Default Extension=".md" ContentType="text/markdown"/></Types>')
     entries = [("extension.vsixmanifest", vsixmanifest.encode()), ("[Content_Types].xml", content_types.encode())]
     entries += [(f"extension/{target}", (EXTENSION_DIR / source).read_bytes()) for source, target in _FILES]
+    entries.append(("extension/LICENSE.txt", LICENSE_TEXT.encode()))
     temporary = path.with_name(path.name + ".tmp")
     with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, payload in entries:
@@ -224,6 +249,25 @@ def claude_present() -> bool:
     return bool(shutil.which("claude")) or (Path.home() / ".claude.json").is_file() or (Path.home() / ".claude").is_dir()
 
 
+def server_file() -> Path:
+    from autodebug.connection import state_folder
+
+    return state_folder() / "server.json"
+
+
+def write_server_file() -> Path:
+    """How to start the MCP server, for the extension to register it with VS Code or Cursor itself."""
+    entry = server_entry("any")
+    data = {"command": entry["command"], "args": entry["args"], "env": entry.get("env", {}),
+            "version": manifest()["version"]}
+    path = server_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
 def config_file(ide: str, folder: str | None = None) -> Path:
     if ide == "claude":  # Claude Code: user scope in ~/.claude.json, project scope in <folder>/.mcp.json
         return (Path(folder).expanduser().resolve() / ".mcp.json") if folder else Path.home() / ".claude.json"
@@ -270,6 +314,23 @@ def write_config(ide: str, folder: str | None = None) -> Path:
         raise ValueError(f"{path}: {_top_key(ide)} is not an object")
     servers[SERVER_NAME] = server_entry(ide)
     path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def remove_config(ide: str, folder: str | None = None) -> Path | None:
+    """Remove the `autodebug` entry, keeping every other server; returns the file when one was removed."""
+    path = config_file(ide, folder)
+    try:
+        data = read_config(path)
+    except ValueError:
+        return None  # a file with comments is left for the developer
+    servers = data.get(_top_key(ide))
+    if not isinstance(servers, dict) or SERVER_NAME not in servers:
+        return None
+    del servers[SERVER_NAME]
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)

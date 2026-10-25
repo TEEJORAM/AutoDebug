@@ -28,8 +28,8 @@ def _bad(text: str) -> None:
 TARGETS = {**IDES, "claude": "Claude Code"}
 #: The one step per app that setup cannot do for you (nothing for Claude Code).
 LEFT_FOR_YOU = {
-    "cursor": "Cursor: Developer: Reload Window, then Cursor Settings → Customize → MCPs → turn on autodebug "
-              "(Cursor starts every new MCP server switched off).",
+    "cursor": "Cursor: Developer: Reload Window in every window. The agent then has the tools as "
+              "extension-autodebug, already switched on.",
     "vscode": "VS Code: Developer: Reload Window. The first time the agent uses AutoDebug, allow it to start.",
     "visualstudio": "Visual Studio: open your solution. For Copilot in Visual Studio: chat → Tools → tick autodebug "
                     "(Visual Studio starts MCP tools switched off). Cursor and Claude Code need nothing more.",
@@ -103,6 +103,15 @@ def _setup_editor(ide: str, args: argparse.Namespace) -> tuple[bool, list[str]]:
             else:
                 _bad(f"{name} could not install the extension: {(result.stderr or result.stdout).strip()[:300]}")
                 failed = True
+    if ide == "cursor":
+        # The extension registers the server with Cursor itself (switched on, every tool); an mcp.json entry
+        # would start switched off and make the extension stand aside, so remove the one older setups wrote.
+        for folder in [None] + ([args.folder] if args.folder else []):
+            removed = install.remove_config(ide, folder)
+            if removed:
+                _ok(f"Cursor: removed the old autodebug entry from {removed}")
+        _ok(f"Cursor: the extension registers the MCP server itself (from {install.server_file()})")
+        return failed, [LEFT_FOR_YOU[ide]]
     path = install.write_config(ide, args.folder)
     _ok(f"{name}: MCP server added to {path} ({'this project' if args.folder else 'every project'})")
     return failed, [LEFT_FOR_YOU[ide]]
@@ -127,6 +136,7 @@ def _setup(args: argparse.Namespace) -> int:
              "autodebug setup cursor|vscode|visualstudio|claude")
         return 1
     print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
+    install.write_server_file()
     failed, left = False, []
     for name in targets:
         if name == "visualstudio":
@@ -312,10 +322,22 @@ def _doctor(args: argparse.Namespace) -> int:
     else:
         _bad(f"Python {sys.version.split()[0]}: AutoDebug needs 3.11 or newer")
         problems += 1
+    server = install.read_config(install.server_file())
+    if server.get("command") == sys.executable:
+        _ok(f"VS Code and Cursor windows can register the server themselves ({install.server_file()})")
+    else:
+        print(f"  -     {install.server_file()} is missing or names another Python; run `autodebug setup` so "
+              "VS Code and Cursor windows can register the server themselves")
     for ide, name in TARGETS.items():
         for folder in [None] + ([args.folder] if args.folder else []):
             entry = install.configured_entry(ide, folder)
             where = install.config_file(ide, folder)
+            if ide == "cursor":  # the extension registers the server; an mcp.json entry only gets in its way
+                if entry is not None:
+                    _bad(f"Cursor: {where} still starts autodebug, so Cursor shows it switched off; run "
+                         "`autodebug setup cursor` to let the extension register it instead")
+                    problems += 1
+                continue
             if entry is None:
                 if folder is None:
                     print(f"  -     {name}: not set up ({where})")

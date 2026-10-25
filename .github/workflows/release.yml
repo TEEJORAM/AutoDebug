@@ -1,0 +1,103 @@
+name: Release
+
+# Publishes one AutoDebug version to every store when the tag v<version> is pushed
+# (or by hand). A store is skipped until its account is connected:
+#   PyPI                       trusted publishing, GitHub environment "pypi"
+#   Open VSX (Cursor)          secret OVSX_TOKEN
+#   VS Code Marketplace        secret VSCE_PAT
+#   Visual Studio Marketplace  secret VS_MARKETPLACE_PAT
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      pypi: ${{ steps.stores.outputs.pypi }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches every version
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          grep -q "__version__ = \"$v\"" src/autodebug/__init__.py || { echo "::error::__init__.py is not $v"; exit 1; }
+          grep -q "Version=\"$v\" Language" src/autodebug/visualstudio/Extension/source.extension.vsixmanifest \
+            || { echo "::error::the Visual Studio manifest is not $v"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$v" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but the version is $v"; exit 1
+          fi
+      - id: stores
+        env:
+          PYPI: ${{ vars.PYPI_TRUSTED_PUBLISHING }}
+        run: echo "pypi=${PYPI:-no}" >> "$GITHUB_OUTPUT"
+
+  pypi:
+    needs: check
+    if: needs.check.outputs.pypi == 'yes'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the wheel and the source package (standard library only)
+        run: |
+          mkdir dist
+          python -c "import build_backend as b; print(b.build_wheel('dist')); print(b.build_sdist('dist'))"
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  editor-extension:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build the VS Code / Cursor extension package
+        run: PYTHONPATH=src python -c "from pathlib import Path; from autodebug import install; print(install.build_vsix(Path('out')))"
+      - name: Open VSX (Cursor installs and updates from here)
+        if: env.OVSX_TOKEN != ''
+        run: |
+          # The first release creates the namespace (it already exists on later ones).
+          npx --yes ovsx@0.10.1 create-namespace autodebug -p "$OVSX_TOKEN" || true
+          npx --yes ovsx@0.10.1 publish out/*.vsix -p "$OVSX_TOKEN"
+      - name: VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx --yes @vscode/vsce@3.2.1 publish --packagePath out/*.vsix -p "$VSCE_PAT"
+
+  visual-studio:
+    needs: check
+    runs-on: windows-latest
+    env:
+      VS_MARKETPLACE_PAT: ${{ secrets.VS_MARKETPLACE_PAT }}
+    steps:
+      - uses: actions/checkout@v7
+        if: env.VS_MARKETPLACE_PAT != ''
+      - uses: microsoft/setup-msbuild@v2
+        if: env.VS_MARKETPLACE_PAT != ''
+      - name: Build and publish the Visual Studio extension
+        if: env.VS_MARKETPLACE_PAT != ''
+        shell: pwsh
+        run: |
+          msbuild src/autodebug/visualstudio/Extension/AutoDebug.VisualStudio.csproj -restore -p:Configuration=Release -v:minimal -nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vsix = Get-ChildItem -Recurse -Filter *.vsix src/autodebug/visualstudio/Extension | Select-Object -First 1
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $publisher = Get-ChildItem -Recurse -Filter VsixPublisher.exe "$vs\VSSDK" | Select-Object -First 1
+          & $publisher.FullName publish -payload $vsix.FullName `
+            -publishManifest src/autodebug/visualstudio/Extension/publishManifest.json `
+            -personalAccessToken $env:VS_MARKETPLACE_PAT

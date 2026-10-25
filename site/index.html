@@ -253,7 +253,7 @@ py -m autodebug setup</pre></div>
       <div class="block" id="os-unix" role="tabpanel" aria-labelledby="tab-unix" hidden><pre>python3 -m venv ~/.autodebug
 ~/.autodebug/bin/python -m pip install git+https://github.com/TEEJORAM/AutoDebug.git
 ~/.autodebug/bin/python -m autodebug setup</pre></div>
-      <p><code>setup</code> finds every IDE and agent on the computer. It installs the AutoDebug extension in VS Code, Cursor and Visual Studio, and adds the <code>autodebug</code> MCP server to VS Code, Cursor, Visual Studio and Claude Code.</p>
+      <p><code>setup</code> finds every IDE and agent on the computer. It installs the AutoDebug extension in VS Code, Cursor and Visual Studio, and adds the <code>autodebug</code> MCP server to VS Code, Visual Studio and Claude Code. In Cursor the extension registers the server itself.</p>
     </li>
     <li><p>Do the one step <code>setup</code> prints for your IDE. They are listed under <a href="#per-ide">Steps per IDE</a>.</p></li>
     <li><p>Check with <code>py -m autodebug doctor</code> (macOS and Linux: <code>~/.autodebug/bin/python -m autodebug doctor</code>). It lists the connected IDEs, the open IDE windows and anything to fix.</p></li>
@@ -269,7 +269,7 @@ py -m autodebug setup</pre></div>
   <h3 id="cursor">Cursor</h3>
   <ol class="steps">
     <li><p>Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.</p></li>
-    <li><p><strong>Cursor Settings → Customize → MCPs → autodebug</strong> → turn it on. Cursor starts every new MCP server switched off. The entry then shows a green dot.</p></li>
+    <li><p>Nothing to turn on: the extension registers the server with Cursor itself. <strong>Cursor Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot.</p></li>
     <li><p>Start a new chat. A chat that was already open does not get the tools.</p></li>
   </ol>
   <h3 id="visualstudio">Visual Studio 2022 and 2026</h3>
@@ -316,7 +316,7 @@ py -m autodebug run help</pre></div>
   <table class="ref">
     <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
     <tbody>
-      <tr><td>The agent has no autodebug tools</td><td>Cursor: <strong>Settings → Customize → MCPs → autodebug</strong> → turn it on, then start a new chat. Copilot in Visual Studio: <strong>Tools</strong> → tick <strong>autodebug</strong>. Any agent can use <a href="#terminal"><code>autodebug run</code></a>.</td></tr>
+      <tr><td>The agent has no autodebug tools</td><td>Cursor: reload the window and start a new chat; <strong>Settings → Customize → MCPs</strong> should show <strong>extension-autodebug</strong> with a green dot. Copilot in Visual Studio: <strong>Tools</strong> → tick <strong>autodebug</strong>. Any agent can use <a href="#terminal"><code>autodebug run</code></a>.</td></tr>
       <tr><td>No window is running the AutoDebug extension</td><td>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>. Visual Studio: View → Output → <strong>AutoDebug</strong>.</td></tr>
       <tr><td>No Approve dialog</td><td>Switch to the IDE window. The agent reports "no answer within 2 minutes" when nobody answered.</td></tr>
       <tr><td><code>NOT_BUILT</code></td><td>The program has not been built yet. The agent retries with the build task it names.</td></tr>
@@ -364,7 +364,7 @@ py -m autodebug run help</pre></div>
   </ul>
 
   <footer>
-    <span>AutoDebug 0.5.1</span>
+    <span>AutoDebug 0.5.1 · MIT License</span>
     <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
   </footer>
 </div>

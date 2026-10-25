@@ -12,7 +12,7 @@ const os = require('os');
 const path = require('path');
 
 const PROTOCOL = 4;
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const MAX_LINE = 1024 * 1024;
 const APPROVAL_SECONDS = 120;
 const MAX_EVENTS = 5000;

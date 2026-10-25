@@ -27,9 +27,17 @@ def _package_files() -> list[Path]:
 
 def _metadata() -> dict[str, bytes]:
     scripts = "\n".join(f"{name} = {target}" for name, target in PROJECT.get("scripts", {}).items())
+    headers = [f"Metadata-Version: 2.1", f"Name: {NAME}", f"Version: {VERSION}", f"Summary: {PROJECT['description']}",
+               f"Requires-Python: {PROJECT['requires-python']}"]
+    if PROJECT.get("license"):
+        headers.append(f"License: {PROJECT['license']}")
+    headers += [f"Classifier: {c}" for c in PROJECT.get("classifiers", [])]
+    headers += [f"Project-URL: {label}, {url}" for label, url in PROJECT.get("urls", {}).items()]
+    readme = (ROOT / PROJECT["readme"]).read_text(encoding="utf-8") if PROJECT.get("readme") else ""
+    if readme:
+        headers.append("Description-Content-Type: text/markdown")
     return {
-        "METADATA": (f"Metadata-Version: 2.1\nName: {NAME}\nVersion: {VERSION}\nSummary: {PROJECT['description']}\n"
-                     f"Requires-Python: {PROJECT['requires-python']}\n\n").encode(),
+        "METADATA": ("\n".join(headers) + "\n\n" + readme).encode("utf-8"),
         "WHEEL": b"Wheel-Version: 1.0\nGenerator: autodebug\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
         "entry_points.txt": f"[console_scripts]\n{scripts}\n".encode(),
     }
@@ -91,6 +99,7 @@ def build_sdist(sdist_directory, config_settings=None):
         info = tarfile.TarInfo(f"{prefix}/PKG-INFO")
         info.size = len(metadata)
         archive.addfile(info, io.BytesIO(metadata))
-        for path in [ROOT / "pyproject.toml", ROOT / "build_backend.py", ROOT / "README.md", *_package_files()]:
+        for path in [ROOT / "pyproject.toml", ROOT / "build_backend.py", ROOT / "README.md", ROOT / "LICENSE",
+                     *_package_files()]:
             archive.add(path, arcname=f"{prefix}/{path.relative_to(ROOT).as_posix()}", recursive=False)
     return filename

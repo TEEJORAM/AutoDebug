@@ -42,14 +42,15 @@ python3 -m venv ~/.autodebug
 
 `setup` finds every IDE and agent on the computer and connects each one: it
 installs the AutoDebug extension (VS Code, Cursor, Visual Studio) and adds the
-`autodebug` MCP server (VS Code, Cursor, Visual Studio, Claude Code).
+`autodebug` MCP server (VS Code, Visual Studio, Claude Code). In Cursor the
+extension registers the server itself.
 
 **2. Do the one step `setup` prints for your IDE:**
 
 | IDE | Step |
 |---|---|
 | VS Code | Command Palette → **Developer: Reload Window**. If VS Code asks whether to trust or start the **autodebug** server, allow it. |
-| Cursor | Command Palette → **Developer: Reload Window**, then **Cursor Settings → Customize → MCPs → autodebug** → turn it on. Cursor starts every new MCP server switched off. |
+| Cursor | Command Palette → **Developer: Reload Window**, in every Cursor window. The extension registers the server with Cursor itself: **Cursor Settings → Customize → MCPs** shows **extension-autodebug**, already switched on. |
 | Visual Studio | Start it and open your solution. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: in the chat, **Tools** → tick **autodebug**. |
 | Claude Code | Nothing. Start a new session. |
 
@@ -85,7 +86,7 @@ Open the project in the IDE and ask the agent, for example:
 2. The agent builds, stops at the breakpoints, steps and traces.
 3. The report is written to `autodebug-reports/` in the project folder.
 
-Try it first on [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md):
+Try it first on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md):
 the same bug in C++ and Python.
 
 ## When the agent cannot see the autodebug tools
@@ -105,7 +106,7 @@ into the project's `AGENTS.md`, so the agent finds it by itself.
 
 | What you see | What to do |
 |---|---|
-| The agent has no autodebug tools | Cursor: **Settings → Customize → MCPs → autodebug** → turn it on, then start a new chat. Visual Studio Copilot: **Tools** → tick **autodebug**. Any agent: it can use `autodebug run` (above). |
+| The agent has no autodebug tools | Cursor: reload the window and start a new chat; **Settings → Customize → MCPs** should show **extension-autodebug** with a green dot. `autodebug doctor` flags an old `mcp.json` entry that gets in the way. Visual Studio Copilot: **Tools** → tick **autodebug**. Any agent: it can use `autodebug run` (above). |
 | "No VS Code, Cursor or Visual Studio window is running the extension" | Open the project in the IDE. VS Code / Cursor: **Developer: Reload Window**; the status bar shows **AutoDebug**. Visual Studio: View → Output → **AutoDebug** says it is listening. |
 | No Approve dialog | Switch to the IDE window: the dialog opens there (in Visual Studio it stays on top of other windows). The agent reports "no answer within 2 minutes" when nobody answered. |
 | `NOT_BUILT` | The program has not been built. The agent retries with the build task it names. |
@@ -146,7 +147,9 @@ On Windows write `py -m autodebug`; on macOS / Linux `~/.autodebug/bin/python -m
 
 The agent cannot evaluate expressions or change variables, and secret-looking
 values are hidden from it. AutoDebug listens on 127.0.0.1 only, with a token.
-How it works: [docs/design.md](docs/design.md).
+How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md).
+
+AutoDebug is released under the [MIT License](https://github.com/TEEJORAM/AutoDebug/blob/main/LICENSE).
 
 ## Large C++ programs
 
@@ -227,4 +230,4 @@ To work on AutoDebug itself, clone the repository and install it editable:
 
 Most tests run with Python alone. The relay tests need Node.js. The
 real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
-with g++ (C++, Linux and macOS). See [CLAUDE.md](CLAUDE.md) for the rules.
+with g++ (C++, Linux and macOS). See [CLAUDE.md](https://github.com/TEEJORAM/AutoDebug/blob/main/CLAUDE.md) for the rules.
