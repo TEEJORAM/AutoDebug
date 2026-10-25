@@ -12,7 +12,7 @@ class Site(unittest.TestCase):
         site = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         blocks = re.findall(r'<div class="block"[^>]*><pre>(.*?)</pre>', site, re.S)
-        self.assertEqual(len(blocks), 2)
+        self.assertEqual(len(blocks), 3)  # Windows, macOS, Linux
         for block in blocks:
             for line in block.strip().splitlines():
                 self.assertIn(line, readme, f"site command not in README: {line}")
