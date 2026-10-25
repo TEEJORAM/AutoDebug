@@ -33,9 +33,12 @@ def _setup_visual_studio(args: argparse.Namespace) -> int:
             failed = True
         else:
             try:
-                vsix = Path(args.vsix).resolve() if args.vsix else install.download_vs_extension(__version__, state_folder() / "extension")
+                vsix = Path(args.vsix).expanduser().resolve() if args.vsix else install.download_vs_extension(
+                    __version__, state_folder() / "extension")
+                if not vsix.is_file():
+                    raise ValueError(f"there is no file {vsix}")
             except (OSError, ValueError) as exc:
-                _bad(f"could not download the extension ({exc}). Download AutoDebug.VisualStudio.vsix for version "
+                _bad(f"could not get the extension ({exc}). Download AutoDebug.VisualStudio.vsix for version "
                      f"{__version__} from {install.VS_RELEASE.format(version=__version__)} and run: "
                      "autodebug setup visualstudio --vsix <file>")
                 vsix = None

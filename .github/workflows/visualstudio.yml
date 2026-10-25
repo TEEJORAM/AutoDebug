@@ -6,6 +6,8 @@ name: Visual Studio extension
 on:
   push:
   pull_request:
+  # Run by hand to publish a test build from a branch, before it reaches main.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -54,7 +56,7 @@ jobs:
           path: out/AutoDebug.VisualStudio.vsix
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -73,8 +75,10 @@ jobs:
           tag="visualstudio-v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" out/AutoDebug.VisualStudio.vsix --clobber
+            [ "$GITHUB_REF" = refs/heads/main ] && gh release edit "$tag" --prerelease=false --target "$GITHUB_SHA"
           else
-            gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" \
+            flag=$([ "$GITHUB_REF" = refs/heads/main ] || echo --prerelease)
+            gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" $flag \
               --title "AutoDebug for Visual Studio $version" \
               --notes "Install with: autodebug setup visualstudio (Visual Studio 2022 or 2026)."
           fi

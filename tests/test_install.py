@@ -130,6 +130,14 @@ class Config(unittest.TestCase):
         project = self.home / "Blender"
         self.assertEqual(install.write_config("visualstudio", str(project)), project.resolve() / ".mcp.json")
 
+    def test_setup_visualstudio_with_a_missing_vsix_file_stops(self):
+        with mock.patch.object(install, "vsix_installer", return_value="VSIXInstaller.exe"), \
+             mock.patch.object(install, "install_vs_extension") as installer:
+            code, out = self.run_cli("setup", "visualstudio", "--vsix", str(self.home / "missing.vsix"))
+        self.assertEqual(code, 1)
+        self.assertIn("there is no file", out)
+        installer.assert_not_called()
+
     def test_setup_visualstudio_without_visual_studio_explains(self):
         with mock.patch.object(install, "vsix_installer", return_value=None):
             code, out = self.run_cli("setup", "visualstudio")
