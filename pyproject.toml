@@ -4,8 +4,10 @@ version = "0.5.1"
 description = "Let an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio"
 requires-python = ">=3.11"
 readme = "README.md"
+license = "MIT"
 classifiers = [
     "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",

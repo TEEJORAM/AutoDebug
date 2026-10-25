@@ -271,9 +271,20 @@ standard-library build backend needs nothing else). `autodebug setup [FOLDER]`
 with no IDE named detects VS Code and Cursor (their command-line launchers),
 Visual Studio 2022/2026 (vswhere) and Claude Code (`claude` or its home files),
 connects each one as below, and ends with the one manual step per IDE that no
-file can do: reloading the VS Code / Cursor window, turning the server on in
-Cursor (Cursor 3 starts every new MCP server switched off), and ticking the
-tools for Copilot in Visual Studio (which starts MCP tools switched off). A
+file can do: reloading the VS Code / Cursor window, and ticking the tools for
+Copilot in Visual Studio (which starts MCP tools switched off).
+
+**The extension registers the server.** `setup` writes `server.json` in the
+state folder (the command, arguments and environment that start `autodebug
+serve`). On activation the extension registers it with the IDE: in Cursor with
+`vscode.cursor.mcp.registerServer` (listed as `extension-autodebug`; tried in
+Cursor 3: switched on, all 14 tools, unlike an `mcp.json` entry, which Cursor 3
+starts switched off), in VS Code 1.101+ with
+`vscode.lm.registerMcpServerDefinitionProvider` (`contributes.mcpServerDefinitionProviders`).
+A window whose `mcp.json` files already name `autodebug` is left alone, so the
+tools never appear twice. For Cursor, `setup` therefore writes no `mcp.json`
+entry and removes the one older versions wrote; `doctor` flags one that is left.
+VS Code still gets its `mcp.json` entry until the provider is tried there. A
 FOLDER that is not an IDE name is the project folder. Claude Code gets the
 entry in `~/.claude.json` (or `FOLDER/.mcp.json`) under `mcpServers`, keeping
 its other settings.

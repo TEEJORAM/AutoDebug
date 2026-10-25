@@ -2,6 +2,7 @@
 
 import io
 import json
+import sys
 import os
 import tempfile
 import unittest
@@ -22,7 +23,7 @@ class Package(unittest.TestCase):
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(archive.namelist(), ["extension.vsixmanifest", "[Content_Types].xml",
                                                       "extension/package.json", "extension/extension.js",
-                                                      "extension/relay.js", "extension/mcp.js", "extension/readme.md"])
+                                                      "extension/relay.js", "extension/mcp.js", "extension/readme.md", "extension/LICENSE.txt"])
                 ET.fromstring(archive.read("extension.vsixmanifest"))
                 self.assertEqual(json.loads(archive.read("extension/package.json"))["main"], "./extension.js")
             self.assertEqual(path.read_bytes(), install.build_vsix(Path(tmp) / "again").read_bytes())
@@ -95,8 +96,8 @@ class Config(unittest.TestCase):
         self.assertEqual(calls[0][:2], ["cursor", "--uninstall-extension"])
         self.assertEqual(calls[-1][:2], ["cursor", "--install-extension"])
         self.assertIn("extension installed in Cursor", out)
-        self.assertIn("Customize → MCPs → turn on autodebug", out)
-        self.assertTrue((self.home / ".cursor" / "mcp.json").is_file())
+        self.assertIn("extension-autodebug, already switched on", out)
+        self.assertFalse((self.home / ".cursor" / "mcp.json").is_file())
 
     def test_setup_alone_connects_everything_it_finds(self):
         claude = self.home / ".claude.json"
@@ -115,7 +116,7 @@ class Config(unittest.TestCase):
         self.assertEqual(set(data["mcpServers"]), {"other"})  # a project folder was given: the entry goes there
         self.assertEqual(json.loads((project.resolve() / ".mcp.json").read_text())["mcpServers"]["autodebug"]["args"],
                          ["-m", "autodebug", "serve"])
-        self.assertTrue((project.resolve() / ".cursor" / "mcp.json").is_file())
+        self.assertFalse((project.resolve() / ".cursor" / "mcp.json").is_file())  # the extension registers it
         self.assertTrue(install.has_agent_instructions(str(project)))
         self.assertIn("Left for you:\n  1. Cursor: Developer: Reload Window", out)
         code, out = self.run_cli("setup", "claude", "--no-install")
@@ -138,15 +139,34 @@ class Config(unittest.TestCase):
 
     def test_doctor_flags_old_demo_entries(self):
         project = self.home / "Demo"
-        (project / ".cursor").mkdir(parents=True)
-        (project / ".cursor" / "mcp.json").write_text(json.dumps(
-            {"mcpServers": {"autodebug": {"command": "py", "args": ["-m", "autodebug", "serve", "--demo"]}}}))
+        (project / ".vscode").mkdir(parents=True)
+        (project / ".vscode" / "mcp.json").write_text(json.dumps(
+            {"servers": {"autodebug": {"command": "py", "args": ["-m", "autodebug", "serve", "--demo"]}}}))
         code, out = self.run_cli("doctor", str(project))
         self.assertEqual(code, 1)
         self.assertIn("old server command", out)
-        install.write_config("cursor", str(project))
+        install.write_config("vscode", str(project))
         code, out = self.run_cli("doctor", str(project))
-        self.assertIn(f"Cursor: {project.resolve() / '.cursor' / 'mcp.json'}", out)
+        self.assertIn(f"VS Code: {project.resolve() / '.vscode' / 'mcp.json'}", out)
+
+    def test_cursor_relies_on_the_extension_and_drops_the_old_entry(self):
+        path = self.home / ".cursor" / "mcp.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"mcpServers": {"figcraft": {"command": "x"}, "autodebug": {"command": "py"}}}))
+        code, out = self.run_cli("doctor")
+        self.assertIn("Cursor shows it switched off", out)
+        with mock.patch.object(install, "ide_command", return_value="cursor"), \
+                mock.patch.object(install.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+            code, out = self.run_cli("setup", "cursor")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(json.loads(path.read_text())["mcpServers"], {"figcraft": {"command": "x"}})
+        server = json.loads(install.server_file().read_text())
+        self.assertEqual((server["command"], server["args"]), (sys.executable, ["-m", "autodebug", "serve"]))
+        self.assertIn("the extension registers the MCP server itself", out)
+        self.assertIn("already switched on", out)
+        code, out = self.run_cli("doctor")
+        self.assertNotIn("Cursor shows it switched off", out)
+        self.assertIn("can register the server themselves", out)
 
     def test_doctor_names_an_old_extension_in_a_running_window(self):
         from tests.fake_extension import FakeExtension
@@ -207,6 +227,20 @@ class Config(unittest.TestCase):
         self.assertIn(" run list_targets ide=visualstudio", text)
         self.assertIn("click **Approve**", text)
         self.assertTrue(install.has_agent_instructions(str(project)))
+
+
+class License(unittest.TestCase):
+    def test_every_package_carries_the_mit_license(self):
+        root = Path(install.__file__).resolve().parents[2]
+        self.assertEqual(install.LICENSE_TEXT, (root / "LICENSE").read_text(encoding="utf-8"))
+        self.assertTrue(install.LICENSE_TEXT.startswith("MIT License"))
+        with tempfile.TemporaryDirectory() as folder:
+            with zipfile.ZipFile(install.build_vsix(Path(folder))) as vsix:
+                self.assertEqual(vsix.read("extension/LICENSE.txt").decode(), install.LICENSE_TEXT)
+                self.assertIn("Content.License", vsix.read("extension.vsixmanifest").decode())
+        self.assertEqual(install.manifest()["license"], "MIT")
+        self.assertIn("<License>LICENSE.txt</License>", (root / "src" / "autodebug" / "visualstudio" / "Extension"
+                                                          / "source.extension.vsixmanifest").read_text())
 
 
 class VisualStudioPackage(unittest.TestCase):

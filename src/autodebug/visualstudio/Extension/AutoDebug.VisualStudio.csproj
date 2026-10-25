@@ -28,6 +28,9 @@
   <ItemGroup>
     <Compile Include="../Core/*.cs" />
     <None Include="source.extension.vsixmanifest" SubType="Designer" />
+    <Content Include="../../../../LICENSE" Link="LICENSE.txt">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="PresentationCore" />
