@@ -75,6 +75,17 @@ class Targets(ToolsTest):
                         breakpoints=[], goal="x")
         self.start(workspace_folder=str(self.workspace))
 
+    def test_the_ide_picks_the_window(self):
+        other = self.root / "Other"
+        other.mkdir()
+        second = FakeExtension(self.bridges, str(other), ide="visualstudio")
+        self.addCleanup(second.close)
+        (listed,) = self.debugger.list_targets(ide="visualstudio")["windows"]
+        self.assertEqual(listed["ide"], "visualstudio")
+        self.assertEqual(self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x",
+                                                     ide="cursor", wait_seconds=0)["status"], "awaiting_approval")
+        self.assertCode("NO_WINDOW", self.debugger.list_targets, ide="vscode")
+
 
 class OldExtension(ToolsTest):
     def setUp(self):

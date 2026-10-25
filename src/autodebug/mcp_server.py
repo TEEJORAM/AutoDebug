@@ -32,6 +32,8 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
    Breakpoints with source "editor" were set by the developer and stop the program too.
 5. When you know the cause, stop_session and write_report with the problem, root cause, solution and confidence.
 Only report what tool results showed. Expression evaluation is not available.
+Several IDEs: list_targets shows every window with its ide (cursor, vscode, visualstudio). When the developer names an
+IDE, pass ide to list_targets and start_session; paths are relative to that window's folder.
 Attach: start_session with an attach configuration. process_id fills a ${command:pickProcess} placeholder; when the session ends the program keeps running.
 threads lists threads and can select one while paused. stack pages with start_frame (up to 200 frames). inspect depth 0-3 reads children; names can be paths such as mesh.verts[2].co (-> is the same as .).
 exceptions lists the debugger's exception filters and can enable them by id. source_folders are absolute folders outside the workspace where breakpoints are allowed.
@@ -48,6 +50,8 @@ _FILE_LINE = {
     "additionalProperties": False,
 }
 _FOLDER = {"type": "string", "description": "Absolute workspace folder; needed only when several IDE windows are open"}
+_IDE = {"type": "string", "enum": ["cursor", "vscode", "visualstudio"],
+        "description": "Which IDE's window to use, when windows of several IDEs are open"}
 
 
 def _schema(properties: dict, required: tuple[str, ...] = ()) -> dict:
@@ -56,7 +60,7 @@ def _schema(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 TOOLS = {
     "list_targets": ("List IDE windows running AutoDebug, with their launch configurations and build tasks.",
-                     _schema({"workspace_folder": _FOLDER})),
+                     _schema({"workspace_folder": _FOLDER, "ide": _IDE})),
     "start_session": (
         "Resumes the program (call alone). Ask the developer to approve in the IDE, then build (optional), set "
         "breakpoints, launch the configuration under the debugger and wait for the first stop. Returns the status, "
@@ -66,6 +70,7 @@ TOOLS = {
             "breakpoints": {"type": "array", "items": _FILE_LINE, "maxItems": 50},
             "goal": {"type": "string", "description": "One sentence: what you are trying to find out"},
             "workspace_folder": _FOLDER,
+            "ide": _IDE,
             "build_task": {"type": "string", "description": "A build task label from list_targets to run first"},
             "max_steps": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
             "max_minutes": {"type": "integer", "minimum": 1, "maximum": 480, "default": 30},

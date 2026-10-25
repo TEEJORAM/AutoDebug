@@ -112,8 +112,12 @@ Invoke-Item (Get-Item build\vs\AutoDebugDemo.sln*)[0]
 startup project is already **geometry**; keep the **Debug** configuration. Then
 ask the agent:
 
-> Use the autodebug tools to find why moving a shape changes its area in the C++
-> version: stop in polygon_area at cpp/geometry.cpp:16, trace total, and write a report.
+> Use the autodebug tools with the Visual Studio window (ide: visualstudio) and its
+> launch configuration "geometry (Debug|x64)". Find why moving a shape changes its
+> area: stop in polygon_area at geometry.cpp line 16, trace total, and write a report.
 
-Click **Approve** in Visual Studio. The breakpoint is shown as not bound until
+Name Visual Studio in the prompt when Cursor or VS Code is open too; otherwise
+the agent may debug in its own IDE. In Visual Studio the workspace folder is the
+CMake source folder (`cpp`), so the file is `geometry.cpp`. Click **Approve** in
+Visual Studio. The breakpoint is shown as not bound until
 the program has loaded; that is normal.

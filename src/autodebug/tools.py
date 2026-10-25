@@ -68,8 +68,8 @@ class Debugger:
     def _log(self, kind: str, where: str = "", detail: str = "") -> None:
         self.timeline.append(Event(kind, clean_text(where, 300), clean_text(detail, 1000)))
 
-    def _window(self, folder: str | None) -> Window:
-        return choose(self._find_windows(), folder)
+    def _window(self, folder: str | None, ide: str | None = None) -> Window:
+        return choose(self._find_windows(), folder, ide)
 
     def _session(self) -> Session:
         if self.connection is None:
@@ -181,13 +181,13 @@ class Debugger:
 
     # -- tools ---------------------------------------------------------------
 
-    def list_targets(self, workspace_folder: str | None = None) -> dict:
+    def list_targets(self, workspace_folder: str | None = None, ide: str | None = None) -> dict:
         found = self._find_windows()
-        windows = [w for w in found if w.current]
+        windows = [w for w in found if w.current and (ide is None or w.ide == ide)]
         if workspace_folder:
-            windows = [choose(found, workspace_folder)]
+            windows = [choose(found, workspace_folder, ide)]
         if not windows:
-            choose(found, None)  # raises the setup or version hint
+            choose(found, None, ide)  # raises the setup or version hint
         found = []
         for window in windows:
             connection = self._connect(window)
@@ -205,8 +205,8 @@ class Debugger:
                       max_steps: int = 100, max_minutes: int = 30, wait_seconds: float = 30,
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
-                      function_breakpoints: list[str] | None = None) -> dict:
-        window = self._window(workspace_folder)
+                      function_breakpoints: list[str] | None = None, ide: str | None = None) -> dict:
+        window = self._window(workspace_folder, ide)
         if self.connection is not None:
             self.connection.close()
         self.connection = self._connect(window)

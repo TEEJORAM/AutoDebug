@@ -123,8 +123,28 @@ namespace AutoDebug.VisualStudio
             ThreadHelper.ThrowIfNotOnUIThread();
             IdeVersion = dte.Version;
             var full = dte.Solution?.FullName;
-            solutionFolder = string.IsNullOrEmpty(full) ? null : Path.GetDirectoryName(full);
+            solutionFolder = string.IsNullOrEmpty(full) ? null : SourceFolder(Path.GetDirectoryName(full));
             FoldersChanged?.Invoke();
+        }
+
+        // A CMake build folder (like Blender's) keeps the solution away from the source; the
+        // workspace is the source folder CMake recorded, so breakpoints use source paths.
+        static string SourceFolder(string solutionFolder)
+        {
+            try
+            {
+                var cache = Path.Combine(solutionFolder, "CMakeCache.txt");
+                if (File.Exists(cache))
+                    foreach (var line in File.ReadLines(cache))
+                        if (line.StartsWith("CMAKE_HOME_DIRECTORY:", StringComparison.Ordinal))
+                        {
+                            var source = line.Substring(line.IndexOf('=') + 1).Trim();
+                            if (Directory.Exists(source)) return Path.GetFullPath(source);
+                        }
+            }
+            catch (IOException) { /* fall back to the solution's folder */ }
+            catch (UnauthorizedAccessException) { /* fall back to the solution's folder */ }
+            return solutionFolder;
         }
 
         public void Log(string line) => pane?.OutputStringThreadSafe($"{DateTime.Now:HH:mm:ss} {line}{System.Environment.NewLine}");

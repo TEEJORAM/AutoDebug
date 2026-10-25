@@ -42,8 +42,8 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ..
 
 | Tool | Does |
 |---|---|
-| `list_targets` | IDE windows, their folders, launch configurations (program and module separately) and build tasks |
-| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop |
+| `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately) and build tasks. `ide` limits it to one IDE |
+| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
 | `step` | Step over, into or out (1–20 times). `wait_ms` waits for a slow step (default 15 s, max 60 s) |
 | `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line |
@@ -178,6 +178,11 @@ deletes it while the window is open.
 
 The C# relay answers the same operations as the JavaScript one, so the server
 treats Visual Studio like any other window (`ide: "visualstudio"`).
+
+- **The workspace folder** is the solution's folder, except for a CMake build
+  folder (a `CMakeCache.txt` beside the solution, as with Blender): then it is
+  the source folder CMake recorded (`CMAKE_HOME_DIRECTORY`), so breakpoints and
+  locations use source paths.
 
 - **Launch configurations** come from the solution's startup projects: one per
   project, from its active configuration's debug settings (`LocalDebuggerCommand`,
