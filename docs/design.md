@@ -10,19 +10,28 @@ supports **VS Code and Cursor**, and any language they can debug.
 AI agent (Cursor, VS Code Copilot, Claude, ...)
    │  MCP over stdio
    ▼
-autodebug  (Python)  ── tools, step budget, secret redaction, session timeline, report
+autodebug  (Python)  ── tools, launch checks, session state from debugger events,
+   │                     stack and variables, limits, redaction, timeline, report
    │  JSON lines over 127.0.0.1, token
    ▼
-AutoDebug extension  (in VS Code / Cursor)  ── approval dialog, tasks, debug API
+AutoDebug extension  (in VS Code / Cursor)  ── a thin relay: Approve dialog, tasks,
+   │                                           breakpoints, start/stop, DAP passthrough
    │  Debug Adapter Protocol
    ▼
-the language debugger (debugpy, C/C++, Node, ...) ── your program
+the language debugger (CodeLLDB, C/C++, gdb, debugpy, ...) ── your program
 ```
 
 - **`autodebug` (Python 3.11+, no dependencies).** The MCP server the agent's
-  IDE starts. It owns the agent-facing tools, limits, redaction and the report.
+  IDE starts. It holds all of AutoDebug's logic: the agent tools, the checks on
+  launch configurations and tasks, the session state (built from the debugger's
+  own events), stack, threads and variables, limits, redaction and the report.
 - **AutoDebug extension (JavaScript, no dependencies).** Runs in each IDE window.
-  It owns the approval dialog and every call into the IDE.
+  IDE extensions can only be written in JavaScript, so it is kept to what needs
+  the IDE: the Approve dialog, running the approved build task and launch
+  configuration, placing breakpoints, relaying a short list of Debug Adapter
+  Protocol requests, and reporting the session's events. It enforces the approval,
+  the step and time limits, the approved folders and the request list on its own,
+  so a fault in the server cannot widen what the developer approved.
 
 ## Agent tools
 
@@ -55,9 +64,11 @@ launch configurations that print to the terminal (`"console":
 
 ## Approval
 
-Before asking, the extension checks that an installed extension provides the
+Before asking, the server checks that an installed extension provides the
 launch configuration's debugger type; if not, `start_session` fails with
-`NOT_FOUND` and names the extension to install.
+`NOT_FOUND` and names the extension to install. The server also prepares the
+configuration and refuses the unsafe ones (below); the extension renders the
+dialog from the exact objects it will run.
 
 `start_session` opens a modal dialog in the IDE window. It shows what will run:
 the build task and its `dependsOn` chain, `preLaunchTask`, `postDebugTask`,
@@ -80,7 +91,8 @@ terminated.
 ## Limits and redaction
 
 - One session per IDE window. Step limit per session (default 100, at most 1000),
-  enforced by both parts. Sessions end after `max_minutes` (default 30, at most 480).
+  enforced by both parts. Sessions end after `max_minutes` (default 30, at most 480),
+  enforced by the extension.
 - Values whose name or content looks secret (password, token, key, credential,
   cookie; key-shaped strings) are replaced with `***REDACTED***` before the
   agent or the report sees them, including children of a secret-named parent.
@@ -92,7 +104,7 @@ terminated.
 Connection file `<state>/bridges/<window>.json` (`%LOCALAPPDATA%\autodebug`,
 `~/Library/Application Support/autodebug`, `~/.local/state/autodebug`), mode
 0600 where the OS supports it:
-`{"protocol": 3, "port", "token", "window", "ide", "folders", "version"}`.
+`{"protocol": 4, "port", "token", "window", "ide", "folders", "version"}`.
 
 AutoDebug connects to `127.0.0.1:<port>` and sends `{"hello": token}`; a wrong
 token closes the connection. Then one JSON object per line:
@@ -100,29 +112,62 @@ token closes the connection. Then one JSON object per line:
 
 | Op | Args | Result |
 |---|---|---|
-| `info` | – | window, ide, folders, versions |
-| `targets` | `folder` | `launch` (name, type, request, program/module, args), `tasks` (label, command) |
-| `start` | `folder`, `launch`, `task`, `breakpoints`, `goal`, `max_steps`, `max_minutes`, `build_minutes`, `process_id`, `source_folders`, `function_breakpoints` | `state` |
-| `state` | `since`, `wait_ms`, `ask_developer` | `state` (long poll: returns when `version` > `since` or after `wait_ms`) |
-| `stack` | `levels`, `start_frame` | `frames`, `total` |
-| `variables` | `frame`, `names`, `depth` | `variables` (children, `more`, `expandable`) |
-| `threads` | `select` | `threads`, `current` |
-| `exceptions` | `enable` | `filters` |
-| `step` | `kind` (`over`/`into`/`out`), `wait_ms` | `state` after the step |
-| `continue`, `pause`, `stop` | – | `state` |
-| `breakpoints` | `add`, `remove`, `add_functions`, `remove_functions` | `breakpoints` |
+| `info` | – | window, ide, versions, folders, `platform`, `debugger_types` (null if unknown) |
+| `workspace` | `folder` | `folder`, `launch` (configurations as written), `tasks` (definitions as written) |
+| `approve` | `folder`, `launch` (the prepared configuration), `task`, `notes`, `label`, `breakpoints` [{file (absolute), line, condition}], `functions`, `source_folders`, `max_steps`, `max_minutes`, `build_minutes` | `session`, `breakpoint_ids`, `function_ids`; the dialog opens |
+| `events` | `since`, `wait_ms` (≤ 60000) | `events` (up to 500, oldest first), `next`, `latest`, `dropped` (long poll) |
+| `dap` | `command`, `arguments`, `timeout_ms` | `body` of the debugger's response |
+| `breakpoints` | `add`, `add_functions`, `remove` (ids) | `breakpoint_ids`, `function_ids` |
+| `editor_breakpoints` | – | the developer's own enabled breakpoints: {file, line} or {function} |
+| `notify` | `text` (≤ 300) | – (a non-modal note to the developer; never an approval) |
+| `stop` | `reason` | – (ends the session; attach sessions detach first) |
 
-`state`: `{version, status, reason, location {file, line}, exit_code, message,
+`approve` checks that every breakpoint is inside the folder or `source_folders`
+(`OUTSIDE_WORKSPACE`) and that the configuration fits the dialog (4000
+characters). The dialog shows the server's `notes` (goal, attach target), then
+what the extension itself will run: the build task and its `dependsOn` chain,
+`preLaunchTask`, `postDebugTask`, the program and arguments, the breakpoints,
+`source_folders`, the limits, what happens at the end, and the configuration as
+JSON. Only after **Approve** does it build, place the breakpoints and call
+`startDebugging` with that configuration.
+
+`dap` accepts only `threads`, `stackTrace`, `scopes`, `variables`, `next`,
+`stepIn`, `stepOut`, `continue`, `pause`, `exceptionInfo` and
+`setExceptionBreakpoints`, only while the approved session runs. Steps count
+against the approved limit (`LIMIT`).
+
+Events: `{seq, kind, ...}` with `kind`:
+`approval` {approved, reason}, `build` {task, status (`running`, `succeeded`,
+`failed`, `timeout`, `unavailable`), exit_code, minutes}, `starting`, `started`,
+`not_started`, `error` {message}, `ended` {reason, exit_code}, and `dap`
+{direction, message}: every event from the debugger, its responses to
+`initialize`, `setBreakpoints` and `setFunctionBreakpoints`, and the IDE's
+`setBreakpoints` / `setFunctionBreakpoints` requests (so the server can tell
+which breakpoints are bound). Output longer than 4000 characters is cut. The
+extension keeps the last 5000 events; when it must drop some, it drops program
+output first (`dropped_output` counts them), so a stop or the end is never lost.
+
+The server turns these into the state the tools return:
+`{version, status, reason, location {file, line}, exit_code, message,
 thread {id, name}, exception {id, description} | null,
-breakpoints [{file, line} or {function, at: "function name"}, source, verified, message],
+breakpoints [{file, line} or {function}, source, verified, message],
 steps_used, max_steps, build {task, status, exit_code} | null, output [last lines],
 output_note}` where `status` is `awaiting_approval`, `denied`, `building`,
 `build_failed`, `starting`, `running`, `paused` or `ended`. A breakpoint that is
-not bound yet says it may bind when its module or library loads. Frames without
-source are `(no source)`.
+not bound yet says it may bind when its module or library loads, with the
+debugger's own message. Frames without source are `(no source)`.
 
-Error codes: `NO_WINDOW`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`, `NOT_APPROVED`,
-`BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`, `BAD_REQUEST`, `IDE_ERROR`.
+Error codes: `NO_WINDOW`, `OLD_EXTENSION`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`,
+`NOT_APPROVED`, `BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`,
+`BAD_REQUEST`, `IDE_ERROR`.
+
+The server lists windows whose extension speaks another protocol too. If the
+only matching window is one of those, the tools fail with `OLD_EXTENSION`,
+naming both versions and the fix: `autodebug setup`, then **Developer: Reload
+Window** (restarting only the extension host keeps the old extension loaded), or
+updating the server when the extension is newer. `autodebug doctor` reports the
+same. The extension rewrites its connection file within 10 seconds if something
+deletes it while the window is open.
 
 ## Report
 

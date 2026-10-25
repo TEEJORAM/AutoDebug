@@ -12,7 +12,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-PROTOCOL = 3
+PROTOCOL = 4
 HOST = "127.0.0.1"
 MAX_LINE = 1024 * 1024
 
@@ -52,6 +52,12 @@ class Window:
     port: int
     token: str
     version: str
+    protocol: int = PROTOCOL
+
+    @property
+    def current(self) -> bool:
+        """Whether this window's extension speaks this server's protocol."""
+        return self.protocol == PROTOCOL
 
     def __repr__(self) -> str:
         return f"Window({self.window!r}, {self.ide}, {list(self.folders)})"
@@ -65,7 +71,8 @@ def _private(path: Path) -> bool:
 
 
 def discover(folder: Path | None = None) -> list[Window]:
-    """Every window whose connection file is valid, private and still reachable."""
+    """Every window whose connection file is valid, private and still reachable, including windows
+    whose extension speaks another protocol version (`Window.current` is False for those)."""
     folder = folder or bridges_folder()
     windows = []
     for path in sorted(Path(folder).glob("*.json")) if Path(folder).is_dir() else ():
@@ -74,10 +81,10 @@ def discover(folder: Path | None = None) -> list[Window]:
                 continue
             data = json.loads(path.read_text(encoding="utf-8"))
             window = Window(str(data["window"]), str(data["ide"]), tuple(map(str, data["folders"])),
-                            int(data["port"]), str(data["token"]), str(data.get("version", "")))
+                            int(data["port"]), str(data["token"]), str(data.get("version", "")), int(data["protocol"]))
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        if data.get("protocol") != PROTOCOL or not re.fullmatch(r"[0-9a-f]{64}", window.token):
+        if not re.fullmatch(r"[0-9a-f]{64}", window.token):
             continue
         if _reachable(window.port):
             windows.append(window)
@@ -99,13 +106,35 @@ def same_folder(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
+IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code"}
+
+
+def version_problem(window: Window) -> DebugError:
+    """Why a window whose extension speaks another protocol cannot be used, and how to fix it."""
+    from autodebug import __version__
+
+    ide = IDE_NAMES.get(window.ide, window.ide)
+    found = (f"The {ide} window with {', '.join(window.folders)} open is running AutoDebug extension "
+             f"{window.version or '(unknown version)'} (protocol {window.protocol}); this server is {__version__} "
+             f"(protocol {PROTOCOL}).")
+    if window.protocol < PROTOCOL:
+        fix = (f" Ask the developer to run `autodebug setup {window.ide}`, then in that window run Developer: Reload "
+               f"Window, or quit and reopen {ide}. Restarting only the extension host keeps the old extension.")
+    else:
+        fix = " Ask the developer to update the server: `git pull`, then `python -m pip install -e .` in the AutoDebug folder."
+    return DebugError("OLD_EXTENSION", found + fix)
+
+
 def choose(windows: list[Window], folder: str | None) -> Window:
     """The window to debug in: the one with `folder` open, or the only one."""
-    if folder:
-        matches = [w for w in windows if any(same_folder(f, folder) for f in w.folders)]
-    else:
-        matches = windows
+    def with_folder(found: list[Window]) -> list[Window]:
+        return [w for w in found if any(same_folder(f, folder) for f in w.folders)] if folder else found
+
+    matches = with_folder([w for w in windows if w.current])
     if not matches:
+        stale = with_folder([w for w in windows if not w.current])
+        if stale:
+            raise version_problem(stale[0])
         where = f" with {folder} open" if folder else ""
         raise DebugError("NO_WINDOW", f"no VS Code or Cursor window{where} is running the AutoDebug extension. "
                                       "Open the project in the IDE; run `autodebug setup` if the extension is missing.")

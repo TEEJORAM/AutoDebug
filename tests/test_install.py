@@ -18,18 +18,18 @@ class Package(unittest.TestCase):
     def test_vsix_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = install.build_vsix(Path(tmp))
-            self.assertEqual(path.name, "autodebug.autodebug-0.3.0.vsix")
+            self.assertEqual(path.name, "autodebug.autodebug-0.4.0.vsix")
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(archive.namelist(), ["extension.vsixmanifest", "[Content_Types].xml",
                                                       "extension/package.json", "extension/extension.js",
-                                                      "extension/bridge.js", "extension/readme.md"])
+                                                      "extension/relay.js", "extension/readme.md"])
                 ET.fromstring(archive.read("extension.vsixmanifest"))
                 self.assertEqual(json.loads(archive.read("extension/package.json"))["main"], "./extension.js")
             self.assertEqual(path.read_bytes(), install.build_vsix(Path(tmp) / "again").read_bytes())
 
     def test_extension_has_no_dependencies_or_evaluate(self):
         self.assertNotIn("dependencies", install.manifest())
-        source = (install.EXTENSION_DIR / "bridge.js").read_text(encoding="utf-8")
+        source = (install.EXTENSION_DIR / "relay.js").read_text(encoding="utf-8")
         self.assertNotIn("'evaluate'", source)
         self.assertIn("listen(0, '127.0.0.1'", source)
 
@@ -110,6 +110,17 @@ class Config(unittest.TestCase):
         install.write_config("cursor", str(project))
         code, out = self.run_cli("doctor", str(project))
         self.assertIn(f"Cursor: {project.resolve() / '.cursor' / 'mcp.json'}", out)
+
+    def test_doctor_names_an_old_extension_in_a_running_window(self):
+        from tests.fake_extension import FakeExtension
+
+        fake = FakeExtension(self.home / "state" / "bridges", str(self.home / "Demo"))
+        self.addCleanup(fake.close)
+        fake.write_file(protocol=2, version="0.2.0")
+        code, out = self.run_cli("doctor")
+        self.assertEqual(code, 1)
+        self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", out)
+        self.assertIn("Developer: Reload Window", out)
 
 
 if __name__ == "__main__":

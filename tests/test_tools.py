@@ -1,4 +1,5 @@
-"""The agent tools against a fake extension speaking the real protocol."""
+"""The agent tools and the Python session against a fake extension speaking the real
+relay protocol, with the scripted debug adapter in-process. Runs without Node.js."""
 
 import json
 import tempfile
@@ -17,6 +18,8 @@ class ToolsTest(unittest.TestCase):
         self.root = Path(tmp.name)
         self.workspace = self.root / "AutoDebugDemo"
         self.workspace.mkdir()
+        for name in ("geometry.py", "test_geometry.py"):
+            (self.workspace / name).write_text("# scripted\n", encoding="utf-8")
         self.bridges = self.root / "state" / "bridges"
         self.fake = self.extension()
         self.debugger = Debugger(find_windows=lambda: discover(self.bridges))
@@ -71,6 +74,33 @@ class Targets(ToolsTest):
         self.assertCode("AMBIGUOUS_WINDOW", self.debugger.start_session, launch_configuration="Debug tests",
                         breakpoints=[], goal="x")
         self.start(workspace_folder=str(self.workspace))
+
+
+class OldExtension(ToolsTest):
+    def setUp(self):
+        super().setUp()
+        self.fake.write_file(protocol=2, version="0.2.0")  # the window still runs the old extension
+
+    def test_tools_name_the_old_extension_and_the_fix(self):
+        for call in (self.debugger.list_targets,
+                     lambda: self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x")):
+            error = self.assertCode("OLD_EXTENSION", call)
+            self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", error.message)
+            self.assertIn("`autodebug setup cursor`", error.message)
+            self.assertIn("Developer: Reload Window", error.message)
+            self.assertIn("Restarting only the extension host keeps the old extension", error.message)
+
+    def test_a_current_window_is_still_used(self):
+        other = self.root / "Other"
+        other.mkdir()
+        current = self.extension()
+        current.workspace = str(other)
+        current.write_file(folders=[str(other)])
+        (window,) = self.debugger.list_targets()["windows"]
+        self.assertEqual(window["folders"][0]["folder"], str(other))
+        error = self.assertCode("OLD_EXTENSION", self.debugger.start_session, launch_configuration="Debug tests",
+                                breakpoints=[], goal="x", workspace_folder=str(self.workspace))
+        self.assertIn(str(self.workspace), error.message)
 
 
 class Session(ToolsTest):

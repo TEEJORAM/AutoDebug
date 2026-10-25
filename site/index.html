@@ -288,7 +288,7 @@ python3 -m venv .venv
   <p>AUTODEBUG runs the launch configurations in your project's <code>.vscode/launch.json</code>, and optionally a build task from <code>.vscode/tasks.json</code> first. If the program prints to the terminal, set <code>"console": "internalConsole"</code> so the agent can read its output when it ends. Use a test or a small reproduction, never a production system or real customer data.</p>
 
   <h2 id="how-it-works">How it works <a class="anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
-  <p>The agent talks to the <code>autodebug</code> MCP server, a small Python program the IDE starts. The server talks to the AUTODEBUG extension inside the IDE window over a token-protected local connection. The extension drives the IDE's debugger through the public VS Code API and the Debug Adapter Protocol. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+  <p>The agent talks to the <code>autodebug</code> MCP server, a small Python program the IDE starts. The server holds all of AUTODEBUG's logic. It talks to the AUTODEBUG extension inside the IDE window over a token-protected local connection. The extension is a thin relay: it shows the Approve dialog, runs only what you approved, and passes requests and events between the server and the IDE's debugger through the public VS Code API and the Debug Adapter Protocol. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
 
   <h2 id="safety">Safety <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
   <ul>
