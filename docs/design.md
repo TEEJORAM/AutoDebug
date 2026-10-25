@@ -7,24 +7,28 @@ supports **VS Code and Cursor**, and any language they can debug.
 ## Parts
 
 ```text
-AI agent (Cursor, VS Code Copilot, Claude, ...)
-   │  MCP over stdio
-   ▼
-autodebug  (Python)  ── tools, launch checks, session state from debugger events,
-   │                     stack and variables, limits, redaction, timeline, report
+AI agent (Cursor, VS Code Copilot, Claude, Codex, ...)
+   │  MCP tools (autodebug serve)          or   terminal: autodebug run <tool> key=value
+   └──────────────────┬───────────────────────────────┘
+                      │  JSON lines over 127.0.0.1, token (hub.json)
+                      ▼
+AutoDebug service  (Python, one per user) ── tools, launch checks, session state from
+   │                     debugger events, stack and variables, limits, redaction, timeline, report
    │  JSON lines over 127.0.0.1, token
    ▼
-AutoDebug extension  (in VS Code / Cursor)  ── a thin relay: Approve dialog, tasks,
-   │                                           breakpoints, start/stop, DAP passthrough
-   │  Debug Adapter Protocol
+AutoDebug extension  (VS Code / Cursor: JavaScript; Visual Studio: C#)
+   │   a thin relay: Approve dialog, builds, breakpoints, start/stop, debugger passthrough
+   │  Debug Adapter Protocol (VS Code, Cursor); Visual Studio's debugger automation
    ▼
-the language debugger (CodeLLDB, C/C++, gdb, debugpy, ...) ── your program
+the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ...) ── your program
 ```
 
-- **`autodebug` (Python 3.11+, no dependencies).** The MCP server the agent's
-  IDE starts. It holds all of AutoDebug's logic: the agent tools, the checks on
-  launch configurations and tasks, the session state (built from the debugger's
-  own events), stack, threads and variables, limits, redaction and the report.
+- **`autodebug` (Python 3.11+, no dependencies).** It holds all of AutoDebug's
+  logic: the agent tools, the checks on launch configurations and tasks, the
+  session state (built from the debugger's own events), stack, threads and
+  variables, limits, redaction and the report. The logic runs in the **service**
+  (below); the MCP server the agent's IDE starts and the `autodebug run` command
+  are two thin ways to call it.
 - **AutoDebug extension (JavaScript, no dependencies).** Runs in each IDE window.
   IDE extensions can only be written in JavaScript, so it is kept to what needs
   the IDE: the Approve dialog, running the approved build task and launch
@@ -32,13 +36,53 @@ the language debugger (CodeLLDB, C/C++, gdb, debugpy, ...) ── your program
   Protocol requests, and reporting the session's events. It enforces the approval,
   the step and time limits, the approved folders and the request list on its own,
   so a fault in the server cannot widen what the developer approved.
+- **AutoDebug for Visual Studio (C#, no runtime dependencies).** The same relay
+  protocol for Visual Studio 2022 and 2026 (see "Visual Studio" below). Its
+  shared core (`visualstudio/Core`: connection, Approve gate, limits, events) has
+  no Visual Studio references, so a test harness runs it with plain .NET; only
+  `Extension/VsBackend.cs` talks to Visual Studio.
+
+## The service
+
+AI apps do not reliably keep an MCP server's tools in the chat: Cursor, for
+example, can drop a connected server from the agent's tool list without an error.
+So the session does not live in the MCP server process.
+
+- **One service per user** (`autodebug hub`, `hub.py`) owns the `Debugger`: the
+  session, its timeline and the report. It listens on 127.0.0.1 on a free port and
+  writes `hub.json` (port, token, process id, version) to the state folder, readable
+  only by the user. Every request carries the token. Tool calls run one at a time.
+- **Started on demand.** The first client that finds no service starts one in the
+  background, detached from the caller (on Windows it leaves the IDE's job object
+  when allowed), and waits up to 15 s for `hub.json`. A service of another version
+  (or of other code, after an update with the same version number: `ping` reports a
+  fingerprint of the Python files) is replaced only when no session is open. It exits after 30 minutes without
+  calls while no session is open.
+- **Clients.** `autodebug serve` (MCP over stdio) forwards each tool call to the
+  service; if the service cannot be started it runs the tools in its own process,
+  as before (`serve --direct` forces that). `autodebug run <tool> key=value ...`
+  calls the same tools from any terminal and prints the JSON result (exit code 0,
+  1 for a tool error, 2 for a usage error). Values are read by the tool's schema,
+  so no JSON quoting is needed: `breakpoints=geometry.cpp:16,b.cpp:4`,
+  `variables=total,i`, `until=geometry.cpp:20`, `after=false`; a value starting
+  with `[` or `{` is JSON. `run help` lists the tools and the workflow.
+  `python <checkout>/src/autodebug ...` runs from a checkout without installing.
+- **Agent instructions.** `autodebug agents FOLDER` (also done by `setup` with a
+  folder) writes a marked section into `FOLDER/AGENTS.md`, read by Cursor, Copilot,
+  Codex and others: use the MCP tools when present, otherwise the exact
+  `run` command for this computer; do not search AutoDebug's source for the tools;
+  the developer approves in the IDE. The MCP `instructions` name the same command.
+
+An agent can therefore start a session over MCP and finish it in the terminal (or
+the reverse), and the report keeps the whole timeline. Approval is unchanged: the
+service is just another client of the extension, and only the IDE dialog approves.
 
 ## Agent tools
 
 | Tool | Does |
 |---|---|
-| `list_targets` | IDE windows, their folders, launch configurations (program and module separately) and build tasks |
-| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop |
+| `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately) and build tasks. `ide` limits it to one IDE |
+| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
 | `step` | Step over, into or out (1–20 times). `wait_ms` waits for a slow step (default 15 s, max 60 s) |
 | `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line |
@@ -82,7 +126,14 @@ is refused: AutoDebug debugs only programs on this computer. The platform block
 dialog and the debugger see the same object.
 
 Only **Approve** starts anything; **Deny**, closing the dialog or two minutes
-without an answer refuse. One approval covers one debug session. Attach
+without an answer refuse. The `denied` status carries the reason, and the
+server's `next` text tells the agent when nobody answered (reason `no answer
+within 2 minutes`) rather than Deny, so it can say the dialog was probably
+hidden. In Visual Studio the dialog stays above other windows, Visual Studio
+is restored and brought forward when it opens (Windows may flash its taskbar
+button instead), and the dialog is closed when the two minutes run out, so a
+late click cannot look like an answer. VS Code and Cursor cannot close a modal
+dialog from an extension; a click after the timeout is ignored. One approval covers one debug session. Attach
 sessions detach when they end and the program keeps running. Launch sessions
 stop the program. The session timer starts when debugging starts, not at
 approval. A build that exceeds `build_minutes` (default 30, max 600) is
@@ -159,7 +210,9 @@ debugger's own message. Frames without source are `(no source)`.
 
 Error codes: `NO_WINDOW`, `OLD_EXTENSION`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`,
 `NOT_APPROVED`, `BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`,
-`BAD_REQUEST`, `IDE_ERROR`.
+`BAD_REQUEST`, `IDE_ERROR`, `NOT_BUILT` (the launch configuration's program is
+not on disk and no build task or `preLaunchTask` will build it; checked before the
+dialog, so the developer is not asked to approve a launch that cannot start).
 
 The server lists windows whose extension speaks another protocol too. If the
 only matching window is one of those, the tools fail with `OLD_EXTENSION`,
@@ -168,6 +221,39 @@ Window** (restarting only the extension host keeps the old extension loaded), or
 updating the server when the extension is newer. `autodebug doctor` reports the
 same. The extension rewrites its connection file within 10 seconds if something
 deletes it while the window is open.
+
+## Visual Studio
+
+The C# relay answers the same operations as the JavaScript one, so the server
+treats Visual Studio like any other window (`ide: "visualstudio"`).
+
+- **The workspace folder** is the solution's folder, except for a CMake build
+  folder (a `CMakeCache.txt` beside the solution, as with Blender): then it is
+  the source folder CMake recorded (`CMAKE_HOME_DIRECTORY`), so breakpoints and
+  locations use source paths.
+
+- **Launch configurations** come from the solution's startup projects: one per
+  project, from its active configuration's debug settings (`LocalDebuggerCommand`,
+  `LocalDebuggerCommandArguments`, `LocalDebuggerWorkingDirectory`,
+  `LocalDebuggerEnvironment`, falling back to `TargetPath`), with `"type":
+  "visualstudio"`, `"engine": "native"`, `project` and `configuration`. Plus
+  **Attach to a process (native)**, which needs `process_id`. Build "tasks" are
+  `Build <project> (<configuration>)` and `Build solution (<configuration>)`.
+- **Approve** is a modal Visual Studio dialog (Deny is the default button). After
+  Approve the relay builds through Visual Studio's build, places the breakpoints
+  and starts exactly the configuration shown (`IVsDebugger4.LaunchDebugTargets4`
+  with the native engine; attach uses the same call with the process ID).
+- **Requests** map to Visual Studio's debugger automation: threads, stack frames
+  (`StackFrame2`), each frame's locals and their members (no expression is ever
+  evaluated, and values are never set), step over/into/out, go and break.
+  Frame and value references are valid until the program runs again.
+- **Events**: break mode becomes `stopped` (breakpoint, step, pause or
+  exception), run mode `continued`, design mode `exited` and `terminated`; the
+  debug engine's breakpoint-bound and binding-error events update which
+  breakpoints are bound, and its output-string events become `output`
+  (`OutputDebugString` only: a console program's own window is not captured).
+- **Not yet:** exception filters (none are offered) and `launch.vs.json` ("Open
+  Folder") projects.
 
 ## Report
 
@@ -183,5 +269,14 @@ reported by the agent), open questions.
 `autodebug setup cursor|vscode [FOLDER]` builds the extension package, installs
 it with the IDE's own `--install-extension`, and writes the MCP entry: Cursor's
 global `~/.cursor/mcp.json`, VS Code's user `mcp.json`, or `FOLDER`'s project
-file when a folder is given. `autodebug doctor` checks Python, the config files
-and running extension windows.
+file when a folder is given.
+
+`autodebug setup visualstudio [FOLDER] [--vsix FILE]` finds Visual Studio with
+`vswhere`, installs the extension package with Visual Studio's `VSIXInstaller`
+(downloaded from the `visualstudio-v<version>` GitHub release that CI builds, or
+`--vsix`), and writes `%USERPROFILE%\.mcp.json` (or `FOLDER\.mcp.json`) for
+Visual Studio's own agent mode. It removes an installed copy before installing,
+because `VSIXInstaller` refuses a package whose version is already installed.
+With `FOLDER`, setup also writes the agent instructions (`AGENTS.md`).
+`autodebug doctor [FOLDER]` checks Python, the config files, running extension
+windows, the service, the terminal command and `FOLDER/AGENTS.md`.

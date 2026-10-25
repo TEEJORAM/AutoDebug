@@ -106,7 +106,7 @@ def same_folder(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
-IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code"}
+IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
 
 def version_problem(window: Window) -> DebugError:
@@ -117,7 +117,9 @@ def version_problem(window: Window) -> DebugError:
     found = (f"The {ide} window with {', '.join(window.folders)} open is running AutoDebug extension "
              f"{window.version or '(unknown version)'} (protocol {window.protocol}); this server is {__version__} "
              f"(protocol {PROTOCOL}).")
-    if window.protocol < PROTOCOL:
+    if window.protocol < PROTOCOL and window.ide == "visualstudio":
+        fix = " Ask the developer to run `autodebug setup visualstudio`, then restart Visual Studio."
+    elif window.protocol < PROTOCOL:
         fix = (f" Ask the developer to run `autodebug setup {window.ide}`, then in that window run Developer: Reload "
                f"Window, or quit and reopen {ide}. Restarting only the extension host keeps the old extension.")
     else:
@@ -125,8 +127,11 @@ def version_problem(window: Window) -> DebugError:
     return DebugError("OLD_EXTENSION", found + fix)
 
 
-def choose(windows: list[Window], folder: str | None) -> Window:
-    """The window to debug in: the one with `folder` open, or the only one."""
+def choose(windows: list[Window], folder: str | None, ide: str | None = None) -> Window:
+    """The window to debug in: of `ide` if given, with `folder` open if given, else the only one."""
+    if ide:
+        windows = [w for w in windows if w.ide == ide]
+
     def with_folder(found: list[Window]) -> list[Window]:
         return [w for w in found if any(same_folder(f, folder) for f in w.folders)] if folder else found
 
@@ -136,11 +141,12 @@ def choose(windows: list[Window], folder: str | None) -> Window:
         if stale:
             raise version_problem(stale[0])
         where = f" with {folder} open" if folder else ""
-        raise DebugError("NO_WINDOW", f"no VS Code or Cursor window{where} is running the AutoDebug extension. "
-                                      "Open the project in the IDE; run `autodebug setup` if the extension is missing.")
+        which = IDE_NAMES.get(ide, ide) if ide else "VS Code, Cursor or Visual Studio"
+        raise DebugError("NO_WINDOW", f"no {which} window{where} is running the AutoDebug extension. Open the project "
+                                      "in the IDE; run `autodebug setup` if the extension is missing.")
     if len(matches) > 1:
         listed = "; ".join(f"{w.ide}: {', '.join(w.folders)}" for w in matches)
-        raise DebugError("AMBIGUOUS_WINDOW", f"several windows match ({listed}); pass the workspace folder")
+        raise DebugError("AMBIGUOUS_WINDOW", f"several windows match ({listed}); pass ide and/or workspace_folder")
     return matches[0]
 
 

@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from autodebug.connection import Connection, DebugError, Window
+from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
 
 _LOG = logging.getLogger("autodebug")
 
@@ -146,6 +146,24 @@ def process_name(pid: int) -> str:
         return ""
 
 
+def missing_program(launch: dict, folder: str, building: bool) -> str | None:
+    """The launch configuration's program when it is not on disk and nothing will build it first, else None.
+    Only paths that can be resolved here are checked: absolute, or under ${workspaceFolder}."""
+    if building or launch.get("request") != "launch" or launch.get("preLaunchTask"):
+        return None
+    program = launch.get("program")
+    if not isinstance(program, str) or not program.strip():
+        return None
+    for variable in ("${workspaceFolder}", "${workspaceRoot}"):
+        program = program.replace(variable, folder)
+    if "${" in program or not os.path.isabs(program):
+        return None
+    path = Path(program)
+    if path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists()):
+        return None
+    return program
+
+
 def prepare_launch(raw: dict, process_id, platform: str) -> dict:
     """The launch configuration exactly as it will run, or a DebugError saying why it cannot."""
     launch = apply_platform(raw, platform)
@@ -260,12 +278,13 @@ class Session:
     def start(self, args: dict) -> dict:
         info = self._relay("info")
         platform = info.get("platform", sys.platform)
-        ide = "Cursor" if info.get("ide") == "cursor" else "VS Code"
+        ide = IDE_NAMES.get(info.get("ide"), "the IDE")
+        where = " in Visual Studio's startup project" if info.get("ide") == "visualstudio" else " in .vscode/launch.json"
         ws = self._relay("workspace", {"folder": args.get("folder")})
         folder = ws["folder"]
         found = next((c for c in ws.get("launch", []) if c.get("name") == args.get("launch")), None)
         if found is None:
-            raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}" in .vscode/launch.json')
+            raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}"{where}; see list_targets')
         launch = prepare_launch(found, args.get("process_id"), platform)
         types = info.get("debugger_types")
         if types is not None and launch.get("type") not in types:
@@ -278,7 +297,14 @@ class Session:
                                           " and reload the window.")
         tasks = [apply_platform(t, platform) for t in ws.get("tasks", [])]
         if args.get("task") and not any(t.get("label") == args["task"] for t in tasks):
-            raise DebugError("NOT_FOUND", f'no task labelled "{args["task"]}" in .vscode/tasks.json')
+            raise DebugError("NOT_FOUND", f'no build task labelled "{args["task"]}"; see list_targets')
+        missing = missing_program(launch, folder, bool(args.get("task")))
+        if missing:
+            labels = [t.get("label") for t in tasks if t.get("label")]
+            fix = (f"call start_session again with build_task set to one of: {', '.join(repr(l) for l in labels[:5])}"
+                   if labels else "ask the developer to build it")
+            raise DebugError("NOT_BUILT", f"{missing} does not exist yet, so the debugger cannot start it. "
+                                          f"Nothing was shown to the developer. To build it first, {fix}.")
         used = [t for label in (args.get("task"), launch.get("preLaunchTask"), launch.get("postDebugTask"))
                 for t in task_chain(label, tasks)]
         tokens = list(dict.fromkeys(token for t in used for token in substitutions(t)))

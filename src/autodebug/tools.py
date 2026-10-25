@@ -12,15 +12,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
-from autodebug.connection import DebugError, Window, choose, discover
+from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
 SHORT_VALUE = 200
+_NO_ANSWER = ("Nobody answered the Approve dialog in {ide} within 2 minutes, so nothing ran; it was probably "
+              "behind another window. This was not a Deny. Ask the developer whether to try again.")
 STOPPED = ("paused", "ended", "denied", "build_failed")
 
 _NEXT = {
-    "awaiting_approval": "Ask the developer to click Approve in the {ide} dialog, then call wait.",
+    "awaiting_approval": ("Tell the developer the Approve dialog is open in {ide} (switch to {ide} if it is hidden) "
+                          "and that it closes unanswered after 2 minutes; then call wait."),
     "denied": "The developer did not approve; nothing ran. Ask before trying again.",
     "building": "The build task is running; call wait.",
     "build_failed": "The build failed (output is in the IDE terminal). Fix it or ask the developer.",
@@ -68,8 +71,8 @@ class Debugger:
     def _log(self, kind: str, where: str = "", detail: str = "") -> None:
         self.timeline.append(Event(kind, clean_text(where, 300), clean_text(detail, 1000)))
 
-    def _window(self, folder: str | None) -> Window:
-        return choose(self._find_windows(), folder)
+    def _window(self, folder: str | None, ide: str | None = None) -> Window:
+        return choose(self._find_windows(), folder, ide)
 
     def _session(self) -> Session:
         if self.connection is None:
@@ -114,15 +117,16 @@ class Debugger:
             if result["exception"]["id"] != self._last_exception:
                 self._last_exception = result["exception"]["id"]
                 self._log("exception", result["exception"]["id"], result["exception"]["description"])
+        key = (status, where, raw.get("reason"))
+        changed, previous = key != self._last_status, self._last_status
+        if changed and previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
+            self._log("approved", "", "the developer clicked Approve")
         build = raw.get("build")
         if build and build.get("status") != "running" and build != self._last_build:
             self._last_build = build
             self._log("build", str(build.get("task")), f"{build.get('status')}, exit code {build.get('exit_code')}")
-        key = (status, where, raw.get("reason"))
-        if key != self._last_status:
-            previous, self._last_status = self._last_status, key
-            if previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
-                self._log("approved", "", "the developer clicked Approve")
+        if changed:
+            self._last_status = key
             if quiet and status == "paused":
                 pass
             elif status == "paused":
@@ -135,7 +139,10 @@ class Debugger:
             elif status in ("denied", "build_failed", "running"):
                 self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
         ide = self.connection.window.ide if self.connection else "IDE"
-        result["next"] = _NEXT.get(status, "").format(ide="Cursor" if ide == "cursor" else "VS Code")
+        next_step = _NEXT.get(status, "")
+        if status == "denied" and "no answer" in str(raw.get("reason") or ""):
+            next_step = _NO_ANSWER
+        result["next"] = next_step.format(ide=IDE_NAMES.get(ide, "IDE"))
         if status == "paused":
             result["variables"] = self._short_variables()
         return result
@@ -180,13 +187,13 @@ class Debugger:
 
     # -- tools ---------------------------------------------------------------
 
-    def list_targets(self, workspace_folder: str | None = None) -> dict:
+    def list_targets(self, workspace_folder: str | None = None, ide: str | None = None) -> dict:
         found = self._find_windows()
-        windows = [w for w in found if w.current]
+        windows = [w for w in found if w.current and (ide is None or w.ide == ide)]
         if workspace_folder:
-            windows = [choose(found, workspace_folder)]
+            windows = [choose(found, workspace_folder, ide)]
         if not windows:
-            choose(found, None)  # raises the setup or version hint
+            choose(found, None, ide)  # raises the setup or version hint
         found = []
         for window in windows:
             connection = self._connect(window)
@@ -204,8 +211,8 @@ class Debugger:
                       max_steps: int = 100, max_minutes: int = 30, wait_seconds: float = 30,
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
-                      function_breakpoints: list[str] | None = None) -> dict:
-        window = self._window(workspace_folder)
+                      function_breakpoints: list[str] | None = None, ide: str | None = None) -> dict:
+        window = self._window(workspace_folder, ide)
         if self.connection is not None:
             self.connection.close()
         self.connection = self._connect(window)

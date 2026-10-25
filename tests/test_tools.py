@@ -53,6 +53,28 @@ class ToolsTest(unittest.TestCase):
         return result
 
 
+class NotBuilt(ToolsTest):
+    def test_a_program_under_the_workspace_folder_is_checked_before_asking(self):
+        self.fake.close()
+        launch = [{"name": "Run app", "type": "debugpy", "request": "launch", "program": "${workspaceFolder}/build/app.py"},
+                  {"name": "Run file", "type": "debugpy", "request": "launch", "program": "${file}"}]
+        self.fake = self.extension(launch=launch)
+        args = {"breakpoints": [{"file": "geometry.py", "line": 15}], "goal": "x", "wait_seconds": 0}
+        error = self.assertCode("NOT_BUILT", self.debugger.start_session, launch_configuration="Run app", **args)
+        self.assertIn("app.py does not exist yet", error.message)
+        self.assertIn("'build'", error.message)
+        self.assertFalse(any(name == "approve" for name, _ in self.fake.calls))
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run app", build_task="build", **args)["status"],
+                         "awaiting_approval")
+        self.debugger.stop_session()
+        (self.workspace / "build").mkdir()
+        (self.workspace / "build" / "app.py").write_text("", encoding="utf-8")
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run app", **args)["status"], "awaiting_approval")
+        self.debugger.stop_session()
+        # A path AutoDebug cannot resolve itself is left to the debugger.
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run file", **args)["status"], "awaiting_approval")
+
+
 class Targets(ToolsTest):
     def test_lists_windows_and_targets(self):
         found = self.debugger.list_targets()
@@ -74,6 +96,17 @@ class Targets(ToolsTest):
         self.assertCode("AMBIGUOUS_WINDOW", self.debugger.start_session, launch_configuration="Debug tests",
                         breakpoints=[], goal="x")
         self.start(workspace_folder=str(self.workspace))
+
+    def test_the_ide_picks_the_window(self):
+        other = self.root / "Other"
+        other.mkdir()
+        second = FakeExtension(self.bridges, str(other), ide="visualstudio")
+        self.addCleanup(second.close)
+        (listed,) = self.debugger.list_targets(ide="visualstudio")["windows"]
+        self.assertEqual(listed["ide"], "visualstudio")
+        self.assertEqual(self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x",
+                                                     ide="cursor", wait_seconds=0)["status"], "awaiting_approval")
+        self.assertCode("NO_WINDOW", self.debugger.list_targets, ide="vscode")
 
 
 class OldExtension(ToolsTest):
@@ -115,6 +148,15 @@ class Session(ToolsTest):
         result = self.debugger.wait(5)
         self.assertEqual(result["status"], "denied")
         self.assertIn("nothing ran", result["next"])
+        self.assertNotIn("2 minutes", result["next"])
+
+    def test_no_answer_is_not_reported_as_deny(self):
+        self.start()
+        self.fake.deny("no answer within 2 minutes")
+        result = self.debugger.wait(5)
+        self.assertEqual((result["status"], result["reason"]), ("denied", "no answer within 2 minutes"))
+        self.assertIn("Nobody answered the Approve dialog", result["next"])
+        self.assertIn("not a Deny", result["next"])
 
     def test_first_stop_shows_location_and_redacted_variables(self):
         result = self.start_paused()

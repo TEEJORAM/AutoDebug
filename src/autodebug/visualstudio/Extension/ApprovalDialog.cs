@@ -1,0 +1,65 @@
+// The Approve dialog: modal, shows exactly what will run, and Deny is the default
+// button so pressing Enter never approves by accident. It stays above other windows,
+// because the agent usually runs in another app (Cursor, a terminal) that would hide it.
+
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using Microsoft.VisualStudio.PlatformUI;
+using Microsoft.VisualStudio.Shell;
+
+namespace AutoDebug.VisualStudio
+{
+    static class ApprovalDialog
+    {
+        public static DialogWindow Create(string title, string detail)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var window = new DialogWindow
+            {
+                Title = "AutoDebug",
+                Width = 760,
+                Height = 600,
+                MinWidth = 480,
+                MinHeight = 320,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
+                HasMaximizeButton = false,
+                HasMinimizeButton = false,
+                Topmost = true,
+                ShowInTaskbar = true,
+            };
+            window.Loaded += (sender, args) => window.Activate();
+            var heading = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) };
+            var details = new TextBox
+            {
+                Text = detail,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                FontFamily = new FontFamily("Consolas"),
+            };
+            var approve = new Button { Content = "Approve", MinWidth = 96, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 4, 12, 4) };
+            var deny = new Button { Content = "Deny", MinWidth = 96, IsDefault = true, IsCancel = true, Padding = new Thickness(12, 4, 12, 4) };
+            approve.Click += (sender, args) => window.DialogResult = true;
+            deny.Click += (sender, args) => window.DialogResult = false;
+            var note = new TextBlock { Text = "Nothing runs unless you click Approve. Unanswered, this closes after 2 minutes.", TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0), Opacity = 0.8 };
+            var buttons = new DockPanel { Margin = new Thickness(0, 12, 0, 0), LastChildFill = true };
+            var pair = new StackPanel { Orientation = Orientation.Horizontal };
+            pair.Children.Add(approve);
+            pair.Children.Add(deny);
+            DockPanel.SetDock(pair, Dock.Right);
+            buttons.Children.Add(pair);
+            buttons.Children.Add(note);
+            var layout = new DockPanel { Margin = new Thickness(16), LastChildFill = true };
+            DockPanel.SetDock(heading, Dock.Top);
+            DockPanel.SetDock(buttons, Dock.Bottom);
+            layout.Children.Add(heading);
+            layout.Children.Add(buttons);
+            layout.Children.Add(details);
+            window.Content = layout;
+            return window;
+        }
+    }
+}

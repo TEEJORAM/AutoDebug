@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -17,6 +18,8 @@ _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
 #: Earlier extension IDs to remove so two versions never run side by side.
 OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
 SERVER_NAME = "autodebug"
+#: Where CI publishes the Visual Studio extension package for each version.
+VS_RELEASE = "https://github.com/TEEJORAM/AutoDebug/releases/download/visualstudio-v{version}/AutoDebug.VisualStudio.vsix"
 
 
 def manifest() -> dict:
@@ -102,6 +105,108 @@ def install_extension(command: str, vsix: Path) -> subprocess.CompletedProcess:
                           timeout=300, check=False)
 
 
+# -- Visual Studio ----------------------------------------------------------------
+
+
+def vsix_installer() -> str | None:
+    """Visual Studio's own VSIXInstaller.exe, found with vswhere (installed with every VS 2017+)."""
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        return None
+    result = subprocess.run([str(vswhere), "-latest", "-prerelease", "-version", "[17.0,19.0)", "-property", "installationPath"],
+                            capture_output=True, text=True, timeout=60, check=False)
+    folder = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    installer = Path(folder) / "Common7" / "IDE" / "VSIXInstaller.exe"
+    return str(installer) if folder and installer.is_file() else None
+
+
+def download_vs_extension(version: str, folder: Path) -> Path:
+    """Download the Visual Studio extension package CI built for this version."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"AutoDebug.VisualStudio-{version}.vsix"
+    temporary = path.with_name(path.name + ".tmp")
+    with urllib.request.urlopen(VS_RELEASE.format(version=version), timeout=120) as response:  # noqa: S310 (fixed https URL)
+        temporary.write_bytes(response.read())
+    if not zipfile.is_zipfile(temporary):
+        temporary.unlink()
+        raise ValueError("the downloaded Visual Studio extension is not a .vsix package")
+    temporary.replace(path)
+    return path
+
+
+#: VSIXInstaller's exit code when Visual Studio (or one of its helper processes) is still running.
+VSIX_BLOCKED = 2004
+
+
+def visual_studio_running() -> bool:
+    """Whether a Visual Studio window (devenv.exe) is open; the extension cannot be installed then."""
+    if sys.platform != "win32":
+        return False
+    result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq devenv.exe", "/NH", "/FO", "CSV"],
+                            capture_output=True, text=True, timeout=30, check=False)
+    return "devenv.exe" in result.stdout.lower()
+
+
+VS_EXTENSION_ID = "AutoDebug.VisualStudio.4f9b2c71"  # Identity Id in visualstudio/Extension/source.extension.vsixmanifest
+
+
+def install_vs_extension(installer: str, vsix: Path) -> subprocess.CompletedProcess:
+    """Remove any installed copy first: VSIXInstaller refuses a package whose version is already installed,
+    so a fixed build of the same version would otherwise never replace the old one."""
+    subprocess.run([installer, "/quiet", f"/uninstall:{VS_EXTENSION_ID}"], capture_output=True, text=True,
+                   timeout=600, check=False)
+    return subprocess.run([installer, "/quiet", str(vsix)], capture_output=True, text=True, timeout=600, check=False)
+
+
+# -- instructions for agents ----------------------------------------------------------
+
+AGENTS_START = "<!-- autodebug:start -->"
+AGENTS_END = "<!-- autodebug:end -->"
+
+
+def agent_instructions(command: str) -> str:
+    return f"""{AGENTS_START}
+## Debugging with AutoDebug
+
+This project can be debugged with the IDE's own debugger (VS Code, Cursor or Visual Studio) through AutoDebug.
+
+- Use the `autodebug` MCP tools if they are in your tool list.
+- If they are not (some apps drop MCP tools), run the same tools in the terminal. It is the same session:
+  - `{command} run list_targets ide=visualstudio` (or `ide=cursor`, `ide=vscode`; omit when one IDE is open)
+  - `{command} run help` lists every tool and its arguments. Values need no JSON:
+    `breakpoints=geometry.cpp:16` `variables=total,i`; quote a whole pair that has spaces:
+    `"launch_configuration=geometry (Debug|x64)"`.
+- Do not read AutoDebug's source, connection files or IDE logs to find the tools: use the commands above.
+- `start_session` opens an Approve dialog in the IDE. Tell the developer to click **Approve** there
+  (it closes after 2 minutes). Nothing runs before that; a chat message is not an approval.
+- Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal, and `build_task` from
+  `list_targets` so the program is built from the current source) → `wait` while it is
+  awaiting_approval, building or starting → `inspect`, `step`, `trace` → `stop_session` → `write_report`.
+  Call the tools one at a time. Paths are relative to the workspace folder that `list_targets` shows.
+{AGENTS_END}
+"""
+
+
+def write_agent_instructions(folder: str, command: str) -> Path:
+    """Add or refresh the AutoDebug section of <folder>/AGENTS.md (read by Cursor, Copilot, Codex and others)."""
+    path = Path(folder).expanduser().resolve() / "AGENTS.md"
+    block = agent_instructions(command)
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if AGENTS_START in text and AGENTS_END in text:
+        before, rest = text.split(AGENTS_START, 1)
+        after = rest.split(AGENTS_END, 1)[1].lstrip("\n")
+        text = before + block + (("\n" + after) if after else "")
+    else:
+        text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def has_agent_instructions(folder: str) -> bool:
+    path = Path(folder).expanduser().resolve() / "AGENTS.md"
+    return path.is_file() and AGENTS_START in path.read_text(encoding="utf-8", errors="replace")
+
+
 # -- MCP configuration ------------------------------------------------------------
 
 
@@ -115,6 +220,8 @@ def server_entry(ide: str) -> dict:
 
 
 def config_file(ide: str, folder: str | None = None) -> Path:
+    if ide == "visualstudio":  # Visual Studio's agent mode: <solution>/.mcp.json or %USERPROFILE%\.mcp.json
+        return (Path(folder).expanduser().resolve() if folder else Path.home()) / ".mcp.json"
     if folder:
         return Path(folder).expanduser().resolve() / (".cursor" if ide == "cursor" else ".vscode") / "mcp.json"
     if ide == "cursor":
