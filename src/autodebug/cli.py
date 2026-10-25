@@ -156,7 +156,7 @@ def _hub(args: argparse.Namespace) -> int:
     from autodebug import hub
 
     running = hub.status()
-    if running and running.get("version") == __version__:
+    if running and (running.get("version"), running.get("code")) == (__version__, hub.code_id()):
         print(f"the AutoDebug service is already running (process {running.get('pid')})", file=sys.stderr)
         return 0
     service = hub.Hub(idle_seconds=args.idle_minutes * 60)

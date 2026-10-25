@@ -179,7 +179,8 @@ This project can be debugged with the IDE's own debugger (VS Code, Cursor or Vis
 - Do not read AutoDebug's source, connection files or IDE logs to find the tools: use the commands above.
 - `start_session` opens an Approve dialog in the IDE. Tell the developer to click **Approve** there
   (it closes after 2 minutes). Nothing runs before that; a chat message is not an approval.
-- Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal) → `wait` while it is
+- Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal, and `build_task` from
+  `list_targets` so the program is built from the current source) → `wait` while it is
   awaiting_approval, building or starting → `inspect`, `step`, `trace` → `stop_session` → `write_report`.
   Call the tools one at a time. Paths are relative to the workspace folder that `list_targets` shows.
 {AGENTS_END}

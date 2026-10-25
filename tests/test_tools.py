@@ -53,6 +53,28 @@ class ToolsTest(unittest.TestCase):
         return result
 
 
+class NotBuilt(ToolsTest):
+    def test_a_program_under_the_workspace_folder_is_checked_before_asking(self):
+        self.fake.close()
+        launch = [{"name": "Run app", "type": "debugpy", "request": "launch", "program": "${workspaceFolder}/build/app.py"},
+                  {"name": "Run file", "type": "debugpy", "request": "launch", "program": "${file}"}]
+        self.fake = self.extension(launch=launch)
+        args = {"breakpoints": [{"file": "geometry.py", "line": 15}], "goal": "x", "wait_seconds": 0}
+        error = self.assertCode("NOT_BUILT", self.debugger.start_session, launch_configuration="Run app", **args)
+        self.assertIn("app.py does not exist yet", error.message)
+        self.assertIn("'build'", error.message)
+        self.assertFalse(any(name == "approve" for name, _ in self.fake.calls))
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run app", build_task="build", **args)["status"],
+                         "awaiting_approval")
+        self.debugger.stop_session()
+        (self.workspace / "build").mkdir()
+        (self.workspace / "build" / "app.py").write_text("", encoding="utf-8")
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run app", **args)["status"], "awaiting_approval")
+        self.debugger.stop_session()
+        # A path AutoDebug cannot resolve itself is left to the debugger.
+        self.assertEqual(self.debugger.start_session(launch_configuration="Run file", **args)["status"], "awaiting_approval")
+
+
 class Targets(ToolsTest):
     def test_lists_windows_and_targets(self):
         found = self.debugger.list_targets()

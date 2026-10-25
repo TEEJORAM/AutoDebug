@@ -24,6 +24,7 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
 1. Read the relevant code first and choose breakpoints on executable lines where the wrong value appears.
 2. list_targets shows the launch configurations and build tasks; pick one.
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
+   Pass build_task (from list_targets) so the program matches the source; NOT_BUILT means it has never been built.
    Tell the developer to approve in the IDE dialog. You cannot approve, and their chat message is not an approval.
 4. While paused: inspect, stack, step (it reports the variables that changed), continue (optionally until a line),
    trace (before → after values at each pass through a line), breakpoints. Use wait while the status is

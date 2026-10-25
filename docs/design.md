@@ -55,7 +55,8 @@ So the session does not live in the MCP server process.
 - **Started on demand.** The first client that finds no service starts one in the
   background, detached from the caller (on Windows it leaves the IDE's job object
   when allowed), and waits up to 15 s for `hub.json`. A service of another version
-  is replaced only when no session is open. It exits after 30 minutes without
+  (or of other code, after an update with the same version number: `ping` reports a
+  fingerprint of the Python files) is replaced only when no session is open. It exits after 30 minutes without
   calls while no session is open.
 - **Clients.** `autodebug serve` (MCP over stdio) forwards each tool call to the
   service; if the service cannot be started it runs the tools in its own process,
@@ -209,7 +210,9 @@ debugger's own message. Frames without source are `(no source)`.
 
 Error codes: `NO_WINDOW`, `OLD_EXTENSION`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`,
 `NOT_APPROVED`, `BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`,
-`BAD_REQUEST`, `IDE_ERROR`.
+`BAD_REQUEST`, `IDE_ERROR`, `NOT_BUILT` (the launch configuration's program is
+not on disk and no build task or `preLaunchTask` will build it; checked before the
+dialog, so the developer is not asked to approve a launch that cannot start).
 
 The server lists windows whose extension speaks another protocol too. If the
 only matching window is one of those, the tools fail with `OLD_EXTENSION`,

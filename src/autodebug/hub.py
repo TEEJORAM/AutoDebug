@@ -12,6 +12,7 @@ starts one in the background; it exits after IDLE_SECONDS without calls while no
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -44,6 +45,20 @@ def hub_file() -> Path:
     return state_folder() / "hub.json"
 
 
+_CODE: list[str] = []
+
+
+def code_id() -> str:
+    """A fingerprint of this AutoDebug's Python code, so a service left running from before an update
+    (`git pull`, same version number) is replaced instead of answering with the old code."""
+    if not _CODE:
+        digest = hashlib.sha256()
+        for path in sorted(Path(__file__).resolve().parent.glob("*.py")):
+            digest.update(path.name.encode() + b"\0" + path.read_bytes().replace(b"\r\n", b"\n"))
+        _CODE.append(digest.hexdigest()[:16])
+    return _CODE[0]
+
+
 # -- the service ---------------------------------------------------------------------------
 
 
@@ -54,6 +69,7 @@ class Hub:
         self.idle_seconds = idle_seconds
         self.info_file = info_file or hub_file()
         self.token = secrets.token_hex(24)
+        self.code = code_id()
         self.last_call = time.monotonic()
         self._tool_lock = threading.Lock()  # one debugger action at a time, whoever asks
         hub = self
@@ -90,7 +106,7 @@ class Hub:
             return {"error": "BAD_TOKEN", "message": "wrong token"}
         op = request.get("op")
         if op == "ping":
-            return {"ok": True, "version": __version__, "busy": self.busy(), "pid": os.getpid()}
+            return {"ok": True, "version": __version__, "code": self.code, "busy": self.busy(), "pid": os.getpid()}
         if op == "shutdown":
             if self.busy() and not request.get("force"):
                 return {"ok": False, "busy": True}
@@ -113,7 +129,7 @@ class Hub:
 
     def _write_info(self) -> None:
         self.info_file.parent.mkdir(parents=True, exist_ok=True)
-        info = {"port": self.port, "token": self.token, "pid": os.getpid(), "version": __version__}
+        info = {"port": self.port, "token": self.token, "pid": os.getpid(), "version": __version__, "code": self.code}
         temporary = self.info_file.with_name(f"hub-{os.getpid()}.tmp")
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -211,7 +227,7 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
     """The running service's connection info, starting it (or replacing an idle older version) if needed."""
     info = _read_info()
     alive = _ping(info)
-    if alive and alive.get("version") != __version__ and not alive.get("busy"):
+    if alive and (alive.get("version"), alive.get("code")) != (__version__, code_id()) and not alive.get("busy"):
         try:
             _request(info, {"op": "shutdown"}, 3)
         except (OSError, ValueError):

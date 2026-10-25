@@ -142,6 +142,14 @@ class InProcess(ServiceTest):
             time.sleep(0.05)
         self.assertFalse(hub.hub_file().exists())
 
+    def test_a_service_running_older_code_is_replaced_when_idle(self):
+        self.serve().code = "0" * 16  # a service left running from before an update, in this test process
+        self.assertEqual(hub.status()["pid"], os.getpid())
+        info = hub.connect_service()
+        replacement = hub._ping(info)
+        self.assertNotEqual(replacement["pid"], os.getpid())  # a new background service took over
+        self.assertEqual(replacement["code"], hub.code_id())
+
     def test_an_open_session_keeps_the_service(self):
         service = self.serve(idle_seconds=0.3)
         result, _ = hub.call("start_session", {"launch_configuration": "Debug tests", "goal": "x", "wait_seconds": 0,

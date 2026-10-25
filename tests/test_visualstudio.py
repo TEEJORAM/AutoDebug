@@ -42,8 +42,30 @@ class VisualStudioTest(HarnessMixin, unittest.TestCase):
     debuggers = "visualstudio"
     start_defaults = {"launch_configuration": "geometry (Debug|x64)", "breakpoints": [{"file": "cpp/geometry.cpp", "line": 16}]}
 
+    built = True
+
     def harness_command(self, bridges: Path, workspace: Path) -> list[str]:
+        if self.built:  # the scripted startup project's program, as a build would leave it
+            program = workspace / "build" / "Debug" / "geometry.exe"
+            program.parent.mkdir(parents=True, exist_ok=True)
+            program.write_bytes(b"MZ")
         return [DOTNET, str(harness_dll()), str(bridges), str(workspace)]
+
+
+class NotBuilt(VisualStudioTest):
+    built = False
+
+    def test_a_missing_program_is_reported_before_the_dialog(self):
+        from autodebug.connection import DebugError
+
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.start_session(**self.start_defaults, goal="x", wait_seconds=0)
+        self.assertEqual(caught.exception.code, "NOT_BUILT")
+        self.assertIn("geometry.exe does not exist yet", caught.exception.message)
+        self.assertIn("build_task set to one of: 'Build geometry (Debug|x64)'", caught.exception.message)
+        self.assertIn("Nothing was shown to the developer", caught.exception.message)
+        dialog = self.start(build_task="Build geometry (Debug|x64)")  # building first is fine
+        self.assertIn("Build first", dialog["detail"])
 
 
 class NoAnswer(VisualStudioTest):
