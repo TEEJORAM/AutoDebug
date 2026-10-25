@@ -39,6 +39,8 @@ namespace AutoDebug
         int sessions;
         Session session;
         public int BuildMinuteMs { get; set; } = 60000;
+        /// <summary>How long the Approve dialog waits for an answer (tests shorten it).</summary>
+        public int ApprovalMs { get; set; } = ApprovalSeconds * 1000;
 
         sealed class Mark
         {
@@ -286,14 +288,22 @@ namespace AutoDebug
                     }
                 });
             }
-            var timeout = new Timer(_ => Answer(false, "no answer within 2 minutes"), null, ApprovalSeconds * 1000, Timeout.Infinite);
+            // Nobody answered in time: refuse, then close the dialog so a late click cannot look like an answer.
+            Action close = null;
+            var timeout = new Timer(_ =>
+            {
+                Answer(false, "no answer within 2 minutes");
+                try { close?.Invoke(); }
+                catch (Exception error) { backend.Log($"could not close the Approve dialog: {error.Message}"); }
+            }, null, Timeout.Infinite, Timeout.Infinite);
             var title = s.Attach ? $"AutoDebug: let the AI agent attach the debugger for \"{s.Label}\"?"
                                  : $"AutoDebug: let the AI agent debug \"{Json.Str(s.Launch, "name")}\"?";
-            backend.Ask(title, DialogText(s, tasks), (approved, reason) =>
+            close = backend.Ask(title, DialogText(s, tasks), (approved, reason) =>
             {
                 timeout.Dispose();
                 Answer(approved, approved ? "the developer clicked Approve" : reason ?? "the developer did not approve");
             });
+            timeout.Change(ApprovalMs, Timeout.Infinite);
         }
 
         void Run(Session s)

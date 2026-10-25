@@ -229,20 +229,57 @@ namespace AutoDebug.VisualStudio
 
         // -- approval and builds ------------------------------------------------------------------
 
-        public void Ask(string title, string detail, Action<bool, string> answer)
+        public Action Ask(string title, string detail, Action<bool, string> answer)
         {
+            // Both closures run on the main thread, so these two need no lock.
+            System.Windows.Window open = null;
+            var closed = false;
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                bool approved;
-                try { approved = ApprovalDialog.Show(title, detail); }
+                bool approved = false;
+                string reason = "the developer did not approve";
+                try
+                {
+                    var window = ApprovalDialog.Create(title, detail);
+                    if (!closed)
+                    {
+                        BringToFront();
+                        Log("waiting for Approve or Deny in the AutoDebug dialog");
+                        open = window;
+                        approved = window.ShowModal() == true;
+                        open = null;
+                    }
+                }
                 catch (Exception error)
                 {
                     Log($"the Approve dialog failed: {error.Message}");
-                    approved = false;
+                    reason = $"the Approve dialog could not be shown: {error.Message}";
                 }
-                answer(approved, approved ? null : "the developer did not approve");
+                answer(approved, approved ? null : reason);
             });
+            return () => _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                closed = true;
+                if (open == null) return;
+                Log("no answer within 2 minutes; the Approve dialog was closed and nothing ran");
+                open.Close();
+            });
+        }
+
+        // The agent usually runs in another app, so Visual Studio may be behind it or minimized.
+        // Windows may refuse to move a background app to the front; then it flashes the taskbar
+        // button instead, and the dialog itself stays above other windows.
+        void BringToFront()
+        {
+            try
+            {
+                var main = dte.MainWindow;
+                if (main.WindowState == vsWindowState.vsWindowStateMinimize) main.WindowState = vsWindowState.vsWindowStateNormal;
+                main.Activate();
+            }
+            catch (Exception error) { Log($"could not bring Visual Studio to the front: {error.Message}"); }
         }
 
         public BuildResult Build(string label, int timeoutMs)

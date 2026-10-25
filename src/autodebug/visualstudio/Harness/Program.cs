@@ -3,7 +3,7 @@
 //
 // usage: dotnet AutoDebug.Harness.dll <bridges-folder> <workspace-folder>
 // stdin: approve | deny | breakpoints | exit
-// stdout: READY | DIALOG <json> | INFO <text> | DISCONNECT <json> | BREAKPOINTS <n> | LOG <text>
+// stdout: READY | DIALOG <json> | DIALOG_CLOSED | INFO <text> | DISCONNECT <json> | BREAKPOINTS <n> | LOG <text>
 
 using System;
 
@@ -22,6 +22,7 @@ namespace AutoDebug.Harness
             var keep = int.TryParse(Environment.GetEnvironmentVariable("HARNESS_KEEP_MS"), out var ms) ? ms : 10000;
             var relay = new RelayServer(backend, args[0], keep);
             if (int.TryParse(Environment.GetEnvironmentVariable("HARNESS_BUILD_MINUTE_MS"), out var minute)) relay.Gate.BuildMinuteMs = minute;
+            if (int.TryParse(Environment.GetEnvironmentVariable("HARNESS_APPROVAL_MS"), out var wait)) relay.Gate.ApprovalMs = wait;
             relay.Start();
             ScriptedBackend.Say("READY");
             string line;

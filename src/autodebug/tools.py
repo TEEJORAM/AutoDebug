@@ -17,10 +17,13 @@ from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
 SHORT_VALUE = 200
+_NO_ANSWER = ("Nobody answered the Approve dialog in {ide} within 2 minutes, so nothing ran; it was probably "
+              "behind another window. This was not a Deny. Ask the developer whether to try again.")
 STOPPED = ("paused", "ended", "denied", "build_failed")
 
 _NEXT = {
-    "awaiting_approval": "Ask the developer to click Approve in the {ide} dialog, then call wait.",
+    "awaiting_approval": ("Tell the developer the Approve dialog is open in {ide} (switch to {ide} if it is hidden) "
+                          "and that it closes unanswered after 2 minutes; then call wait."),
     "denied": "The developer did not approve; nothing ran. Ask before trying again.",
     "building": "The build task is running; call wait.",
     "build_failed": "The build failed (output is in the IDE terminal). Fix it or ask the developer.",
@@ -136,7 +139,10 @@ class Debugger:
             elif status in ("denied", "build_failed", "running"):
                 self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
         ide = self.connection.window.ide if self.connection else "IDE"
-        result["next"] = _NEXT.get(status, "").format(ide=IDE_NAMES.get(ide, "IDE"))
+        next_step = _NEXT.get(status, "")
+        if status == "denied" and "no answer" in str(raw.get("reason") or ""):
+            next_step = _NO_ANSWER
+        result["next"] = next_step.format(ide=IDE_NAMES.get(ide, "IDE"))
         if status == "paused":
             result["variables"] = self._short_variables()
         return result

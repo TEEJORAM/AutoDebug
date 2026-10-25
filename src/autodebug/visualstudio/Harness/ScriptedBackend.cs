@@ -95,10 +95,15 @@ namespace AutoDebug.Harness
                 Json.Make("label", "Build solution (Debug|x64)", "command", "build the solution (Debug|x64)"),
             });
 
-        public void Ask(string title, string detail, Action<bool, string> answer)
+        public Action Ask(string title, string detail, Action<bool, string> answer)
         {
             lock (dialogs) dialogs.Enqueue(answer);
             Say("DIALOG " + Json.Write(Json.Make("message", title, "detail", detail, "modal", true, "items", new List<object> { "Approve" })));
+            return () =>
+            {
+                lock (dialogs) if (dialogs.Count > 0 && dialogs.Peek() == answer) dialogs.Dequeue();
+                Say("DIALOG_CLOSED");
+            };
         }
 
         public void Answer(bool approved)

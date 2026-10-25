@@ -46,8 +46,9 @@ namespace AutoDebug
         /// <summary>{folder, launch: [configurations], tasks: [{label, command}]} for one open folder.</summary>
         Dictionary<string, object> Workspace(string folder);
 
-        /// <summary>Show the modal Approve dialog; call <paramref name="answer"/> once with the developer's choice.</summary>
-        void Ask(string title, string detail, Action<bool, string> answer);
+        /// <summary>Show the modal Approve dialog in front of other windows; call <paramref name="answer"/> once
+        /// with the developer's choice. Returns an action that closes the dialog unanswered (no answer in time).</summary>
+        Action Ask(string title, string detail, Action<bool, string> answer);
 
         /// <summary>Run a build task; blocks until it ends or <paramref name="timeoutMs"/> passes (then cancels it).</summary>
         BuildResult Build(string label, int timeoutMs);

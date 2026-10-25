@@ -74,12 +74,12 @@ class FakeExtension:
             self._emit({"kind": "approval", "approved": True, "reason": "the developer clicked Approve"})
             self._run(s)
 
-    def deny(self) -> None:
+    def deny(self, reason: str = "the developer did not approve") -> None:
         with self._cond:
             s = self.session
             if s is not None and s["phase"] == "awaiting_approval":
                 s["phase"] = "denied"
-                self._emit({"kind": "approval", "approved": False, "reason": "the developer did not approve"})
+                self._emit({"kind": "approval", "approved": False, "reason": reason})
 
     def close(self) -> None:
         try:

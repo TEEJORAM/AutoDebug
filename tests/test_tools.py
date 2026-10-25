@@ -126,6 +126,15 @@ class Session(ToolsTest):
         result = self.debugger.wait(5)
         self.assertEqual(result["status"], "denied")
         self.assertIn("nothing ran", result["next"])
+        self.assertNotIn("2 minutes", result["next"])
+
+    def test_no_answer_is_not_reported_as_deny(self):
+        self.start()
+        self.fake.deny("no answer within 2 minutes")
+        result = self.debugger.wait(5)
+        self.assertEqual((result["status"], result["reason"]), ("denied", "no answer within 2 minutes"))
+        self.assertIn("Nobody answered the Approve dialog", result["next"])
+        self.assertIn("not a Deny", result["next"])
 
     def test_first_stop_shows_location_and_redacted_variables(self):
         result = self.start_paused()

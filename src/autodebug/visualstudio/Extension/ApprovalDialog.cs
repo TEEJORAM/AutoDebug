@@ -1,5 +1,6 @@
 // The Approve dialog: modal, shows exactly what will run, and Deny is the default
-// button so pressing Enter never approves by accident.
+// button so pressing Enter never approves by accident. It stays above other windows,
+// because the agent usually runs in another app (Cursor, a terminal) that would hide it.
 
 using System.Windows;
 using System.Windows.Controls;
@@ -11,7 +12,7 @@ namespace AutoDebug.VisualStudio
 {
     static class ApprovalDialog
     {
-        public static bool Show(string title, string detail)
+        public static DialogWindow Create(string title, string detail)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             var window = new DialogWindow
@@ -25,7 +26,10 @@ namespace AutoDebug.VisualStudio
                 ResizeMode = ResizeMode.CanResizeWithGrip,
                 HasMaximizeButton = false,
                 HasMinimizeButton = false,
+                Topmost = true,
+                ShowInTaskbar = true,
             };
+            window.Loaded += (sender, args) => window.Activate();
             var heading = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) };
             var details = new TextBox
             {
@@ -40,9 +44,14 @@ namespace AutoDebug.VisualStudio
             var deny = new Button { Content = "Deny", MinWidth = 96, IsDefault = true, IsCancel = true, Padding = new Thickness(12, 4, 12, 4) };
             approve.Click += (sender, args) => window.DialogResult = true;
             deny.Click += (sender, args) => window.DialogResult = false;
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-            buttons.Children.Add(approve);
-            buttons.Children.Add(deny);
+            var note = new TextBlock { Text = "Nothing runs unless you click Approve. Unanswered, this closes after 2 minutes.", TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0), Opacity = 0.8 };
+            var buttons = new DockPanel { Margin = new Thickness(0, 12, 0, 0), LastChildFill = true };
+            var pair = new StackPanel { Orientation = Orientation.Horizontal };
+            pair.Children.Add(approve);
+            pair.Children.Add(deny);
+            DockPanel.SetDock(pair, Dock.Right);
+            buttons.Children.Add(pair);
+            buttons.Children.Add(note);
             var layout = new DockPanel { Margin = new Thickness(16), LastChildFill = true };
             DockPanel.SetDock(heading, Dock.Top);
             DockPanel.SetDock(buttons, Dock.Bottom);
@@ -50,7 +59,7 @@ namespace AutoDebug.VisualStudio
             layout.Children.Add(buttons);
             layout.Children.Add(details);
             window.Content = layout;
-            return window.ShowModal() == true;
+            return window;
         }
     }
 }

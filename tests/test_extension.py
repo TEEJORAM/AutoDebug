@@ -52,6 +52,7 @@ class HarnessMixin:
                    HARNESS_EXCEPTION=getattr(self, "exception_stop", ""),
                    HARNESS_BP_MESSAGE=getattr(self, "bp_message", ""),
                    HARNESS_BUILD_MINUTE_MS=getattr(self, "build_minute_ms", ""),
+                   HARNESS_APPROVAL_MS=getattr(self, "approval_ms", ""),
                    HARNESS_STACK_THROW=getattr(self, "stack_throw", ""),
                    HARNESS_SLOW_STACK=getattr(self, "slow_stack", ""),
                    HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""),

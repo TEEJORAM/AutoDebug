@@ -46,6 +46,21 @@ class VisualStudioTest(HarnessMixin, unittest.TestCase):
         return [DOTNET, str(harness_dll()), str(bridges), str(workspace)]
 
 
+class NoAnswer(VisualStudioTest):
+    approval_ms = "300"
+
+    def test_unanswered_dialog_is_closed_and_refused(self):
+        start = self.debugger.start_session(**self.start_defaults, goal="x", wait_seconds=0)
+        self.assertIn("closes unanswered after 2 minutes", start["next"])
+        self.expect("DIALOG")
+        self.assertEqual(self.expect("DIALOG_CLOSED", 5), "")
+        result = self.debugger.wait(5)
+        self.assertEqual((result["status"], result["reason"]), ("denied", "no answer within 2 minutes"))
+        self.assertIn("not a Deny", result["next"])
+        self.send("approve")  # a click after the dialog closed starts nothing
+        self.assertEqual(self.debugger.wait(0.5)["status"], "denied")
+
+
 class Session(VisualStudioTest):
     def test_the_window_is_found_as_visual_studio(self):
         (window,) = discover(self.bridges)

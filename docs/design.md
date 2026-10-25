@@ -87,7 +87,14 @@ is refused: AutoDebug debugs only programs on this computer. The platform block
 dialog and the debugger see the same object.
 
 Only **Approve** starts anything; **Deny**, closing the dialog or two minutes
-without an answer refuse. One approval covers one debug session. Attach
+without an answer refuse. The `denied` status carries the reason, and the
+server's `next` text tells the agent when nobody answered (reason `no answer
+within 2 minutes`) rather than Deny, so it can say the dialog was probably
+hidden. In Visual Studio the dialog stays above other windows, Visual Studio
+is restored and brought forward when it opens (Windows may flash its taskbar
+button instead), and the dialog is closed when the two minutes run out, so a
+late click cannot look like an answer. VS Code and Cursor cannot close a modal
+dialog from an extension; a click after the timeout is ignored. One approval covers one debug session. Attach
 sessions detach when they end and the program keeps running. Launch sessions
 stop the program. The session timer starts when debugging starts, not at
 approval. A build that exceeds `build_minutes` (default 30, max 600) is
