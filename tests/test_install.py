@@ -132,10 +132,20 @@ class Config(unittest.TestCase):
 
     def test_setup_visualstudio_with_a_missing_vsix_file_stops(self):
         with mock.patch.object(install, "vsix_installer", return_value="VSIXInstaller.exe"), \
+             mock.patch.object(install, "visual_studio_running", return_value=False), \
              mock.patch.object(install, "install_vs_extension") as installer:
             code, out = self.run_cli("setup", "visualstudio", "--vsix", str(self.home / "missing.vsix"))
         self.assertEqual(code, 1)
         self.assertIn("there is no file", out)
+        installer.assert_not_called()
+
+    def test_setup_visualstudio_while_visual_studio_is_open_says_so(self):
+        with mock.patch.object(install, "vsix_installer", return_value="VSIXInstaller.exe"), \
+             mock.patch.object(install, "visual_studio_running", return_value=True), \
+             mock.patch.object(install, "install_vs_extension") as installer:
+            code, out = self.run_cli("setup", "visualstudio", "--vsix", str(self.home / "a.vsix"))
+        self.assertEqual(code, 1)
+        self.assertIn("Visual Studio is open", out)
         installer.assert_not_called()
 
     def test_setup_visualstudio_without_visual_studio_explains(self):

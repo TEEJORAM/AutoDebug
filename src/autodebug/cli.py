@@ -31,6 +31,9 @@ def _setup_visual_studio(args: argparse.Namespace) -> int:
         if installer is None:
             _bad("could not find Visual Studio 2022 or 2026 (vswhere.exe found no installation)")
             failed = True
+        elif install.visual_studio_running():
+            _bad("Visual Studio is open; close every Visual Studio window (File → Exit), then run setup again")
+            failed = True
         else:
             try:
                 vsix = Path(args.vsix).expanduser().resolve() if args.vsix else install.download_vs_extension(
@@ -47,9 +50,12 @@ def _setup_visual_studio(args: argparse.Namespace) -> int:
                 result = install.install_vs_extension(installer, vsix)
                 if result.returncode == 0:
                     _ok("extension installed in Visual Studio")
+                elif result.returncode == install.VSIX_BLOCKED:
+                    _bad("Visual Studio or one of its helper processes is still running; wait a few seconds after "
+                         "closing it, then run setup again")
                 else:
-                    _bad(f"VSIXInstaller could not install it (exit code {result.returncode}); close every Visual Studio "
-                         "window and run setup again")
+                    _bad(f"VSIXInstaller could not install it (exit code {result.returncode}); its log is the newest "
+                         r"dd_VSIXInstaller_*.log in %TEMP%")
                     failed = True
     path = install.write_config("visualstudio", args.folder)
     _ok(f"MCP server `autodebug` added to {path} (Visual Studio's agent mode)")

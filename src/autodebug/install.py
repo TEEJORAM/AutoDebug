@@ -134,6 +134,19 @@ def download_vs_extension(version: str, folder: Path) -> Path:
     return path
 
 
+#: VSIXInstaller's exit code when Visual Studio (or one of its helper processes) is still running.
+VSIX_BLOCKED = 2004
+
+
+def visual_studio_running() -> bool:
+    """Whether a Visual Studio window (devenv.exe) is open; the extension cannot be installed then."""
+    if sys.platform != "win32":
+        return False
+    result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq devenv.exe", "/NH", "/FO", "CSV"],
+                            capture_output=True, text=True, timeout=30, check=False)
+    return "devenv.exe" in result.stdout.lower()
+
+
 def install_vs_extension(installer: str, vsix: Path) -> subprocess.CompletedProcess:
     return subprocess.run([installer, "/quiet", str(vsix)], capture_output=True, text=True, timeout=600, check=False)
 
