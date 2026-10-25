@@ -46,6 +46,11 @@ class Config(unittest.TestCase):
         home = mock.patch.object(Path, "home", return_value=self.home)
         home.start()
         self.addCleanup(home.stop)
+        from autodebug import hub  # doctor checks the service; do not leave one running after the test
+        for name, value in (("connect_service", {}), ("status", {"version": "test", "pid": 1, "busy": False})):
+            patch = mock.patch.object(hub, name, return_value=value)
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_cursor_global_config_keeps_other_servers(self):
         path = self.home / ".cursor" / "mcp.json"
@@ -156,7 +161,33 @@ class Config(unittest.TestCase):
         self.assertIn("added to", out)
 
 
+    def test_setup_with_a_folder_writes_agent_instructions(self):
+        project = self.home / "Demo"
+        project.mkdir()
+        (project / "AGENTS.md").write_text("# Team notes\n\nKeep tests green.\n", encoding="utf-8")
+        with mock.patch.object(install, "vsix_installer", return_value=None):
+            self.run_cli("setup", "visualstudio", str(project))
+        code, out = self.run_cli("agents", str(project))
+        self.assertEqual(code, 0)
+        text = (project / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("# Team notes\n\nKeep tests green.\n"))
+        self.assertEqual(text.count(install.AGENTS_START), 1)
+        self.assertIn(" run list_targets ide=visualstudio", text)
+        self.assertIn("click **Approve**", text)
+        self.assertTrue(install.has_agent_instructions(str(project)))
+
+
 class VisualStudioPackage(unittest.TestCase):
+    def test_an_installed_copy_is_removed_before_installing(self):
+        calls = []
+        with mock.patch.object(install.subprocess, "run",
+                               side_effect=lambda c, **k: calls.append(c) or mock.Mock(returncode=0)):
+            install.install_vs_extension("VSIXInstaller.exe", Path("a.vsix"))
+        self.assertEqual(calls, [["VSIXInstaller.exe", "/quiet", f"/uninstall:{install.VS_EXTENSION_ID}"],
+                                 ["VSIXInstaller.exe", "/quiet", "a.vsix"]])
+        manifest = Path(install.__file__).with_name("visualstudio") / "Extension" / "source.extension.vsixmanifest"
+        self.assertIn(f'Identity Id="{install.VS_EXTENSION_ID}"', manifest.read_text())
+
     def test_every_part_has_the_same_version(self):
         from autodebug import __version__
         source = Path(install.__file__).with_name("visualstudio")

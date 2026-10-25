@@ -72,7 +72,8 @@ what to do next:
 2. Cursor: **Cursor Settings → MCP** → turn on **autodebug**.
    VS Code: Command Palette → **MCP: List Servers** → **autodebug** → **Start Server**.
 
-`autodebug doctor` checks all of this. To update later: `git pull`, then run
+`autodebug doctor` checks all of this, including the background AutoDebug
+service that keeps the debug session (it starts by itself and stops when idle). To update later: `git pull`, then run
 `setup` again.
 
 ### Visual Studio 2022 or 2026
@@ -102,7 +103,26 @@ Open your project in the IDE and ask the agent (Agent mode), for example:
 > tools: build the Debug configuration, stop where the item is removed, find
 > the root cause and write a report.
 
-Click **Approve** when the IDE asks. Try it on the sample project first:
+Click **Approve** when the IDE asks.
+
+**When the agent cannot see the autodebug tools.** Some apps drop MCP tools from
+a chat now and then (Cursor does this without an error). The agent can then use
+the same tools, in the same session, from its terminal. Tell it once per project:
+
+```powershell
+py -m autodebug agents C:\path\to\your\project
+```
+
+This writes an AutoDebug section into the project's `AGENTS.md` (read by Cursor,
+Copilot and Codex; for Claude Code add the line `@AGENTS.md` to `CLAUDE.md`) with
+the exact command for your computer, for example:
+
+```powershell
+py -m autodebug run list_targets ide=visualstudio
+py -m autodebug run help
+```
+
+Try it on the sample project first:
 [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) has the same bug in
 C++ (**Debug C++ (CodeLLDB)**) and Python (**Debug tests**).
 

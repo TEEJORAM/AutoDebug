@@ -147,8 +147,63 @@ def visual_studio_running() -> bool:
     return "devenv.exe" in result.stdout.lower()
 
 
+VS_EXTENSION_ID = "AutoDebug.VisualStudio.4f9b2c71"  # Identity Id in visualstudio/Extension/source.extension.vsixmanifest
+
+
 def install_vs_extension(installer: str, vsix: Path) -> subprocess.CompletedProcess:
+    """Remove any installed copy first: VSIXInstaller refuses a package whose version is already installed,
+    so a fixed build of the same version would otherwise never replace the old one."""
+    subprocess.run([installer, "/quiet", f"/uninstall:{VS_EXTENSION_ID}"], capture_output=True, text=True,
+                   timeout=600, check=False)
     return subprocess.run([installer, "/quiet", str(vsix)], capture_output=True, text=True, timeout=600, check=False)
+
+
+# -- instructions for agents ----------------------------------------------------------
+
+AGENTS_START = "<!-- autodebug:start -->"
+AGENTS_END = "<!-- autodebug:end -->"
+
+
+def agent_instructions(command: str) -> str:
+    return f"""{AGENTS_START}
+## Debugging with AutoDebug
+
+This project can be debugged with the IDE's own debugger (VS Code, Cursor or Visual Studio) through AutoDebug.
+
+- Use the `autodebug` MCP tools if they are in your tool list.
+- If they are not (some apps drop MCP tools), run the same tools in the terminal. It is the same session:
+  - `{command} run list_targets ide=visualstudio` (or `ide=cursor`, `ide=vscode`; omit when one IDE is open)
+  - `{command} run help` lists every tool and its arguments. Values need no JSON:
+    `breakpoints=geometry.cpp:16` `variables=total,i`; quote a whole pair that has spaces:
+    `"launch_configuration=geometry (Debug|x64)"`.
+- Do not read AutoDebug's source, connection files or IDE logs to find the tools: use the commands above.
+- `start_session` opens an Approve dialog in the IDE. Tell the developer to click **Approve** there
+  (it closes after 2 minutes). Nothing runs before that; a chat message is not an approval.
+- Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal) → `wait` while it is
+  awaiting_approval, building or starting → `inspect`, `step`, `trace` → `stop_session` → `write_report`.
+  Call the tools one at a time. Paths are relative to the workspace folder that `list_targets` shows.
+{AGENTS_END}
+"""
+
+
+def write_agent_instructions(folder: str, command: str) -> Path:
+    """Add or refresh the AutoDebug section of <folder>/AGENTS.md (read by Cursor, Copilot, Codex and others)."""
+    path = Path(folder).expanduser().resolve() / "AGENTS.md"
+    block = agent_instructions(command)
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if AGENTS_START in text and AGENTS_END in text:
+        before, rest = text.split(AGENTS_START, 1)
+        after = rest.split(AGENTS_END, 1)[1].lstrip("\n")
+        text = before + block + (("\n" + after) if after else "")
+    else:
+        text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def has_agent_instructions(folder: str) -> bool:
+    path = Path(folder).expanduser().resolve() / "AGENTS.md"
+    return path.is_file() and AGENTS_START in path.read_text(encoding="utf-8", errors="replace")
 
 
 # -- MCP configuration ------------------------------------------------------------

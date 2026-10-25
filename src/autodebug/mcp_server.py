@@ -10,7 +10,7 @@ import json
 import logging
 import sys
 import threading
-from typing import BinaryIO
+from typing import BinaryIO, Callable
 
 from autodebug import __version__
 from autodebug.connection import DebugError
@@ -163,15 +163,44 @@ def _valid(value: object, schema: dict) -> bool:
     return True
 
 
+def _terminal_note() -> str:
+    from autodebug.cli import run_command
+
+    return (f"\nIf these tools disappear from your tool list, keep going in the terminal with the same session: "
+            f"`{run_command()} run <tool> key=value ...` (`run help` lists them).")
+
+
+def call_tool(debugger: Debugger, name: str, arguments: dict) -> tuple[dict, bool]:
+    """Run one tool on `debugger`: (result, is_error). Arguments must already be valid for TOOLS[name]."""
+    try:
+        return getattr(debugger, _METHODS.get(name, name))(**arguments), False
+    except DebugError as exc:
+        return {"error": exc.code, "message": exc.message}, True
+    except (OSError, ValueError) as exc:
+        return {"error": "IDE_ERROR", "message": str(exc)}, True
+    except Exception:  # noqa: BLE001 — never crash on one tool
+        _LOG.exception("tool %s failed", name)
+        return {"error": "IDE_ERROR", "message": "internal error; see the server log"}, True
+
+
+Runner = Callable[[str, dict], "tuple[dict, bool]"]
+
+
 class Server:
     def __init__(self, debugger: Debugger | None = None, stdin: BinaryIO | None = None,
-                 stdout: BinaryIO | None = None) -> None:
-        self.debugger = debugger or Debugger()
+                 stdout: BinaryIO | None = None, runner: Runner | None = None) -> None:
+        """Tools run on `runner` (the shared AutoDebug service) or, without one, on `debugger` in this process."""
+        self.debugger = None if runner else (debugger or Debugger())
+        self._tool_lock = threading.Lock()  # one debugger action at a time
+        self.runner = runner or self._local
         self.stdin = stdin or sys.stdin.buffer
         self.stdout = stdout or sys.stdout.buffer
         self._write_lock = threading.Lock()
-        self._tool_lock = threading.Lock()  # one debugger action at a time
         self._threads: list[threading.Thread] = []
+
+    def _local(self, name: str, arguments: dict) -> tuple[dict, bool]:
+        with self._tool_lock:
+            return call_tool(self.debugger, name, arguments)
 
     def _send(self, message: dict) -> None:
         data = json.dumps(message, ensure_ascii=False).encode("utf-8") + b"\n"
@@ -200,7 +229,8 @@ class Server:
                 self.handle(message)
         for thread in self._threads:
             thread.join(timeout=5)
-        self.debugger.close()
+        if self.debugger is not None:
+            self.debugger.close()
 
     def handle(self, message: dict) -> None:
         method, request_id, params = message.get("method"), message.get("id"), message.get("params") or {}
@@ -212,7 +242,7 @@ class Server:
                 "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": "autodebug", "version": __version__},
-                "instructions": INSTRUCTIONS,
+                "instructions": INSTRUCTIONS + _terminal_note(),
             })
         elif method == "ping":
             self._reply(request_id, {})
@@ -234,16 +264,6 @@ class Server:
         if not _valid(arguments, TOOLS[name][1]):
             self._reply(request_id, error={"code": -32602, "message": f"invalid arguments for {name}"})
             return
-        try:
-            with self._tool_lock:
-                result = getattr(self.debugger, _METHODS.get(name, name))(**arguments)
-            is_error = False
-        except DebugError as exc:
-            result, is_error = {"error": exc.code, "message": exc.message}, True
-        except (OSError, ValueError) as exc:
-            result, is_error = {"error": "IDE_ERROR", "message": str(exc)}, True
-        except Exception:  # noqa: BLE001 — never crash the server on one tool
-            _LOG.exception("tool %s failed", name)
-            result, is_error = {"error": "IDE_ERROR", "message": "internal error; see the server log"}, True
+        result, is_error = self.runner(name, arguments)
         self._reply(request_id, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=1)}],
                                  "structuredContent": result, "isError": is_error})

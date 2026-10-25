@@ -58,6 +58,7 @@ class Protocol(unittest.TestCase):
         init = replies[1]["result"]
         self.assertEqual(init["protocolVersion"], "2025-06-18")
         self.assertIn("You cannot approve", init["instructions"])
+        self.assertIn(" run <tool> key=value", init["instructions"])
         names = [t["name"] for t in replies[2]["result"]["tools"]]
         self.assertEqual(names, list(TOOLS))
         self.assertEqual(len(names), 14)

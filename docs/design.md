@@ -7,11 +7,13 @@ supports **VS Code and Cursor**, and any language they can debug.
 ## Parts
 
 ```text
-AI agent (Cursor, VS Code Copilot, Claude, ...)
-   │  MCP over stdio
-   ▼
-autodebug  (Python)  ── tools, launch checks, session state from debugger events,
-   │                     stack and variables, limits, redaction, timeline, report
+AI agent (Cursor, VS Code Copilot, Claude, Codex, ...)
+   │  MCP tools (autodebug serve)          or   terminal: autodebug run <tool> key=value
+   └──────────────────┬───────────────────────────────┘
+                      │  JSON lines over 127.0.0.1, token (hub.json)
+                      ▼
+AutoDebug service  (Python, one per user) ── tools, launch checks, session state from
+   │                     debugger events, stack and variables, limits, redaction, timeline, report
    │  JSON lines over 127.0.0.1, token
    ▼
 AutoDebug extension  (VS Code / Cursor: JavaScript; Visual Studio: C#)
@@ -21,10 +23,12 @@ AutoDebug extension  (VS Code / Cursor: JavaScript; Visual Studio: C#)
 the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ...) ── your program
 ```
 
-- **`autodebug` (Python 3.11+, no dependencies).** The MCP server the agent's
-  IDE starts. It holds all of AutoDebug's logic: the agent tools, the checks on
-  launch configurations and tasks, the session state (built from the debugger's
-  own events), stack, threads and variables, limits, redaction and the report.
+- **`autodebug` (Python 3.11+, no dependencies).** It holds all of AutoDebug's
+  logic: the agent tools, the checks on launch configurations and tasks, the
+  session state (built from the debugger's own events), stack, threads and
+  variables, limits, redaction and the report. The logic runs in the **service**
+  (below); the MCP server the agent's IDE starts and the `autodebug run` command
+  are two thin ways to call it.
 - **AutoDebug extension (JavaScript, no dependencies).** Runs in each IDE window.
   IDE extensions can only be written in JavaScript, so it is kept to what needs
   the IDE: the Approve dialog, running the approved build task and launch
@@ -37,6 +41,40 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ..
   shared core (`visualstudio/Core`: connection, Approve gate, limits, events) has
   no Visual Studio references, so a test harness runs it with plain .NET; only
   `Extension/VsBackend.cs` talks to Visual Studio.
+
+## The service
+
+AI apps do not reliably keep an MCP server's tools in the chat: Cursor, for
+example, can drop a connected server from the agent's tool list without an error.
+So the session does not live in the MCP server process.
+
+- **One service per user** (`autodebug hub`, `hub.py`) owns the `Debugger`: the
+  session, its timeline and the report. It listens on 127.0.0.1 on a free port and
+  writes `hub.json` (port, token, process id, version) to the state folder, readable
+  only by the user. Every request carries the token. Tool calls run one at a time.
+- **Started on demand.** The first client that finds no service starts one in the
+  background, detached from the caller (on Windows it leaves the IDE's job object
+  when allowed), and waits up to 15 s for `hub.json`. A service of another version
+  is replaced only when no session is open. It exits after 30 minutes without
+  calls while no session is open.
+- **Clients.** `autodebug serve` (MCP over stdio) forwards each tool call to the
+  service; if the service cannot be started it runs the tools in its own process,
+  as before (`serve --direct` forces that). `autodebug run <tool> key=value ...`
+  calls the same tools from any terminal and prints the JSON result (exit code 0,
+  1 for a tool error, 2 for a usage error). Values are read by the tool's schema,
+  so no JSON quoting is needed: `breakpoints=geometry.cpp:16,b.cpp:4`,
+  `variables=total,i`, `until=geometry.cpp:20`, `after=false`; a value starting
+  with `[` or `{` is JSON. `run help` lists the tools and the workflow.
+  `python <checkout>/src/autodebug ...` runs from a checkout without installing.
+- **Agent instructions.** `autodebug agents FOLDER` (also done by `setup` with a
+  folder) writes a marked section into `FOLDER/AGENTS.md`, read by Cursor, Copilot,
+  Codex and others: use the MCP tools when present, otherwise the exact
+  `run` command for this computer; do not search AutoDebug's source for the tools;
+  the developer approves in the IDE. The MCP `instructions` name the same command.
+
+An agent can therefore start a session over MCP and finish it in the terminal (or
+the reverse), and the report keeps the whole timeline. Approval is unchanged: the
+service is just another client of the extension, and only the IDE dialog approves.
 
 ## Agent tools
 
@@ -234,5 +272,8 @@ file when a folder is given.
 `vswhere`, installs the extension package with Visual Studio's `VSIXInstaller`
 (downloaded from the `visualstudio-v<version>` GitHub release that CI builds, or
 `--vsix`), and writes `%USERPROFILE%\.mcp.json` (or `FOLDER\.mcp.json`) for
-Visual Studio's own agent mode. `autodebug doctor` checks Python, the config files
-and running extension windows.
+Visual Studio's own agent mode. It removes an installed copy before installing,
+because `VSIXInstaller` refuses a package whose version is already installed.
+With `FOLDER`, setup also writes the agent instructions (`AGENTS.md`).
+`autodebug doctor [FOLDER]` checks Python, the config files, running extension
+windows, the service, the terminal command and `FOLDER/AGENTS.md`.
