@@ -85,7 +85,7 @@ Open the project in the IDE and ask the agent, for example:
 2. The agent builds, stops at the breakpoints, steps and traces.
 3. The report is written to `autodebug-reports/` in the project folder.
 
-Try it first on [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md):
+Try it first on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md):
 the same bug in C++ and Python.
 
 ## When the agent cannot see the autodebug tools
@@ -146,7 +146,7 @@ On Windows write `py -m autodebug`; on macOS / Linux `~/.autodebug/bin/python -m
 
 The agent cannot evaluate expressions or change variables, and secret-looking
 values are hidden from it. AutoDebug listens on 127.0.0.1 only, with a token.
-How it works: [docs/design.md](docs/design.md).
+How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md).
 
 ## Large C++ programs
 
@@ -227,4 +227,4 @@ To work on AutoDebug itself, clone the repository and install it editable:
 
 Most tests run with Python alone. The relay tests need Node.js. The
 real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
-with g++ (C++, Linux and macOS). See [CLAUDE.md](CLAUDE.md) for the rules.
+with g++ (C++, Linux and macOS). See [CLAUDE.md](https://github.com/TEEJORAM/AutoDebug/blob/main/CLAUDE.md) for the rules.
