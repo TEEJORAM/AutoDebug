@@ -48,6 +48,14 @@ class ServiceTest(unittest.TestCase):
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline and hub.hub_file().exists():
                 time.sleep(0.05)
+        # On Windows the exiting service still holds hub.log open for a moment; wait until it lets go.
+        log = self.state / "hub.log"
+        deadline = time.monotonic() + 15
+        while log.exists() and time.monotonic() < deadline:
+            try:
+                log.unlink()
+            except PermissionError:
+                time.sleep(0.1)
 
     def cli(self, *args: str) -> tuple[int, dict]:
         """`python src/autodebug run ...` exactly as an agent's terminal runs it: no install, no PYTHONPATH."""
