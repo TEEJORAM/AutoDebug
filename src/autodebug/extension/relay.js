@@ -70,12 +70,13 @@ function describeTask(label, tasks, seen = new Set()) {
 }
 
 class Relay {
-  constructor(vscode, { folder, log, platform = process.platform, buildMinuteMs = 60000 } = {}) {
+  constructor(vscode, { folder, log, platform = process.platform, buildMinuteMs = 60000, keepMs = 10000 } = {}) {
     this.vscode = vscode;
     this.folder = folder || path.join(stateFolder(), 'bridges');
     this.log = log || (() => {});
     this.platform = platform;
     this.buildMinuteMs = buildMinuteMs;
+    this.keepMs = keepMs;
     this.ide = /cursor/i.test(vscode.env.appName || '') ? 'cursor' : 'vscode';
     const id = String(vscode.env.sessionId || crypto.randomBytes(6).toString('hex')).replace(/[^A-Za-z0-9]/g, '');
     this.window = `${this.ide}-${id.slice(0, 12)}-${process.pid}`;
@@ -103,6 +104,15 @@ class Relay {
     });
     this.announce();
     this.log(`listening on 127.0.0.1:${this.server.address().port}`);
+    // If something deletes the connection file while the window is open, write it again,
+    // or the server could never find this window.
+    this.keeper = setInterval(() => {
+      if (this.server && !fs.existsSync(this.file)) {
+        this.announce();
+        this.log('the connection file was deleted; wrote it again');
+      }
+    }, this.keepMs);
+    if (this.keeper.unref) this.keeper.unref();
   }
 
   announce() {
@@ -118,6 +128,7 @@ class Relay {
   }
 
   async stop() {
+    clearInterval(this.keeper);
     await this.end('the IDE window closed');
     try { fs.unlinkSync(this.file); } catch (_) { /* already removed */ }
     if (this.server) this.server.close();

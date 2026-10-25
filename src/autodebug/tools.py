@@ -181,11 +181,12 @@ class Debugger:
     # -- tools ---------------------------------------------------------------
 
     def list_targets(self, workspace_folder: str | None = None) -> dict:
-        windows = self._find_windows()
+        found = self._find_windows()
+        windows = [w for w in found if w.current]
         if workspace_folder:
-            windows = [choose(windows, workspace_folder)]
+            windows = [choose(found, workspace_folder)]
         if not windows:
-            choose(windows, None)  # raises the setup hint
+            choose(found, None)  # raises the setup or version hint
         found = []
         for window in windows:
             connection = self._connect(window)

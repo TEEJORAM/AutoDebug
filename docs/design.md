@@ -157,8 +157,17 @@ output_note}` where `status` is `awaiting_approval`, `denied`, `building`,
 not bound yet says it may bind when its module or library loads, with the
 debugger's own message. Frames without source are `(no source)`.
 
-Error codes: `NO_WINDOW`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`, `NOT_APPROVED`,
-`BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`, `BAD_REQUEST`, `IDE_ERROR`.
+Error codes: `NO_WINDOW`, `OLD_EXTENSION`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`,
+`NOT_APPROVED`, `BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`,
+`BAD_REQUEST`, `IDE_ERROR`.
+
+The server lists windows whose extension speaks another protocol too. If the
+only matching window is one of those, the tools fail with `OLD_EXTENSION`,
+naming both versions and the fix: `autodebug setup`, then **Developer: Reload
+Window** (restarting only the extension host keeps the old extension loaded), or
+updating the server when the extension is newer. `autodebug doctor` reports the
+same. The extension rewrites its connection file within 10 seconds if something
+deletes it while the window is open.
 
 ## Report
 

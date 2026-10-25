@@ -218,6 +218,7 @@ relay = new Relay(vscode, {
   folder: bridgesFolder,
   log: (line) => say(`LOG ${line}`),
   buildMinuteMs: Number(process.env.HARNESS_BUILD_MINUTE_MS) || 60000,
+  keepMs: Number(process.env.HARNESS_KEEP_MS) || 10000,
 });
 relay.start().then(() => say('READY'), (error) => { say(`ERROR ${error.message}`); process.exit(1); });
 

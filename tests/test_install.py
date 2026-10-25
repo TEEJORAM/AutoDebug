@@ -111,6 +111,17 @@ class Config(unittest.TestCase):
         code, out = self.run_cli("doctor", str(project))
         self.assertIn(f"Cursor: {project.resolve() / '.cursor' / 'mcp.json'}", out)
 
+    def test_doctor_names_an_old_extension_in_a_running_window(self):
+        from tests.fake_extension import FakeExtension
+
+        fake = FakeExtension(self.home / "state" / "bridges", str(self.home / "Demo"))
+        self.addCleanup(fake.close)
+        fake.write_file(protocol=2, version="0.2.0")
+        code, out = self.run_cli("doctor")
+        self.assertEqual(code, 1)
+        self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", out)
+        self.assertIn("Developer: Reload Window", out)
+
 
 if __name__ == "__main__":
     unittest.main()

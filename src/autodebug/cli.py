@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
-from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import PROTOCOL, bridges_folder, discover, state_folder
+from autodebug.connection import discover, state_folder, version_problem
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code"}
 PROMPT = ("Help me debug AutoDebugDemo: moving a shape changes its area. Use the autodebug tools to find the "
@@ -47,7 +45,8 @@ def _setup(args: argparse.Namespace) -> int:
     _ok(f"MCP server `autodebug` added to {path} ({scope})")
     print(f"""
 Next, in {name}:
-  1. Command Palette → Developer: Reload Window. The status bar shows "AutoDebug".
+  1. Command Palette → Developer: Reload Window in every open window (Restart Extension Host is not
+     enough: the window keeps the old extension). The status bar shows "AutoDebug".
   2. {"Cursor Settings → MCP: turn on autodebug." if args.ide == "cursor" else "Command Palette → MCP: List Servers → autodebug → Start Server."}
   3. Open your project folder and ask the agent, for example:
      "{PROMPT}"
@@ -92,24 +91,17 @@ def _doctor(args: argparse.Namespace) -> int:
             else:
                 _ok(f"{name}: {where}")
     windows = discover()
-    stale = [p for p in bridges_folder().glob("*.json") if _old_protocol(p)] if bridges_folder().is_dir() else []
-    if windows:
-        for window in windows:
+    for window in windows:
+        if window.current:
             _ok(f"{IDES.get(window.ide, window.ide)} window open: {', '.join(window.folders)}")
-    else:
+        else:
+            _bad(version_problem(window).message.replace("Ask the developer to run", "Run").replace(
+                "Ask the developer to update", "Update"))
+            problems += 1
+    if not windows:
         print("  -     no VS Code or Cursor window is running the extension (open your project in the IDE)")
-    if stale:
-        _bad("an older AutoDebug extension is still running; run `autodebug setup` again and reload the window")
-        problems += 1
     print("\nReady." if not problems else f"\n{problems} thing(s) to fix.")
     return 1 if problems else 0
-
-
-def _old_protocol(path: Path) -> bool:
-    try:
-        return json.loads(path.read_text(encoding="utf-8")).get("protocol") != PROTOCOL
-    except (OSError, ValueError):
-        return False
 
 
 def build_parser() -> argparse.ArgumentParser:

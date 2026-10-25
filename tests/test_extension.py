@@ -49,7 +49,7 @@ class HarnessTest(unittest.TestCase):
                    HARNESS_STACK_THROW=getattr(self, "stack_throw", ""),
                    HARNESS_SLOW_STACK=getattr(self, "slow_stack", ""),
                    HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""),
-                   HARNESS_FLOOD=getattr(self, "flood", ""))
+                   HARNESS_FLOOD=getattr(self, "flood", ""), HARNESS_KEEP_MS="200")
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -207,6 +207,14 @@ class Extension(HarnessTest):
         with self.assertRaises(DebugError) as caught:
             connection.call("dap", {"command": "next", "arguments": {"threadId": 1}})
         self.assertEqual(caught.exception.code, "LIMIT")
+
+    def test_a_deleted_connection_file_is_written_again(self):
+        (window,) = discover(self.bridges)
+        for path in self.bridges.glob("*.json"):
+            path.unlink()
+        self.assertEqual(discover(self.bridges), [])
+        self.expect("LOG the connection file was deleted; wrote it again", 5)
+        self.assertEqual([w.port for w in discover(self.bridges)], [window.port])
 
     def test_connection_file_goes_away_with_the_window(self):
         self.send("exit")
