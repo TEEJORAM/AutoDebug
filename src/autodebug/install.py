@@ -13,7 +13,7 @@ from xml.sax.saxutils import escape
 
 EXTENSION_DIR = Path(__file__).with_name("extension")
 _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
-          ("bridge.js", "bridge.js"), ("README.md", "readme.md"))
+          ("relay.js", "relay.js"), ("README.md", "readme.md"))
 #: Earlier extension IDs to remove so two versions never run side by side.
 OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
 SERVER_NAME = "autodebug"

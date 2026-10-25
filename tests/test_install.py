@@ -18,18 +18,18 @@ class Package(unittest.TestCase):
     def test_vsix_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = install.build_vsix(Path(tmp))
-            self.assertEqual(path.name, "autodebug.autodebug-0.3.0.vsix")
+            self.assertEqual(path.name, "autodebug.autodebug-0.4.0.vsix")
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(archive.namelist(), ["extension.vsixmanifest", "[Content_Types].xml",
                                                       "extension/package.json", "extension/extension.js",
-                                                      "extension/bridge.js", "extension/readme.md"])
+                                                      "extension/relay.js", "extension/readme.md"])
                 ET.fromstring(archive.read("extension.vsixmanifest"))
                 self.assertEqual(json.loads(archive.read("extension/package.json"))["main"], "./extension.js")
             self.assertEqual(path.read_bytes(), install.build_vsix(Path(tmp) / "again").read_bytes())
 
     def test_extension_has_no_dependencies_or_evaluate(self):
         self.assertNotIn("dependencies", install.manifest())
-        source = (install.EXTENSION_DIR / "bridge.js").read_text(encoding="utf-8")
+        source = (install.EXTENSION_DIR / "relay.js").read_text(encoding="utf-8")
         self.assertNotIn("'evaluate'", source)
         self.assertIn("listen(0, '127.0.0.1'", source)
 

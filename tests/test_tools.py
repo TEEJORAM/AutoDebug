@@ -1,4 +1,5 @@
-"""The agent tools against a fake extension speaking the real protocol."""
+"""The agent tools and the Python session against a fake extension speaking the real
+relay protocol, with the scripted debug adapter in-process. Runs without Node.js."""
 
 import json
 import tempfile
@@ -17,6 +18,8 @@ class ToolsTest(unittest.TestCase):
         self.root = Path(tmp.name)
         self.workspace = self.root / "AutoDebugDemo"
         self.workspace.mkdir()
+        for name in ("geometry.py", "test_geometry.py"):
+            (self.workspace / name).write_text("# scripted\n", encoding="utf-8")
         self.bridges = self.root / "state" / "bridges"
         self.fake = self.extension()
         self.debugger = Debugger(find_windows=lambda: discover(self.bridges))

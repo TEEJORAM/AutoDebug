@@ -12,8 +12,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
-from autodebug.connection import Connection, DebugError, Window, choose, discover
+from autodebug.connection import DebugError, Window, choose, discover
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
+from autodebug.session import Session, connect
 
 SHORT_VALUE = 200
 STOPPED = ("paused", "ended", "denied", "build_failed")
@@ -49,10 +50,10 @@ class Event:
 
 
 class Debugger:
-    def __init__(self, find_windows: Callable[[], list[Window]] = discover, connect=Connection) -> None:
+    def __init__(self, find_windows: Callable[[], list[Window]] = discover, connect: Callable[[Window], Session] = connect) -> None:
         self._find_windows = find_windows
         self._connect = connect
-        self.connection: Connection | None = None
+        self.connection: Session | None = None
         self.folder: str | None = None
         self.version = 0
         self.timeline: list[Event] = []
@@ -70,7 +71,7 @@ class Debugger:
     def _window(self, folder: str | None) -> Window:
         return choose(self._find_windows(), folder)
 
-    def _session(self) -> Connection:
+    def _session(self) -> Session:
         if self.connection is None:
             raise DebugError("NOT_FOUND", "no debug session; call start_session first")
         return self.connection

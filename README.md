@@ -172,5 +172,11 @@ Debug only programs and data you are allowed to share with it.
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-The extension tests need Node.js. The real-debugger tests also need
-`pip install debugpy` (Python) and gdb 14 or later with g++ (C++, Linux and macOS). See [CLAUDE.md](CLAUDE.md) for the rules.
+All of AutoDebug's logic is Python (`src/autodebug`). The IDE extension is a
+small JavaScript relay (`src/autodebug/extension/relay.js`), because VS Code and
+Cursor run extensions only in JavaScript; it shows the Approve dialog and passes
+debugger requests and events through.
+
+Most tests run with Python alone. The relay tests need Node.js. The
+real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
+with g++ (C++, Linux and macOS). See [CLAUDE.md](CLAUDE.md) for the rules.

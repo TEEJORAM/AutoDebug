@@ -1,5 +1,6 @@
-"""The real extension core (bridge.js) through tests/harness.js, driven by the
-real Python tools over the real protocol. Skipped without Node.js."""
+"""The real extension relay (relay.js) through tests/harness.js and a real debug
+adapter process (tests/fake_adapter.py unless a test picks debugpy or gdb),
+driven by the real Python tools over the real protocol. Skipped without Node.js."""
 
 import json
 import os
@@ -38,7 +39,7 @@ class HarnessTest(unittest.TestCase):
         tasks = {"version": "2.0.0", "tasks": [{"label": "check", "type": "shell", "command": "python", "args": ["-m", "py_compile", "geometry.py"]}]}
         (self.workspace / ".vscode" / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
         self.bridges = base / "state" / "bridges"
-        env = dict(os.environ, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers,
+        env = dict(os.environ, HARNESS_PYTHON=sys.executable, HARNESS_BUILD_EXIT=str(self.build_exit), HARNESS_DEBUGGERS=self.debuggers,
                    HARNESS_EDITOR_BP=self.editor_bp, HARNESS_LATE_BP=getattr(self, "late_bp", ""),
                    HARNESS_BUILD_HANG=getattr(self, "build_hang", ""),
                    HARNESS_STEP_FAIL=getattr(self, "step_fail", ""),
@@ -180,13 +181,31 @@ class Extension(HarnessTest):
             Connection(replace(window, token="0" * 64))
         connection = Connection(window)
         self.addCleanup(connection.close)
-        for op in ("evaluate", "setVariable"):
+        for op in ("evaluate", "setVariable", "start"):
             with self.assertRaises(DebugError) as caught:
                 connection.call(op, {"expression": "1"})
             self.assertEqual(caught.exception.code, "BAD_REQUEST")
+        self.approved()
+        for command in ("evaluate", "setVariable", "setExpression", "disconnect"):
+            with self.assertRaises(DebugError) as caught:
+                connection.call("dap", {"command": command, "arguments": {"expression": "1"}})
+            self.assertEqual(caught.exception.code, "BAD_REQUEST", command)
+        self.debugger.stop_session()
+        launch = {"name": "Debug tests", "type": "debugpy", "request": "launch", "module": "unittest"}
+        outside = str(self.workspace.parent / "x.py")
         with self.assertRaises(DebugError) as caught:
-            connection.call("start", {"launch": "Debug tests", "breakpoints": [{"file": "../x.py", "line": 1}]})
+            connection.call("approve", {"launch": launch, "breakpoints": [{"file": outside, "line": 1}]})
         self.assertEqual(caught.exception.code, "OUTSIDE_WORKSPACE")
+
+    def test_the_extension_enforces_the_step_limit_itself(self):
+        self.approved(max_steps=1)
+        (window,) = discover(self.bridges)
+        connection = Connection(window)
+        self.addCleanup(connection.close)
+        connection.call("dap", {"command": "next", "arguments": {"threadId": 1}})
+        with self.assertRaises(DebugError) as caught:
+            connection.call("dap", {"command": "next", "arguments": {"threadId": 1}})
+        self.assertEqual(caught.exception.code, "LIMIT")
 
     def test_connection_file_goes_away_with_the_window(self):
         self.send("exit")
@@ -439,16 +458,12 @@ class StopHandling(HarnessTest):
     stack_throw = "1"
 
     def test_a_stop_error_is_logged_and_the_pause_is_still_reported(self):
-        _, result = self.approved()
+        with self.assertLogs("autodebug", "WARNING") as logged:
+            _, result = self.approved()
         self.assertEqual(result["status"], "paused")
         self.assertNotIn("location", result)
-        logged = []
-        while True:
-            try:
-                logged.append(self.lines.get_nowait())
-            except queue.Empty:
-                break
-        self.assertTrue(any("error handling stopped:" in line and "stack trace failed" in line for line in logged), logged)
+        self.assertTrue(any("error handling stopped:" in line and "stack trace failed" in line for line in logged.output),
+                        logged.output)
 
 
 class StopThenResume(HarnessTest):

@@ -1,8 +1,12 @@
 # CLAUDE.md — working on AutoDebug
 
 AutoDebug: an MCP server (Python, `src/autodebug`) plus a VS Code / Cursor
-extension (JavaScript, `src/autodebug/extension`) that let an AI agent debug a
-program with the IDE's own debugger and write a root-cause report.
+extension (`src/autodebug/extension`) that let an AI agent debug a program with
+the IDE's own debugger and write a root-cause report. All logic is in Python;
+the extension is a thin JavaScript relay (IDE extensions can only be JavaScript):
+the Approve dialog, tasks, breakpoints, start/stop and Debug Adapter Protocol
+passthrough. Add new behaviour in Python; change the relay only when the IDE
+API itself is needed.
 Read `docs/design.md` first; it is the contract between the two parts.
 
 ## Process
@@ -10,7 +14,7 @@ Read `docs/design.md` first; it is the contract between the two parts.
   updates it in the same change.
 - Every change comes with tests; run them before pushing:
   `PYTHONPATH=src python -m unittest discover -s tests` (Node.js runs the
-  extension tests; debugpy enables the real-debugger test).
+  relay tests; debugpy and gdb 14+ enable the real-debugger tests).
 - Report what you actually ran and its result. Never claim a test, IDE run or
   debugger capability that did not happen.
 

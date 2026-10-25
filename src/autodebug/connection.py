@@ -12,7 +12,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-PROTOCOL = 3
+PROTOCOL = 4
 HOST = "127.0.0.1"
 MAX_LINE = 1024 * 1024
 
