@@ -85,6 +85,7 @@ class Relay {
     this.sessions = 0;
     this.queue = [];
     this.seq = 0;
+    this.droppedOutput = 0;
     this.waiters = [];
   }
 
@@ -227,7 +228,11 @@ class Relay {
   emit(event) {
     this.seq += 1;
     this.queue.push({ seq: this.seq, ...event });
-    if (this.queue.length > MAX_EVENTS) this.queue.shift();
+    if (this.queue.length > MAX_EVENTS) {
+      // Program output goes first, so a flood of it never pushes out a stop or the end.
+      const output = this.queue.findIndex((e) => e.kind === 'dap' && e.message && e.message.event === 'output');
+      if (output >= 0) { this.queue.splice(output, 1); this.droppedOutput += 1; } else this.queue.shift();
+    }
     this.waiters.splice(0).forEach((wake) => wake());
   }
 
@@ -243,7 +248,9 @@ class Relay {
     const events = this.queue.filter((e) => e.seq > since).slice(0, 500);
     return {
       events, next: events.length ? events[events.length - 1].seq : Math.min(since, this.seq), latest: this.seq,
-      dropped: this.queue.length > 0 && this.queue[0].seq > since + 1 && since < this.seq,
+      dropped: this.queue.length > 0 && this.queue[0].seq > since + 1 && since < this.seq
+        && !(this.queue[0].kind === 'dap' && this.droppedOutput > 0),
+      dropped_output: this.droppedOutput,
     };
   }
 

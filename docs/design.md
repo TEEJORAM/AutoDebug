@@ -143,7 +143,9 @@ Events: `{seq, kind, ...}` with `kind`:
 {direction, message}: every event from the debugger, its responses to
 `initialize`, `setBreakpoints` and `setFunctionBreakpoints`, and the IDE's
 `setBreakpoints` / `setFunctionBreakpoints` requests (so the server can tell
-which breakpoints are bound). Output longer than 4000 characters is cut.
+which breakpoints are bound). Output longer than 4000 characters is cut. The
+extension keeps the last 5000 events; when it must drop some, it drops program
+output first (`dropped_output` counts them), so a stop or the end is never lost.
 
 The server turns these into the state the tools return:
 `{version, status, reason, location {file, line}, exit_code, message,

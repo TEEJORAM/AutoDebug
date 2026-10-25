@@ -48,7 +48,8 @@ class HarnessTest(unittest.TestCase):
                    HARNESS_BUILD_MINUTE_MS=getattr(self, "build_minute_ms", ""),
                    HARNESS_STACK_THROW=getattr(self, "stack_throw", ""),
                    HARNESS_SLOW_STACK=getattr(self, "slow_stack", ""),
-                   HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""))
+                   HARNESS_STOP_THEN_CONTINUE=getattr(self, "stop_then_continue", ""),
+                   HARNESS_FLOOD=getattr(self, "flood", ""))
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
@@ -475,6 +476,17 @@ class StopThenResume(HarnessTest):
         self.debugger._call("continue")
         time.sleep(0.3)
         self.assertEqual(self.debugger.wait(0.5)["status"], "running")
+
+
+class FloodedOutput(HarnessTest):
+    flood = "7000"  # more than the 5000 events the extension keeps
+
+    def test_heavy_output_never_pushes_out_the_stop(self):
+        _, result = self.approved()
+        self.assertEqual((result["status"], result["location"]), ("paused", "geometry.py:15"))
+        self.assertTrue(result["breakpoints"][0]["verified"])
+        self.assertIn("loading part 6999", self.debugger.connection.snapshot()["output"])
+        self.assertEqual(self.debugger.step("over")["location"], "geometry.py:12")
 
 
 class EditorBreakpoint(HarnessTest):

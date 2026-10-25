@@ -10,6 +10,7 @@ HARNESS_STEP_FAIL=1      step requests fail
 HARNESS_STACK_THROW=1    stackTrace fails
 HARNESS_SLOW_STACK=ms    stackTrace takes this long
 HARNESS_STOP_THEN_CONTINUE=1  continue reports a stop and at once a resume
+HARNESS_FLOOD=n          print n lines of output before the program reaches the loop
 """
 
 from __future__ import annotations
@@ -157,6 +158,8 @@ class Program:
                     self.event("breakpoint", {"reason": "changed", "breakpoint": {"id": bp["id"], "verified": True,
                                                                                   "line": bp["line"]}})
             self.event("process", {"name": "python", "systemProcessId": 4242})
+            for n in range(int(self.flag("HARNESS_FLOOD") or 0)):
+                self.event("output", {"category": "stdout", "output": f"loading part {n}\n"})
             self.run()
         self.after.append(go)
         return {}
