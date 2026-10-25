@@ -23,12 +23,18 @@ DEMO = ROOT / "examples" / "AutoDebugDemo"
 NODE = shutil.which("node")
 
 
-@unittest.skipIf(NODE is None, "needs Node.js")
-class HarnessTest(unittest.TestCase):
+class HarnessMixin:
+    """Runs a relay harness (the IDE stand-in) and drives it with the real Python tools.
+    Subclasses say which harness to run; the HARNESS_* flags work for every harness."""
+
     debugpy: str | None = None
     build_exit = 0
     debuggers = "debugpy"
     editor_bp = ""
+    start_defaults = {"launch_configuration": "Debug tests", "breakpoints": [{"file": "geometry.py", "line": 15}]}
+
+    def harness_command(self, bridges: Path, workspace: Path) -> list[str]:
+        return [NODE, str(ROOT / "tests" / "harness.js"), str(bridges), str(workspace)]
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -53,7 +59,7 @@ class HarnessTest(unittest.TestCase):
         if self.debugpy:
             env["HARNESS_DEBUGPY"] = self.debugpy
         self.lines: queue.Queue[str] = queue.Queue()
-        self.node = subprocess.Popen([NODE, str(ROOT / "tests" / "harness.js"), str(self.bridges), str(self.workspace)],
+        self.node = subprocess.Popen(self.harness_command(self.bridges, self.workspace),
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8", env=env)
         threading.Thread(target=lambda: [self.lines.put(l.rstrip("\n")) for l in self.node.stdout], daemon=True).start()
         self.addCleanup(self.stop_node)
@@ -93,8 +99,7 @@ class HarnessTest(unittest.TestCase):
         self.fail(f"harness never printed {prefix!r}")
 
     def start(self, **kwargs):
-        args = {"launch_configuration": "Debug tests", "breakpoints": [{"file": "geometry.py", "line": 15}],
-                "goal": "Find why moving a shape changes its area", "wait_seconds": 0.5, **kwargs}
+        args = {**self.start_defaults, "goal": "Find why moving a shape changes its area", "wait_seconds": 0.5, **kwargs}
         self.assertEqual(self.debugger.start_session(**args)["status"], "awaiting_approval")
         return json.loads(self.expect("DIALOG"))
 
@@ -106,6 +111,11 @@ class HarnessTest(unittest.TestCase):
         while result["status"] not in ("paused", "ended", "build_failed") and time.monotonic() < deadline:
             result = self.debugger.wait(30)
         return dialog, result
+
+
+@unittest.skipIf(NODE is None, "needs Node.js")
+class HarnessTest(HarnessMixin, unittest.TestCase):
+    pass
 
 
 class Extension(HarnessTest):

@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from autodebug.connection import Connection, DebugError, Window
+from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
 
 _LOG = logging.getLogger("autodebug")
 
@@ -260,12 +260,13 @@ class Session:
     def start(self, args: dict) -> dict:
         info = self._relay("info")
         platform = info.get("platform", sys.platform)
-        ide = "Cursor" if info.get("ide") == "cursor" else "VS Code"
+        ide = IDE_NAMES.get(info.get("ide"), "the IDE")
+        where = " in Visual Studio's startup project" if info.get("ide") == "visualstudio" else " in .vscode/launch.json"
         ws = self._relay("workspace", {"folder": args.get("folder")})
         folder = ws["folder"]
         found = next((c for c in ws.get("launch", []) if c.get("name") == args.get("launch")), None)
         if found is None:
-            raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}" in .vscode/launch.json')
+            raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}"{where}; see list_targets')
         launch = prepare_launch(found, args.get("process_id"), platform)
         types = info.get("debugger_types")
         if types is not None and launch.get("type") not in types:
@@ -278,7 +279,7 @@ class Session:
                                           " and reload the window.")
         tasks = [apply_platform(t, platform) for t in ws.get("tasks", [])]
         if args.get("task") and not any(t.get("label") == args["task"] for t in tasks):
-            raise DebugError("NOT_FOUND", f'no task labelled "{args["task"]}" in .vscode/tasks.json')
+            raise DebugError("NOT_FOUND", f'no build task labelled "{args["task"]}"; see list_targets')
         used = [t for label in (args.get("task"), launch.get("preLaunchTask"), launch.get("postDebugTask"))
                 for t in task_chain(label, tasks)]
         tokens = list(dict.fromkeys(token for t in used for token in substitutions(t)))

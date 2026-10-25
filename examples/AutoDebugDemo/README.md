@@ -97,5 +97,22 @@ cmake --build build
 ```
 
 Run `build\Debug\geometry.exe` on Windows (Visual Studio generator) or
-`build/geometry` on macOS/Linux. In Visual Studio use **File → Open → CMake...**
-on `cpp/CMakeLists.txt`; in CLion open the `cpp` folder.
+`build/geometry` on macOS/Linux. In CLion open the `cpp` folder.
+
+### With AutoDebug in Visual Studio
+
+After `autodebug setup visualstudio`, generate a Visual Studio solution and open it:
+
+```powershell
+cmake -S cpp -B build\vs
+start build\vs\AutoDebugDemo.sln
+```
+
+In Visual Studio, right-click **geometry** → **Set as Startup Project**, and keep
+the **Debug** configuration. Then ask the agent:
+
+> Use the autodebug tools to find why moving a shape changes its area in the C++
+> version: stop in polygon_area at cpp/geometry.cpp:16, trace total, and write a report.
+
+Click **Approve** in Visual Studio. The breakpoint is shown as not bound until
+the program has loaded; that is normal.

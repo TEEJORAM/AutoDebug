@@ -106,7 +106,7 @@ def same_folder(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
-IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code"}
+IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
 
 def version_problem(window: Window) -> DebugError:
@@ -117,7 +117,9 @@ def version_problem(window: Window) -> DebugError:
     found = (f"The {ide} window with {', '.join(window.folders)} open is running AutoDebug extension "
              f"{window.version or '(unknown version)'} (protocol {window.protocol}); this server is {__version__} "
              f"(protocol {PROTOCOL}).")
-    if window.protocol < PROTOCOL:
+    if window.protocol < PROTOCOL and window.ide == "visualstudio":
+        fix = " Ask the developer to run `autodebug setup visualstudio`, then restart Visual Studio."
+    elif window.protocol < PROTOCOL:
         fix = (f" Ask the developer to run `autodebug setup {window.ide}`, then in that window run Developer: Reload "
                f"Window, or quit and reopen {ide}. Restarting only the extension host keeps the old extension.")
     else:
@@ -136,8 +138,9 @@ def choose(windows: list[Window], folder: str | None) -> Window:
         if stale:
             raise version_problem(stale[0])
         where = f" with {folder} open" if folder else ""
-        raise DebugError("NO_WINDOW", f"no VS Code or Cursor window{where} is running the AutoDebug extension. "
-                                      "Open the project in the IDE; run `autodebug setup` if the extension is missing.")
+        raise DebugError("NO_WINDOW", f"no VS Code, Cursor or Visual Studio window{where} is running the AutoDebug "
+                                      "extension. Open the project in the IDE; run `autodebug setup` if the extension "
+                                      "is missing.")
     if len(matches) > 1:
         listed = "; ".join(f"{w.ide}: {', '.join(w.folders)}" for w in matches)
         raise DebugError("AMBIGUOUS_WINDOW", f"several windows match ({listed}); pass the workspace folder")

@@ -75,6 +75,22 @@ what to do next:
 `autodebug doctor` checks all of this. To update later: `git pull`, then run
 `setup` again.
 
+### Visual Studio 2022 or 2026
+
+Close Visual Studio, then:
+
+```powershell
+py -m autodebug setup visualstudio
+```
+
+This installs the AutoDebug extension in Visual Studio and adds the server to
+`%USERPROFILE%\.mcp.json` for Visual Studio's own agent mode (Copilot). Start
+Visual Studio, open your solution and set the startup project; View → Output →
+**AutoDebug** shows it is listening. Any agent can then debug it: Copilot in
+agent mode, or Cursor or Claude Code (`setup cursor` as above) with Visual
+Studio open. The startup project's debug settings become the launch
+configuration the agent picks, and **Approve** appears inside Visual Studio.
+
 ## Use it
 
 Open your project in the IDE and ask the agent (Agent mode), for example:

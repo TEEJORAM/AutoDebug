@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from autodebug.connection import IDE_NAMES
+
 import os
 import re
 import time
@@ -39,7 +41,7 @@ def _prose(text: object) -> str:
 def render(report: Report, now: float | None = None) -> str:
     stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(now or time.time()))
     plan = report.plan
-    ide = {"cursor": "Cursor", "vscode": "VS Code"}.get(plan.get("ide"), "IDE")
+    ide = IDE_NAMES.get(plan.get("ide"), "IDE")
     lines = [
         f"# {_prose(report.title)}",
         "",

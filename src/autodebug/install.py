@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -17,6 +18,8 @@ _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
 #: Earlier extension IDs to remove so two versions never run side by side.
 OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
 SERVER_NAME = "autodebug"
+#: Where CI publishes the Visual Studio extension package for each version.
+VS_RELEASE = "https://github.com/TEEJORAM/AutoDebug/releases/download/visualstudio-v{version}/AutoDebug.VisualStudio.vsix"
 
 
 def manifest() -> dict:
@@ -102,6 +105,39 @@ def install_extension(command: str, vsix: Path) -> subprocess.CompletedProcess:
                           timeout=300, check=False)
 
 
+# -- Visual Studio ----------------------------------------------------------------
+
+
+def vsix_installer() -> str | None:
+    """Visual Studio's own VSIXInstaller.exe, found with vswhere (installed with every VS 2017+)."""
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        return None
+    result = subprocess.run([str(vswhere), "-latest", "-prerelease", "-version", "[17.0,19.0)", "-property", "installationPath"],
+                            capture_output=True, text=True, timeout=60, check=False)
+    folder = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    installer = Path(folder) / "Common7" / "IDE" / "VSIXInstaller.exe"
+    return str(installer) if folder and installer.is_file() else None
+
+
+def download_vs_extension(version: str, folder: Path) -> Path:
+    """Download the Visual Studio extension package CI built for this version."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"AutoDebug.VisualStudio-{version}.vsix"
+    temporary = path.with_name(path.name + ".tmp")
+    with urllib.request.urlopen(VS_RELEASE.format(version=version), timeout=120) as response:  # noqa: S310 (fixed https URL)
+        temporary.write_bytes(response.read())
+    if not zipfile.is_zipfile(temporary):
+        temporary.unlink()
+        raise ValueError("the downloaded Visual Studio extension is not a .vsix package")
+    temporary.replace(path)
+    return path
+
+
+def install_vs_extension(installer: str, vsix: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([installer, "/quiet", str(vsix)], capture_output=True, text=True, timeout=600, check=False)
+
+
 # -- MCP configuration ------------------------------------------------------------
 
 
@@ -115,6 +151,8 @@ def server_entry(ide: str) -> dict:
 
 
 def config_file(ide: str, folder: str | None = None) -> Path:
+    if ide == "visualstudio":  # Visual Studio's agent mode: <solution>/.mcp.json or %USERPROFILE%\.mcp.json
+        return (Path(folder).expanduser().resolve() if folder else Path.home()) / ".mcp.json"
     if folder:
         return Path(folder).expanduser().resolve() / (".cursor" if ide == "cursor" else ".vscode") / "mcp.json"
     if ide == "cursor":

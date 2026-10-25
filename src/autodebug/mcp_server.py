@@ -20,7 +20,7 @@ PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 _LOG = logging.getLogger("autodebug")
 
 INSTRUCTIONS = """\
-AutoDebug runs the program under the IDE's own debugger (VS Code or Cursor) so you can find a bug's root cause.
+AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visual Studio) so you can find a bug's root cause.
 1. Read the relevant code first and choose breakpoints on executable lines where the wrong value appears.
 2. list_targets shows the launch configurations and build tasks; pick one.
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
@@ -62,11 +62,11 @@ TOOLS = {
         "breakpoints, launch the configuration under the debugger and wait for the first stop. Returns the status, "
         "location, local variables and every breakpoint (session or editor).",
         _schema({
-            "launch_configuration": {"type": "string", "description": "A name from .vscode/launch.json"},
+            "launch_configuration": {"type": "string", "description": "A launch configuration name from list_targets"},
             "breakpoints": {"type": "array", "items": _FILE_LINE, "maxItems": 50},
             "goal": {"type": "string", "description": "One sentence: what you are trying to find out"},
             "workspace_folder": _FOLDER,
-            "build_task": {"type": "string", "description": "A task label from .vscode/tasks.json to run first"},
+            "build_task": {"type": "string", "description": "A build task label from list_targets to run first"},
             "max_steps": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
             "max_minutes": {"type": "integer", "minimum": 1, "maximum": 480, "default": 30},
             "build_minutes": {"type": "integer", "minimum": 1, "maximum": 600, "default": 30},

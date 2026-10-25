@@ -14,11 +14,11 @@ autodebug  (Python)  ── tools, launch checks, session state from debugger ev
    │                     stack and variables, limits, redaction, timeline, report
    │  JSON lines over 127.0.0.1, token
    ▼
-AutoDebug extension  (in VS Code / Cursor)  ── a thin relay: Approve dialog, tasks,
-   │                                           breakpoints, start/stop, DAP passthrough
-   │  Debug Adapter Protocol
+AutoDebug extension  (VS Code / Cursor: JavaScript; Visual Studio: C#)
+   │   a thin relay: Approve dialog, builds, breakpoints, start/stop, debugger passthrough
+   │  Debug Adapter Protocol (VS Code, Cursor); Visual Studio's debugger automation
    ▼
-the language debugger (CodeLLDB, C/C++, gdb, debugpy, ...) ── your program
+the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ...) ── your program
 ```
 
 - **`autodebug` (Python 3.11+, no dependencies).** The MCP server the agent's
@@ -32,6 +32,11 @@ the language debugger (CodeLLDB, C/C++, gdb, debugpy, ...) ── your program
   Protocol requests, and reporting the session's events. It enforces the approval,
   the step and time limits, the approved folders and the request list on its own,
   so a fault in the server cannot widen what the developer approved.
+- **AutoDebug for Visual Studio (C#, no runtime dependencies).** The same relay
+  protocol for Visual Studio 2022 and 2026 (see "Visual Studio" below). Its
+  shared core (`visualstudio/Core`: connection, Approve gate, limits, events) has
+  no Visual Studio references, so a test harness runs it with plain .NET; only
+  `Extension/VsBackend.cs` talks to Visual Studio.
 
 ## Agent tools
 
@@ -169,6 +174,34 @@ updating the server when the extension is newer. `autodebug doctor` reports the
 same. The extension rewrites its connection file within 10 seconds if something
 deletes it while the window is open.
 
+## Visual Studio
+
+The C# relay answers the same operations as the JavaScript one, so the server
+treats Visual Studio like any other window (`ide: "visualstudio"`).
+
+- **Launch configurations** come from the solution's startup projects: one per
+  project, from its active configuration's debug settings (`LocalDebuggerCommand`,
+  `LocalDebuggerCommandArguments`, `LocalDebuggerWorkingDirectory`,
+  `LocalDebuggerEnvironment`, falling back to `TargetPath`), with `"type":
+  "visualstudio"`, `"engine": "native"`, `project` and `configuration`. Plus
+  **Attach to a process (native)**, which needs `process_id`. Build "tasks" are
+  `Build <project> (<configuration>)` and `Build solution (<configuration>)`.
+- **Approve** is a modal Visual Studio dialog (Deny is the default button). After
+  Approve the relay builds through Visual Studio's build, places the breakpoints
+  and starts exactly the configuration shown (`IVsDebugger4.LaunchDebugTargets4`
+  with the native engine; attach uses the same call with the process ID).
+- **Requests** map to Visual Studio's debugger automation: threads, stack frames
+  (`StackFrame2`), each frame's locals and their members (no expression is ever
+  evaluated, and values are never set), step over/into/out, go and break.
+  Frame and value references are valid until the program runs again.
+- **Events**: break mode becomes `stopped` (breakpoint, step, pause or
+  exception), run mode `continued`, design mode `exited` and `terminated`; the
+  debug engine's breakpoint-bound and binding-error events update which
+  breakpoints are bound, and its output-string events become `output`
+  (`OutputDebugString` only: a console program's own window is not captured).
+- **Not yet:** exception filters (none are offered) and `launch.vs.json` ("Open
+  Folder") projects.
+
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
@@ -183,5 +216,11 @@ reported by the agent), open questions.
 `autodebug setup cursor|vscode [FOLDER]` builds the extension package, installs
 it with the IDE's own `--install-extension`, and writes the MCP entry: Cursor's
 global `~/.cursor/mcp.json`, VS Code's user `mcp.json`, or `FOLDER`'s project
-file when a folder is given. `autodebug doctor` checks Python, the config files
+file when a folder is given.
+
+`autodebug setup visualstudio [FOLDER] [--vsix FILE]` finds Visual Studio with
+`vswhere`, installs the extension package with Visual Studio's `VSIXInstaller`
+(downloaded from the `visualstudio-v<version>` GitHub release that CI builds, or
+`--vsix`), and writes `%USERPROFILE%\.mcp.json` (or `FOLDER\.mcp.json`) for
+Visual Studio's own agent mode. `autodebug doctor` checks Python, the config files
 and running extension windows.

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
-from autodebug.connection import DebugError, Window, choose, discover
+from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
@@ -114,15 +114,16 @@ class Debugger:
             if result["exception"]["id"] != self._last_exception:
                 self._last_exception = result["exception"]["id"]
                 self._log("exception", result["exception"]["id"], result["exception"]["description"])
+        key = (status, where, raw.get("reason"))
+        changed, previous = key != self._last_status, self._last_status
+        if changed and previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
+            self._log("approved", "", "the developer clicked Approve")
         build = raw.get("build")
         if build and build.get("status") != "running" and build != self._last_build:
             self._last_build = build
             self._log("build", str(build.get("task")), f"{build.get('status')}, exit code {build.get('exit_code')}")
-        key = (status, where, raw.get("reason"))
-        if key != self._last_status:
-            previous, self._last_status = self._last_status, key
-            if previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
-                self._log("approved", "", "the developer clicked Approve")
+        if changed:
+            self._last_status = key
             if quiet and status == "paused":
                 pass
             elif status == "paused":
@@ -135,7 +136,7 @@ class Debugger:
             elif status in ("denied", "build_failed", "running"):
                 self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
         ide = self.connection.window.ide if self.connection else "IDE"
-        result["next"] = _NEXT.get(status, "").format(ide="Cursor" if ide == "cursor" else "VS Code")
+        result["next"] = _NEXT.get(status, "").format(ide=IDE_NAMES.get(ide, "IDE"))
         if status == "paused":
             result["variables"] = self._short_variables()
         return result

@@ -1,0 +1,62 @@
+name: Visual Studio extension
+
+# Builds the AutoDebug extension for Visual Studio 2022 / 2026 with MSBuild and the
+# VS SDK build tools. On main, publishes it as the release `visualstudio-v<version>`,
+# which `autodebug setup visualstudio` downloads.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build the extension package
+        run: msbuild src/autodebug/visualstudio/Extension/AutoDebug.VisualStudio.csproj -restore -p:Configuration=Release -v:minimal -nologo
+      - name: Check the package
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem -Recurse -Filter AutoDebug.VisualStudio.vsix src/autodebug/visualstudio/Extension/bin | Select-Object -First 1
+          if (-not $vsix) { throw "no .vsix was built" }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead($vsix.FullName).Entries.FullName
+          foreach ($needed in "extension.vsixmanifest", "AutoDebug.VisualStudio.dll", "AutoDebug.VisualStudio.pkgdef") {
+            if ($names -notcontains $needed) { throw "the package has no $needed (it has: $($names -join ', '))" }
+          }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $vsix.FullName out/AutoDebug.VisualStudio.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoDebug.VisualStudio
+          path: out/AutoDebug.VisualStudio.vsix
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: AutoDebug.VisualStudio
+          path: out
+      - name: Publish the release for this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/autodebug/__init__.py)
+          tag="visualstudio-v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" out/AutoDebug.VisualStudio.vsix --clobber
+          else
+            gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" \
+              --title "AutoDebug for Visual Studio $version" \
+              --notes "Install with: autodebug setup visualstudio (Visual Studio 2022 or 2026)."
+          fi

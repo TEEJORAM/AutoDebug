@@ -1,6 +1,7 @@
 name: AutoDebug test suite
 
-# Python tests, the extension core through the Node harness (Node is on the runners).
+# Python tests; the VS Code relay through the Node harness and the Visual Studio relay's
+# core through its .NET harness. A Windows job builds the Visual Studio extension.
 on:
   push:
   pull_request:
@@ -25,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Run the full unittest suite
         run: python .github/run_tests.py
       - name: Compile Python sources and tests

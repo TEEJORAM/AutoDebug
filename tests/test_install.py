@@ -122,6 +122,31 @@ class Config(unittest.TestCase):
         self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", out)
         self.assertIn("Developer: Reload Window", out)
 
+    def test_visual_studio_config_is_the_user_mcp_json(self):
+        path = install.write_config("visualstudio")
+        self.assertEqual(path, self.home / ".mcp.json")
+        entry = json.loads(path.read_text())["servers"]["autodebug"]
+        self.assertEqual((entry["type"], entry["args"]), ("stdio", ["-m", "autodebug", "serve"]))
+        project = self.home / "Blender"
+        self.assertEqual(install.write_config("visualstudio", str(project)), project.resolve() / ".mcp.json")
+
+    def test_setup_visualstudio_without_visual_studio_explains(self):
+        with mock.patch.object(install, "vsix_installer", return_value=None):
+            code, out = self.run_cli("setup", "visualstudio")
+        self.assertEqual(code, 1)
+        self.assertIn("could not find Visual Studio 2022 or 2026", out)
+        self.assertIn("added to", out)
+
+
+class VisualStudioPackage(unittest.TestCase):
+    def test_every_part_has_the_same_version(self):
+        from autodebug import __version__
+        source = Path(install.__file__).with_name("visualstudio")
+        self.assertIn(f'Version="{__version__}" Language', (source / "Extension" / "source.extension.vsixmanifest").read_text())
+        self.assertIn(f"<Version>{__version__}</Version>", (source / "Extension" / "AutoDebug.VisualStudio.csproj").read_text())
+        self.assertIn(f'Version = "{__version__}"', (source / "Core" / "RelayServer.cs").read_text())
+        self.assertIn(f"visualstudio-v{{version}}", install.VS_RELEASE)
+
 
 if __name__ == "__main__":
     unittest.main()
