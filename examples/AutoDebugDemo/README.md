@@ -105,11 +105,12 @@ After `autodebug setup visualstudio`, generate a Visual Studio solution and open
 
 ```powershell
 cmake -S cpp -B build\vs
-start build\vs\AutoDebugDemo.sln
+Invoke-Item (Get-Item build\vs\AutoDebugDemo.sln*)[0]
 ```
 
-In Visual Studio, right-click **geometry** → **Set as Startup Project**, and keep
-the **Debug** configuration. Then ask the agent:
+(Visual Studio 2026 writes `AutoDebugDemo.slnx`, 2022 `AutoDebugDemo.sln`.) The
+startup project is already **geometry**; keep the **Debug** configuration. Then
+ask the agent:
 
 > Use the autodebug tools to find why moving a shape changes its area in the C++
 > version: stop in polygon_area at cpp/geometry.cpp:16, trace total, and write a report.

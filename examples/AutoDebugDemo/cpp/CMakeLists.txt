@@ -6,3 +6,5 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug)  # keep symbols and line info for the debugger
 endif()
 add_executable(geometry geometry.cpp)
+# Visual Studio: start (and debug) geometry, not ALL_BUILD.
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT geometry)
