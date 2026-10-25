@@ -15,8 +15,9 @@ from xml.sax.saxutils import escape
 EXTENSION_DIR = Path(__file__).with_name("extension")
 _FILES = (("package.json", "package.json"), ("extension.js", "extension.js"),
           ("relay.js", "relay.js"), ("mcp.js", "mcp.js"), ("README.md", "readme.md"))
-#: Earlier extension IDs to remove so two versions never run side by side.
-OLD_EXTENSIONS = ("autodebug.autodebug-bridge",)
+#: Earlier extension IDs to remove so two versions never run side by side (the publisher was `autodebug`
+#: before the store publisher `SwagatTeejoram`).
+OLD_EXTENSIONS = ("autodebug.autodebug-bridge", "autodebug.autodebug")
 SERVER_NAME = "autodebug"
 #: MIT, as in the repository's LICENSE (kept here too: an installed package has no repository files).
 LICENSE_TEXT = """MIT License
