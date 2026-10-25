@@ -1,4 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <!-- The AutoDebug extension for Visual Studio 2022 and 2026: the relay's shared core
        (../Core) plus the Visual Studio backend. Build with MSBuild on Windows with the
        "Visual Studio extension development" workload, or let CI build it:
@@ -38,4 +39,12 @@
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.32112.339" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.0.5232" />
   </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <!-- The VS SDK's packaging targets (they make the .vsix): from the build tools package,
+       or from the Visual Studio installation. -->
+  <PropertyGroup>
+    <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+  </PropertyGroup>
+  <Import Project="$(VsSDKInstall)\Microsoft.VsSDK.targets" Condition="'$(VsSDKInstall)' != '' And Exists('$(VsSDKInstall)\Microsoft.VsSDK.targets')" />
+  <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="('$(VsSDKInstall)' == '' Or !Exists('$(VsSDKInstall)\Microsoft.VsSDK.targets')) And Exists('$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets')" />
 </Project>
