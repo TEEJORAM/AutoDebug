@@ -1,6 +1,7 @@
 name: Release
 
 # Publishes one AutoDebug version to every store when the tag v<version> is pushed
+# (v[0-9]*, so the visualstudio-v* test-build tags do not match)
 # (or by hand). A store is skipped until its account is connected:
 #   PyPI                       trusted publishing, GitHub environment "pypi"
 #   Open VSX (Cursor)          secret OVSX_TOKEN
@@ -8,7 +9,7 @@ name: Release
 #   Visual Studio Marketplace  secret VS_MARKETPLACE_PAT
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]*"]
   workflow_dispatch:
 
 permissions:
