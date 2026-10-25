@@ -95,8 +95,40 @@ class Config(unittest.TestCase):
         self.assertEqual(calls[0][:2], ["cursor", "--uninstall-extension"])
         self.assertEqual(calls[-1][:2], ["cursor", "--install-extension"])
         self.assertIn("extension installed in Cursor", out)
-        self.assertIn("Cursor Settings → MCP: turn on autodebug", out)
+        self.assertIn("Customize → MCPs → turn on autodebug", out)
         self.assertTrue((self.home / ".cursor" / "mcp.json").is_file())
+
+    def test_setup_alone_connects_everything_it_finds(self):
+        claude = self.home / ".claude.json"
+        claude.write_text(json.dumps({"numStartups": 7, "mcpServers": {"other": {"command": "x"}}}), encoding="utf-8")
+        project = self.home / "Demo"
+        project.mkdir()
+        with mock.patch.object(install, "ide_command", side_effect=lambda ide: "cursor" if ide == "cursor" else None), \
+                mock.patch.object(install, "vsix_installer", return_value=None), \
+                mock.patch.object(install.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+            code, out = self.run_cli("setup", "--no-install", str(project))
+        self.assertEqual(code, 0, out)
+        self.assertIn("for Cursor, Claude Code", out)
+        self.assertNotIn("VS Code", out)
+        data = json.loads(claude.read_text(encoding="utf-8"))
+        self.assertEqual(data["numStartups"], 7)  # Claude Code's own settings are kept
+        self.assertEqual(set(data["mcpServers"]), {"other"})  # a project folder was given: the entry goes there
+        self.assertEqual(json.loads((project.resolve() / ".mcp.json").read_text())["mcpServers"]["autodebug"]["args"],
+                         ["-m", "autodebug", "serve"])
+        self.assertTrue((project.resolve() / ".cursor" / "mcp.json").is_file())
+        self.assertTrue(install.has_agent_instructions(str(project)))
+        self.assertIn("Left for you:\n  1. Cursor: Developer: Reload Window", out)
+        code, out = self.run_cli("setup", "claude", "--no-install")
+        self.assertIn("autodebug", json.loads(claude.read_text(encoding="utf-8"))["mcpServers"])
+        self.assertIn("Nothing left to set up.", out)
+
+    def test_setup_finding_nothing_says_what_to_install(self):
+        with mock.patch.object(install, "ide_command", return_value=None), \
+                mock.patch.object(install, "vsix_installer", return_value=None), \
+                mock.patch.object(install, "claude_present", return_value=False):
+            code, out = self.run_cli("setup")
+        self.assertEqual(code, 1)
+        self.assertIn("found none of VS Code, Cursor", out)
 
     def test_setup_without_the_ide_command_explains_vsix(self):
         with mock.patch.object(install, "ide_command", return_value=None):

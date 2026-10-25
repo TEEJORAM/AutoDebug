@@ -266,6 +266,18 @@ reported by the agent), open questions.
 
 ## Setup
 
+Install: `pip install git+https://github.com/TEEJORAM/AutoDebug.git` (the
+standard-library build backend needs nothing else). `autodebug setup [FOLDER]`
+with no IDE named detects VS Code and Cursor (their command-line launchers),
+Visual Studio 2022/2026 (vswhere) and Claude Code (`claude` or its home files),
+connects each one as below, and ends with the one manual step per IDE that no
+file can do: reloading the VS Code / Cursor window, turning the server on in
+Cursor (Cursor 3 starts every new MCP server switched off), and ticking the
+tools for Copilot in Visual Studio (which starts MCP tools switched off). A
+FOLDER that is not an IDE name is the project folder. Claude Code gets the
+entry in `~/.claude.json` (or `FOLDER/.mcp.json`) under `mcpServers`, keeping
+its other settings.
+
 `autodebug setup cursor|vscode [FOLDER]` builds the extension package, installs
 it with the IDE's own `--install-extension`, and writes the MCP entry: Cursor's
 global `~/.cursor/mcp.json`, VS Code's user `mcp.json`, or `FOLDER`'s project

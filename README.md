@@ -1,148 +1,154 @@
 # AutoDebug
 
-Let your AI agent debug for real. AutoDebug gives the agent in **Cursor** or
-**VS Code** the IDE's own debugger: it builds, sets breakpoints, runs, steps
-through the code, reads variables, and writes a root-cause report into your
-project. Nothing runs until you click **Approve**.
+AutoDebug lets an AI agent debug your program with the debugger of **VS Code**,
+**Cursor** or **Visual Studio 2022/2026**: it builds, sets breakpoints, runs,
+steps, reads variables, and writes a root-cause report into your project.
+Nothing runs until you click **Approve** in the IDE.
 
-It is built for large C++ applications, where the core and the user interface
-are mostly C++: long builds, big binaries, many threads, deep call stacks, and
-code spread across shared libraries. Python works too, including Python
-embedded in a C++ application.
+Agents: Cursor's agent, Claude Code, GitHub Copilot (VS Code and Visual
+Studio), and any other agent that supports MCP or has a terminal.
 
 **Documentation:** [teejoram.github.io/AutoDebug](https://teejoram.github.io/AutoDebug/)
 
-```text
-You: "Help me debug this: moving a shape changes its area."
+## What you need
 
-Agent: reads the code → start_session (you click Approve) → builds, paused at cpp/geometry.cpp:16
-       → inspect points[3] → trace line 16: i = 0, 1, 2 → loop ends before the last edge
-       → root cause: the closing edge is never added → autodebug-reports/…-area-bug.md
-```
+- **Python 3.11 or newer** and **Git**.
+- One IDE, with the debugger for your language:
 
-## What makes it different
+| IDE | C++ | Python |
+|---|---|---|
+| VS Code | **C/C++** or **CodeLLDB** extension | **Python** and **Python Debugger** extensions |
+| Cursor | **CodeLLDB** extension (Microsoft's C/C++ debugger does not run in Cursor) | **Python** and **Python Debugger** extensions |
+| Visual Studio 2022 or 2026 | the **Desktop development with C++** workload | not supported yet |
 
-- **Investigates, then reports.** One call builds, launches and stops at the
-  first breakpoint. Each step tells the agent which variables changed. `trace`
-  collects values every time a line runs. `write_report` writes the problem, the
-  root cause, the fix and a timeline of everything the debugger showed.
-- **You stay in control.** Every debug session needs your click on **Approve**
-  in a dialog that shows the build command, the program, the breakpoints and the
-  limits. Step and time limits apply. The agent cannot evaluate code or change
-  variables, and secret-looking values are hidden from it.
-- **Local and locked.** The extension listens on 127.0.0.1 only, behind a
-  random token. No accounts, no cloud service, no dependencies.
-- **Your existing setup.** It uses the launch configurations and tasks in your
-  `.vscode` folder: CodeLLDB, the C/C++ debugger, gdb, debugpy, or any other
-  debugger your IDE runs.
+## Connect (about 2 minutes)
 
-## Set up (once)
+**1. Install AutoDebug.** If you use Visual Studio, close it first.
 
-You need **Python 3.11+** (AutoDebug's server runs on it), **Git**, and Cursor
-or VS Code with a debugger extension:
-
-- **C++ in Cursor:** **CodeLLDB**. Microsoft's C/C++ debugger does not run in Cursor.
-- **C++ in VS Code:** **C/C++** (Visual Studio debugger or gdb) or **CodeLLDB**.
-- **Python:** **Python** and **Python Debugger**.
-
-**Windows (PowerShell):**
+Windows (PowerShell):
 
 ```powershell
-git clone https://github.com/TEEJORAM/AutoDebug.git
-cd AutoDebug
-py -m pip install -e .
-py -m autodebug setup cursor
+py -m pip install git+https://github.com/TEEJORAM/AutoDebug.git
+py -m autodebug setup
 ```
 
-**macOS / Linux:**
+macOS / Linux:
 
 ```sh
-git clone https://github.com/TEEJORAM/AutoDebug.git
-cd AutoDebug
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-.venv/bin/python -m autodebug setup cursor
+python3 -m venv ~/.autodebug
+~/.autodebug/bin/python -m pip install git+https://github.com/TEEJORAM/AutoDebug.git
+~/.autodebug/bin/python -m autodebug setup
 ```
 
-Use `setup vscode` for VS Code. `setup` installs the AutoDebug extension and
-adds the `autodebug` MCP server to the IDE for all your projects. It then says
-what to do next:
+`setup` finds every IDE and agent on the computer and connects each one: it
+installs the AutoDebug extension (VS Code, Cursor, Visual Studio) and adds the
+`autodebug` MCP server (VS Code, Cursor, Visual Studio, Claude Code).
 
-1. In the IDE: Command Palette → **Developer: Reload Window**. The status bar shows **AutoDebug**.
-2. Cursor: **Cursor Settings → MCP** → turn on **autodebug**.
-   VS Code: Command Palette → **MCP: List Servers** → **autodebug** → **Start Server**.
+**2. Do the one step `setup` prints for your IDE:**
 
-`autodebug doctor` checks all of this, including the background AutoDebug
-service that keeps the debug session (it starts by itself and stops when idle). To update later: `git pull`, then run
-`setup` again.
+| IDE | Step |
+|---|---|
+| VS Code | Command Palette → **Developer: Reload Window**. If VS Code asks whether to trust or start the **autodebug** server, allow it. |
+| Cursor | Command Palette → **Developer: Reload Window**, then **Cursor Settings → Customize → MCPs → autodebug** → turn it on. Cursor starts every new MCP server switched off. |
+| Visual Studio | Start it and open your solution. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: in the chat, **Tools** → tick **autodebug**. |
+| Claude Code | Nothing. Start a new session. |
 
-### Visual Studio 2022 or 2026
+**3. Check:** `py -m autodebug doctor` (macOS / Linux: `~/.autodebug/bin/python -m autodebug doctor`).
+It lists the connected IDEs, the open IDE windows and what to fix.
 
-Close Visual Studio, then:
+**Optional, per project:** `py -m autodebug setup C:\path\to\project` also
+writes an AutoDebug section into the project's `AGENTS.md`. Agents read it and
+use the terminal when their app hides the MCP tools (see below).
 
-```powershell
-py -m autodebug setup visualstudio
-```
+## Which agent debugs in which IDE
 
-This installs the AutoDebug extension in Visual Studio and adds the server to
-`%USERPROFILE%\.mcp.json` for Visual Studio's own agent mode (Copilot). Start
-Visual Studio, open your solution and set the startup project; View → Output →
-**AutoDebug** shows it is listening. Any agent can then debug it: Copilot in
-agent mode, or Cursor or Claude Code (`setup cursor` as above) with Visual
-Studio open. The startup project's debug settings become the launch
-configuration the agent picks, and **Approve** appears inside Visual Studio.
-When another IDE is open too, name Visual Studio in the prompt ("use the Visual
-Studio window", `ide: visualstudio`). For a CMake build such as Blender's, paths
-are relative to the source folder, not the build folder.
+The agent and the IDE are separate. Any connected agent can debug in any IDE
+window that runs the AutoDebug extension:
 
-## Use it
+- **Cursor's agent** debugs in Cursor, VS Code or Visual Studio.
+- **Claude Code** debugs in VS Code, Cursor or Visual Studio.
+- **Copilot** debugs in VS Code (agent mode), or in Visual Studio (agent mode).
 
-Open your project in the IDE and ask the agent (Agent mode), for example:
+When windows of more than one IDE are open, name the IDE in the prompt, for
+example "use the Visual Studio window".
+
+## Debug
+
+Open the project in the IDE and ask the agent, for example:
 
 > The app crashes when I delete the last item in a list. Use the autodebug
 > tools: build the Debug configuration, stop where the item is removed, find
 > the root cause and write a report.
 
-Click **Approve** when the IDE asks.
+1. The IDE shows the **Approve** dialog with the goal, the build, the program,
+   the breakpoints and the limits. Click **Approve** within 2 minutes.
+2. The agent builds, stops at the breakpoints, steps and traces.
+3. The report is written to `autodebug-reports/` in the project folder.
 
-**When the agent cannot see the autodebug tools.** Some apps drop MCP tools from
-a chat now and then (Cursor does this without an error). The agent can then use
-the same tools, in the same session, from its terminal. Tell it once per project:
+Try it first on [examples/AutoDebugDemo](examples/AutoDebugDemo/README.md):
+the same bug in C++ and Python.
 
-```powershell
-py -m autodebug agents C:\path\to\your\project
-```
+## When the agent cannot see the autodebug tools
 
-This writes an AutoDebug section into the project's `AGENTS.md` (read by Cursor,
-Copilot and Codex; for Claude Code add the line `@AGENTS.md` to `CLAUDE.md`) with
-the exact command for your computer, for example:
+Some apps drop MCP tools from a chat without an error. The agent can then run
+the same tools in its terminal, in the same debug session:
 
 ```powershell
 py -m autodebug run list_targets ide=visualstudio
 py -m autodebug run help
 ```
 
-Try it on the sample project first:
-[examples/AutoDebugDemo](examples/AutoDebugDemo/README.md) has the same bug in
-C++ (**Debug C++ (CodeLLDB)**) and Python (**Debug tests**).
+`autodebug setup <project folder>` writes the exact command for your computer
+into the project's `AGENTS.md`, so the agent finds it by itself.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| The agent has no autodebug tools | Cursor: **Settings → Customize → MCPs → autodebug** → turn it on, then start a new chat. Visual Studio Copilot: **Tools** → tick **autodebug**. Any agent: it can use `autodebug run` (above). |
+| "No VS Code, Cursor or Visual Studio window is running the extension" | Open the project in the IDE. VS Code / Cursor: **Developer: Reload Window**; the status bar shows **AutoDebug**. Visual Studio: View → Output → **AutoDebug** says it is listening. |
+| No Approve dialog | Switch to the IDE window: the dialog opens there (in Visual Studio it stays on top of other windows). The agent reports "no answer within 2 minutes" when nobody answered. |
+| `NOT_BUILT` | The program has not been built. The agent retries with the build task it names. |
+| Visual Studio is open during setup | Close every Visual Studio window, then run `setup` again. |
+| No debugger for type "…" | Install that debugger extension in the IDE (table above) and reload the window. |
+
+## Update
+
+```powershell
+py -m pip install --force-reinstall git+https://github.com/TEEJORAM/AutoDebug.git
+py -m autodebug setup
+```
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `autodebug setup` | Connect every IDE and agent found. `setup cursor`, `vscode`, `visualstudio` or `claude` connects one; add a project folder for project-only entries and `AGENTS.md` |
+| `autodebug doctor [folder]` | Check the setup, the open IDE windows and the AutoDebug service |
+| `autodebug run <tool> key=value …` | Call a debugging tool from a terminal; `run help` lists them |
+| `autodebug serve` | The MCP server; the IDE or agent starts it |
+
+On Windows write `py -m autodebug`; on macOS / Linux `~/.autodebug/bin/python -m autodebug`.
 
 ## Agent tools
 
 | Tool | What it does |
 |---|---|
-| `list_targets` | Launch configurations and build tasks in the open project |
-| `start_session` | Approval, optional build, breakpoints, launch or attach; waits for the first stop |
+| `list_targets` | IDE windows, their launch configurations and build tasks |
+| `start_session` | Approval, build, breakpoints, launch or attach; waits for the first stop |
 | `wait` · `pause` · `stop_session` | Follow, interrupt or end the session. `wait` can `ask_developer` to reproduce a GUI step |
 | `step` | Over, into or out, 1–20 times, with the variables that changed |
-| `continue` | Run to the next stop and return it |
+| `continue` | Run to the next stop, or past other breakpoints to a line |
 | `inspect` · `stack` · `threads` | Variables (including nested paths), the call stack, and threads |
 | `breakpoints` · `exceptions` | Source and function breakpoints; exception filters |
 | `trace` | Collect variables every time a line runs |
-| `write_report` | Root-cause report in `autodebug-reports/` with an automatic timeline |
+| `write_report` | Root-cause report in `autodebug-reports/` with a timeline of the session |
 
-How it works, the protocol and the limits: [docs/design.md](docs/design.md).
+The agent cannot evaluate expressions or change variables, and secret-looking
+values are hidden from it. AutoDebug listens on 127.0.0.1 only, with a token.
+How it works: [docs/design.md](docs/design.md).
 
-## Large C++ applications
+## Large C++ programs
 
 **Build with symbols.** Debug the `Debug` or `RelWithDebInfo` build; optimised
 builds without debug info show wrong lines and missing variables. Let the
@@ -212,9 +218,12 @@ PYTHONPATH=src python -m unittest discover -s tests
 ```
 
 All of AutoDebug's logic is Python (`src/autodebug`). The IDE extension is a
-small JavaScript relay (`src/autodebug/extension/relay.js`), because VS Code and
-Cursor run extensions only in JavaScript; it shows the Approve dialog and passes
-debugger requests and events through.
+small JavaScript relay (`src/autodebug/extension/relay.js`) for VS Code and
+Cursor, and a C# relay (`src/autodebug/visualstudio`) for Visual Studio. The
+relays show the Approve dialog and pass debugger requests and events through.
+
+To work on AutoDebug itself, clone the repository and install it editable:
+`py -m pip install -e .` (Windows) or `python3 -m pip install -e .`.
 
 Most tests run with Python alone. The relay tests need Node.js. The
 real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
