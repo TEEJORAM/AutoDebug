@@ -75,7 +75,7 @@ jobs:
           tag="visualstudio-v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" out/AutoDebug.VisualStudio.vsix --clobber
-            [ "$GITHUB_REF" = refs/heads/main ] && gh release edit "$tag" --prerelease=false --target "$GITHUB_SHA"
+            if [ "$GITHUB_REF" = refs/heads/main ]; then gh release edit "$tag" --prerelease=false --target "$GITHUB_SHA"; fi
           else
             flag=$([ "$GITHUB_REF" = refs/heads/main ] || echo --prerelease)
             gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" $flag \

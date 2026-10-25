@@ -90,6 +90,9 @@ Visual Studio, open your solution and set the startup project; View â†’ Output â
 agent mode, or Cursor or Claude Code (`setup cursor` as above) with Visual
 Studio open. The startup project's debug settings become the launch
 configuration the agent picks, and **Approve** appears inside Visual Studio.
+When another IDE is open too, name Visual Studio in the prompt ("use the Visual
+Studio window", `ide: visualstudio`). For a CMake build such as Blender's, paths
+are relative to the source folder, not the build folder.
 
 ## Use it
 
