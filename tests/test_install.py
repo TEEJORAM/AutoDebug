@@ -239,6 +239,8 @@ class License(unittest.TestCase):
                 self.assertEqual(vsix.read("extension/LICENSE.txt").decode(), install.LICENSE_TEXT)
                 self.assertIn("Content.License", vsix.read("extension.vsixmanifest").decode())
         self.assertEqual(install.manifest()["license"], "MIT")
+        self.assertEqual((root / "src" / "autodebug" / "visualstudio" / "Extension" / "LICENSE.txt").read_text(encoding="utf-8"),
+                         install.LICENSE_TEXT)
         self.assertIn("<License>LICENSE.txt</License>", (root / "src" / "autodebug" / "visualstudio" / "Extension"
                                                           / "source.extension.vsixmanifest").read_text())
 
