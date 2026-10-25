@@ -40,6 +40,12 @@ jobs:
           foreach ($needed in "extension.vsixmanifest", "AutoDebug.VisualStudio.dll", "AutoDebug.VisualStudio.pkgdef") {
             if ($names -notcontains $needed) { "::error::$($vsix.Name) has no $needed; it has: $($names -join ', ')"; exit 1 }
           }
+          $zip = [IO.Compression.ZipFile]::OpenRead($vsix.FullName)
+          $reader = New-Object IO.StreamReader($zip.GetEntry("AutoDebug.VisualStudio.pkgdef").Open())
+          $pkgdef = $reader.ReadToEnd(); $reader.Close(); $zip.Dispose()
+          foreach ($needed in "6b0f6a8e-1f7d-4c3a-9a51-2d3c8e7b4f10", "AutoLoadPackages") {
+            if ($pkgdef -notmatch [regex]::Escape($needed)) { "::error::the pkgdef does not register $needed"; exit 1 }
+          }
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $vsix.FullName out/AutoDebug.VisualStudio.vsix
       - uses: actions/upload-artifact@v4

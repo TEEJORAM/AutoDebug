@@ -23,6 +23,10 @@ using Microsoft.VisualStudio.Shell.Interop;
 using DteThread = EnvDTE.Thread;
 using Task = System.Threading.Tasks.Task;
 
+// Every Visual Studio object below is used inside OnMain (on the main thread) or in an event
+// handler Visual Studio calls on the main thread; the analyzer cannot see through OnMain.
+#pragma warning disable VSTHRD010
+
 namespace AutoDebug.VisualStudio
 {
     sealed class VsBackend : IBackend, IDebugEventCallback2, IDisposable
@@ -56,9 +60,9 @@ namespace AutoDebug.VisualStudio
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             var backend = new VsBackend(package);
-            backend.dte = (DTE2)await package.GetServiceAsync(typeof(DTE));
-            backend.debugger = (IVsDebugger)await package.GetServiceAsync(typeof(SVsShellDebugger));
-            var output = (IVsOutputWindow)await package.GetServiceAsync(typeof(SVsOutputWindow));
+            backend.dte = await package.GetServiceAsync(typeof(DTE)) as DTE2 ?? throw new InvalidOperationException("no DTE service");
+            backend.debugger = await package.GetServiceAsync(typeof(SVsShellDebugger)) as IVsDebugger ?? throw new InvalidOperationException("no debugger service");
+            var output = await package.GetServiceAsync(typeof(SVsOutputWindow)) as IVsOutputWindow ?? throw new InvalidOperationException("no output window");
             var guid = PaneGuid;
             output.CreatePane(ref guid, "AutoDebug", 1, 1);
             output.GetPane(ref guid, out backend.pane);
