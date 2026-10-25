@@ -7,24 +7,24 @@
 <meta name="description" content="AutoDebug lets an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio 2022/2026, after you click Approve, and write a root-cause report.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Lemon&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #1c2430;
-    --ink-soft: #4a5565;
-    --paper: #ffffff;
-    --panel: #f5f7f9;
-    --rule: #dce1e7;
-    --slate: #24303f;
-    --slate-text: #c9d2dc;
-    --slate-dim: #8e9bab;
+    --ink: #1d1d1b;
+    --ink-soft: #4b4a45;
+    --paper: #e6e4de;      /* cement */
+    --panel: #f1efea;      /* code, tables, notes: a lighter cement */
+    --rule: #c9c6bd;
+    --side: #000000;
+    --side-text: #d4d2cc;
+    --side-dim: #8d8a82;
     --breakpoint: #c4262e;
     --paused: #fff1a8;
-    --link: #1f5f9e;
-    --heading: "Lemon", "Arial Black", system-ui, sans-serif;
+    --link: #1b5a94;
+    --ok: #1f6b3a;
     --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
     --mono: "IBM Plex Mono", Consolas, "SFMono-Regular", monospace;
-    --sidebar: 17rem;
+    --sidebar: 16.5rem;
   }
   * { box-sizing: border-box; }
   button { font-family: inherit; }
@@ -36,46 +36,44 @@
   code, pre { font-family: var(--mono); font-size: 0.875em; }
   :not(pre) > code { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; padding: 0.05em 0.3em; }
 
-  /* Sidebar: the manual's table of contents */
-  .sidebar {
-    position: fixed; inset: 0 auto 0 0; width: var(--sidebar); overflow-y: auto;
-    background: var(--slate); color: var(--slate-text); padding: 1.75rem 1.5rem 2rem;
-  }
+  /* Sidebar: black */
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: var(--sidebar); overflow-y: auto; background: var(--side); color: var(--side-text); padding: 1.75rem 1.5rem 2rem; }
   .brand { display: flex; align-items: center; gap: 0.6rem; color: #fff; text-decoration: none; }
   .brand svg { flex: none; }
-  .brand span { font: 400 1.1rem/1 var(--heading); letter-spacing: 0.06em; }
-  .version { margin: 0.5rem 0 1.75rem; font-size: 0.875rem; color: var(--slate-dim); }
-  .sidebar nav p { margin: 1.4rem 0 0.35rem; font: 600 0.8125rem/1.3 var(--sans); color: var(--slate-dim); }
+  .brand span { font: 600 1.15rem/1 var(--sans); }
+  .version { margin: 0.5rem 0 1.75rem; font-size: 0.85rem; color: var(--side-dim); }
+  .sidebar nav p { margin: 1.4rem 0 0.35rem; font: 600 0.8125rem/1.3 var(--sans); color: var(--side-dim); }
   .sidebar ul { list-style: none; margin: 0; padding: 0; }
-  .sidebar li a { display: block; padding: 0.22rem 0 0.22rem 0.75rem; border-left: 2px solid transparent; color: var(--slate-text); text-decoration: none; font-size: 0.96rem; }
-  .sidebar li a:hover { color: #fff; border-left-color: var(--slate-dim); }
+  .sidebar li a { display: block; padding: 0.22rem 0 0.22rem 0.75rem; border-left: 2px solid transparent; color: var(--side-text); text-decoration: none; font-size: 0.95rem; }
+  .sidebar li a:hover { color: #fff; border-left-color: var(--side-dim); }
   .sidebar li a[aria-current="true"] { color: #fff; border-left-color: var(--breakpoint); }
-  .sidebar .repo { display: block; margin-top: 2rem; font-size: 0.9rem; color: var(--slate-text); }
+  .sidebar .repo { display: block; margin-top: 2rem; font-size: 0.9rem; color: var(--side-text); }
 
-  /* Reading column */
+  /* Reading column: cement */
   main { margin-left: var(--sidebar); }
-  .page { max-width: 47rem; padding: 3rem 3rem 4rem; }
-  h1, h2, h3 { font-family: var(--heading); font-weight: 400; line-height: 1.25; color: var(--ink); }
-  h1 { font-size: 2.5rem; margin: 0 0 0.75rem; letter-spacing: 0.04em; }
-  h2 { font-size: 1.55rem; margin: 3.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
-  h3 { font-size: 1.12rem; margin: 2.2rem 0 0.5rem; }
-  h2 a.anchor, h3 a.anchor { visibility: hidden; margin-left: 0.4rem; color: var(--slate-dim); text-decoration: none; font-weight: 500; }
+  .page { max-width: 48rem; padding: 3rem 3rem 4rem; }
+  h1, h2, h3, h4 { font-family: var(--sans); color: var(--ink); line-height: 1.25; }
+  h1 { font-size: 2.4rem; font-weight: 600; margin: 0 0 0.75rem; }
+  h2 { font-size: 1.6rem; font-weight: 600; margin: 3.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1.2rem; font-weight: 600; margin: 2.2rem 0 0.5rem; }
+  h4 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.4rem; }
+  h2 a.anchor, h3 a.anchor { visibility: hidden; margin-left: 0.4rem; color: var(--side-dim); text-decoration: none; font-weight: 500; }
   h2:hover a.anchor, h3:hover a.anchor, a.anchor:focus { visibility: visible; }
-  .lede { font: 400 1.2rem/1.6 var(--sans); color: var(--ink-soft); margin: 0 0 2rem; max-width: 38rem; }
-  p, li { max-width: 42rem; }
+  .lede { font: 400 1.18rem/1.6 var(--sans); color: var(--ink-soft); margin: 0 0 2rem; max-width: 40rem; }
+  p, li { max-width: 43rem; }
 
   /* Hero: the paused line */
-  .editor { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 0 0 1rem; background: var(--paper); }
+  .editor { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 0 0 1rem; background: #fbfaf7; }
   .editor-bar { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.9rem; background: var(--panel); border-bottom: 1px solid var(--rule); font: 400 0.85rem/1.4 var(--sans); color: var(--ink-soft); }
   .editor-bar strong { font-weight: 600; color: var(--ink); }
   .code { margin: 0; padding: 0.6rem 0; font: 400 0.9rem/1.7 var(--mono); overflow-x: auto; }
   .ln { display: grid; grid-template-columns: 1.6rem 2.2rem 1fr; align-items: center; padding-right: 1rem; white-space: pre; }
   .ln .gutter { display: flex; justify-content: center; }
-  .ln .num { color: #9aa4b1; text-align: right; padding-right: 1rem; }
+  .ln .num { color: #9a978e; text-align: right; padding-right: 1rem; }
   .ln.bp .gutter::before { content: ""; width: 0.62rem; height: 0.62rem; border-radius: 50%; background: var(--breakpoint); }
   .ln.here { background: var(--paused); }
   .ln.here .num { color: var(--ink); }
-  .kw { color: #7a3e9d; } .fn { color: #1f5f9e; } .cm { color: #6b7685; font-style: italic; } .nb { color: #a05a00; }
+  .kw { color: #7a3e9d; } .fn { color: #1b5a94; } .cm { color: #6b6a64; font-style: italic; } .nb { color: #a05a00; }
   .trace { border-top: 1px solid var(--rule); background: var(--panel); padding: 0.7rem 0.9rem 0.8rem; }
   .trace p { margin: 0 0 0.4rem; font-size: 0.875rem; color: var(--ink-soft); }
   .trace table { border-collapse: collapse; font: 400 0.85rem/1.5 var(--mono); width: 100%; }
@@ -88,42 +86,37 @@
 
   /* Steps: a real sequence, so numbered */
   ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
-  ol.steps > li { counter-increment: step; position: relative; padding-left: 2.6rem; margin-bottom: 1.1rem; }
-  ol.steps > li::before {
-    content: counter(step); position: absolute; left: 0; top: 0.05rem; width: 1.7rem; height: 1.7rem; border-radius: 50%;
-    border: 1px solid var(--ink); font: 600 0.9rem/1.6rem var(--sans); text-align: center;
-  }
+  ol.steps > li { counter-increment: step; position: relative; padding-left: 2.6rem; margin-bottom: 1rem; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0.05rem; width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 1px solid var(--ink); font: 600 0.9rem/1.6rem var(--sans); text-align: center; }
+  ol.steps p { margin: 0 0 0.4rem; }
 
   /* Code blocks with OS switch and copy */
-  .tabs { display: flex; gap: 0.25rem; margin: 1rem 0 -1px; }
-  .tabs button {
-    font: 600 0.9rem/1 var(--sans); color: var(--ink-soft); background: none; border: 1px solid transparent;
-    border-bottom: none; border-radius: 5px 5px 0 0; padding: 0.55rem 0.9rem; cursor: pointer;
-  }
+  .tabs { display: flex; gap: 0.25rem; margin: 1rem 0 -1px; flex-wrap: wrap; }
+  .tabs button { font: 600 0.9rem/1 var(--sans); color: var(--ink-soft); background: none; border: 1px solid transparent; border-bottom: none; border-radius: 5px 5px 0 0; padding: 0.55rem 0.9rem; cursor: pointer; }
   .tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); border-color: var(--rule); }
   .block { position: relative; margin: 0 0 1.25rem; }
-  .block pre { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 0 5px 5px 5px; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.6; }
+  .block pre { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 0 5px 5px 5px; padding: 0.9rem 5rem 0.9rem 1rem; overflow-x: auto; line-height: 1.6; }
   .block.plain pre { border-radius: 5px; }
-  .copy {
-    position: absolute; top: 0.45rem; right: 0.45rem; font: 600 0.8rem/1 var(--sans); color: var(--ink-soft);
-    background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.35rem 0.6rem; cursor: pointer;
-  }
+  .copy { position: absolute; top: 0.45rem; right: 0.45rem; font: 600 0.8rem/1 var(--sans); color: var(--ink-soft); background: #fbfaf7; border: 1px solid var(--rule); border-radius: 4px; padding: 0.35rem 0.6rem; cursor: pointer; }
   .copy:hover { color: var(--ink); border-color: var(--ink-soft); }
 
-  blockquote { margin: 1rem 0 1.5rem; padding: 0.2rem 0 0.2rem 1.1rem; border-left: 3px solid var(--breakpoint); font: italic 400 1.05rem/1.65 var(--sans); color: var(--ink); }
+  blockquote { margin: 1rem 0 1.5rem; padding: 0.2rem 0 0.2rem 1.1rem; border-left: 3px solid var(--breakpoint); font: italic 400 1.03rem/1.65 var(--sans); color: var(--ink); }
   .note { border: 1px solid var(--rule); border-left: 3px solid var(--link); background: var(--panel); padding: 0.8rem 1rem; border-radius: 0 5px 5px 0; margin: 1.25rem 0; }
   .note p { margin: 0; }
+  .note p + p { margin-top: 0.5rem; }
 
-  table.ref { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.98rem; }
-  table.ref th, table.ref td { text-align: left; vertical-align: top; padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
-  table.ref th { font: 600 0.92rem/1.4 var(--sans); color: var(--ink-soft); }
-  table.ref td:first-child code { white-space: nowrap; }
+  table.ref { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.97rem; background: var(--panel); border: 1px solid var(--rule); }
+  table.ref th, table.ref td { text-align: left; vertical-align: top; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); }
+  table.ref th { font: 600 0.9rem/1.4 var(--sans); color: var(--ink-soft); }
   table.ref td:first-child { width: 30%; }
-  table.ref.wide td:first-child { width: 22%; }
+  table.ref td:first-child code { white-space: nowrap; }
+  .status { font-weight: 600; white-space: nowrap; }
+  .status.live { color: var(--ok); }
+  .status.planned { color: var(--ink-soft); }
 
-  dl.facts { display: grid; grid-template-columns: 12rem 1fr; gap: 0.6rem 1.5rem; margin: 1rem 0; }
-  dl.facts dt { font: 600 1rem/1.5 var(--sans); }
-  dl.facts dd { margin: 0; }
+  /* One section per IDE */
+  .ide { border-top: 2px solid var(--ink); margin-top: 3.5rem; padding-top: 0.25rem; }
+  .ide > h2 { border-bottom: none; margin-top: 0.75rem; }
 
   footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); font-size: 0.9rem; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 
@@ -133,12 +126,10 @@
     .sidebar nav, .sidebar .repo, .version { display: none; }
     .sidebar.open nav, .sidebar.open .repo { display: block; }
     .sidebar .top { display: flex; justify-content: space-between; align-items: center; }
-    .menu { display: inline-block; font: 600 0.9rem/1 var(--sans); color: #fff; background: none; border: 1px solid var(--slate-dim); border-radius: 4px; padding: 0.45rem 0.7rem; cursor: pointer; }
+    .menu { display: inline-block; font: 600 0.9rem/1 var(--sans); color: #fff; background: none; border: 1px solid var(--side-dim); border-radius: 4px; padding: 0.45rem 0.7rem; cursor: pointer; }
     main { margin-left: 0; }
-    .page { padding: 2rem 1.25rem 3rem; }
-    h1 { font-size: 2.2rem; }
-    dl.facts { grid-template-columns: 1fr; gap: 0.2rem; }
-    dl.facts dd { margin-bottom: 0.8rem; }
+    .page { padding: 2rem 1rem 3rem; }
+    h1 { font-size: 2.1rem; }
     table.ref { display: block; overflow-x: auto; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -152,39 +143,37 @@
   <div class="top">
     <a class="brand" href="#top" aria-label="AutoDebug home">
       <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-        <rect x="1" y="1" width="24" height="24" rx="4" fill="none" stroke="#c9d2dc" stroke-width="1.5"/>
-        <path d="M6 9h14M6 13h9M6 17h11" stroke="#8e9bab" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="1" y="1" width="24" height="24" rx="4" fill="none" stroke="#d4d2cc" stroke-width="1.5"/>
+        <path d="M6 9h14M6 13h9M6 17h11" stroke="#8d8a82" stroke-width="1.5" stroke-linecap="round"/>
         <rect x="4.5" y="11.2" width="17" height="3.6" rx="1" fill="#fff1a8" opacity=".9"/>
-        <path d="M6 13h9" stroke="#24303f" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M6 13h9" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
         <circle cx="21" cy="13" r="2.3" fill="#c4262e"/>
       </svg>
       <span>AutoDebug</span>
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
-  <p class="version">Version 0.5.1 · VS Code, Cursor, Visual Studio 2022/2026</p>
+  <p class="version">Version 0.5.1 · MIT License</p>
   <nav aria-label="Contents">
-    <p>Connect</p>
+    <p>Start</p>
     <ul>
       <li><a href="#what">What it is</a></li>
-      <li><a href="#need">What you need</a></li>
-      <li><a href="#connect">Connect in 2 minutes</a></li>
-      <li><a href="#per-ide">Steps per IDE</a></li>
-      <li><a href="#agents">Which agent, which IDE</a></li>
+      <li><a href="#get">Where to get it</a></li>
+      <li><a href="#install">Install</a></li>
     </ul>
-    <p>Use</p>
+    <p>Connect and debug</p>
     <ul>
-      <li><a href="#debug">Debug</a></li>
-      <li><a href="#approve">The Approve dialog</a></li>
-      <li><a href="#terminal">No tools in the chat</a></li>
-      <li><a href="#reports">Reports</a></li>
+      <li><a href="#vscode">VS Code</a></li>
+      <li><a href="#cursor">Cursor</a></li>
+      <li><a href="#visualstudio">Visual Studio 2022 / 2026</a></li>
+      <li><a href="#claude">Claude Code</a></li>
     </ul>
     <p>Reference</p>
     <ul>
+      <li><a href="#safety">Debug safely</a></li>
+      <li><a href="#terminal">No tools in the chat</a></li>
       <li><a href="#troubleshooting">Troubleshooting</a></li>
       <li><a href="#commands">Commands</a></li>
-      <li><a href="#tools">Agent tools</a></li>
-      <li><a href="#how-it-works">How it works and safety</a></li>
     </ul>
   </nav>
   <a class="repo" href="https://github.com/TEEJORAM/AutoDebug">Source on GitHub</a>
@@ -229,99 +218,151 @@
     <li><strong>Languages:</strong> whatever the IDE's debugger runs: C++ and Python in VS Code and Cursor; C++ in Visual Studio.</li>
   </ul>
 
-  <h2 id="need">What you need <a class="anchor" href="#need" aria-label="Link to this section">#</a></h2>
-  <p>Python 3.11 or newer, Git, and one IDE with the debugger for your language:</p>
-  <table class="ref wide">
-    <thead><tr><th>IDE</th><th>C++</th><th>Python</th></tr></thead>
+  <h2 id="get">Where to get it <a class="anchor" href="#get" aria-label="Link to this section">#</a></h2>
+  <table class="ref">
+    <thead><tr><th>Store</th><th>What</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>VS Code</td><td><strong>C/C++</strong> or <strong>CodeLLDB</strong> extension</td><td><strong>Python</strong> and <strong>Python Debugger</strong> extensions</td></tr>
-      <tr><td>Cursor</td><td><strong>CodeLLDB</strong> extension (Microsoft's C/C++ debugger does not run in Cursor)</td><td><strong>Python</strong> and <strong>Python Debugger</strong> extensions</td></tr>
-      <tr><td>Visual Studio 2022 or 2026</td><td>the <strong>Desktop development with C++</strong> workload</td><td>not supported yet</td></tr>
+      <tr><td><a href="https://pypi.org/project/autodebug/">PyPI</a></td><td><code>autodebug</code>: the Python program and <code>autodebug setup</code>. Every IDE starts here.</td><td><span class="status live">Available</span></td></tr>
+      <tr><td><a href="https://open-vsx.org/extension/SwagatTeejoram/autodebug">Open VSX</a></td><td>The extension <code>SwagatTeejoram.autodebug</code>, which Cursor installs and updates from.</td><td><span class="status live">Available</span></td></tr>
+      <tr><td>VS Code Marketplace</td><td>The same extension for VS Code. Until then, <code>autodebug setup</code> installs it.</td><td><span class="status planned">Planned</span></td></tr>
+      <tr><td>Visual Studio Marketplace</td><td>The Visual Studio extension. Until then, <code>autodebug setup</code> installs it from the GitHub release.</td><td><span class="status planned">Planned</span></td></tr>
     </tbody>
   </table>
 
-  <h2 id="connect">Connect in 2 minutes <a class="anchor" href="#connect" aria-label="Link to this section">#</a></h2>
-  <ol class="steps">
-    <li>
-      <p>If you use Visual Studio, close it. Then install AutoDebug and run <code>setup</code>:</p>
-      <div class="tabs" role="tablist" aria-label="Operating system">
-        <button type="button" role="tab" id="tab-win" aria-controls="os-win" aria-selected="true">Windows</button>
-        <button type="button" role="tab" id="tab-unix" aria-controls="os-unix" aria-selected="false">macOS and Linux</button>
-      </div>
-      <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>py -m pip install git+https://github.com/TEEJORAM/AutoDebug.git
-py -m autodebug setup</pre></div>
-      <div class="block" id="os-unix" role="tabpanel" aria-labelledby="tab-unix" hidden><pre>python3 -m venv ~/.autodebug
-~/.autodebug/bin/python -m pip install git+https://github.com/TEEJORAM/AutoDebug.git
-~/.autodebug/bin/python -m autodebug setup</pre></div>
-      <p><code>setup</code> finds every IDE and agent on the computer. It installs the AutoDebug extension in VS Code, Cursor and Visual Studio, and adds the <code>autodebug</code> MCP server to VS Code, Visual Studio and Claude Code. In Cursor the extension registers the server itself.</p>
-    </li>
-    <li><p>Do the one step <code>setup</code> prints for your IDE. They are listed under <a href="#per-ide">Steps per IDE</a>.</p></li>
-    <li><p>Check with <code>py -m autodebug doctor</code> (macOS and Linux: <code>~/.autodebug/bin/python -m autodebug doctor</code>). It lists the connected IDEs, the open IDE windows and anything to fix.</p></li>
-  </ol>
-  <div class="note"><p>Optional, per project: <code>py -m autodebug setup C:\path\to\project</code> also writes an AutoDebug section into the project's <code>AGENTS.md</code>, so agents know the terminal command when their app hides the MCP tools.</p></div>
+  <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
+  <p>You need Python 3.11 or newer. If you use Visual Studio, close it first. Then, in a terminal:</p>
+  <div class="tabs" role="tablist" aria-label="Operating system">
+    <button type="button" role="tab" id="tab-win" aria-controls="os-win" aria-selected="true">Windows</button>
+    <button type="button" role="tab" id="tab-mac" aria-controls="os-mac" aria-selected="false">macOS</button>
+    <button type="button" role="tab" id="tab-linux" aria-controls="os-linux" aria-selected="false">Linux</button>
+  </div>
+  <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install autodebug
+autodebug setup</pre></div>
+  <div class="block" id="os-mac" role="tabpanel" aria-labelledby="tab-mac" hidden><pre>brew install pipx
+pipx ensurepath
+pipx install autodebug
+autodebug setup</pre></div>
+  <div class="block" id="os-linux" role="tabpanel" aria-labelledby="tab-linux" hidden><pre>sudo apt install pipx
+pipx ensurepath
+pipx install autodebug
+autodebug setup</pre></div>
+  <p>After <code>pipx ensurepath</code>, open a new terminal before the last two lines. <code>autodebug setup</code> finds VS Code, Cursor, Visual Studio and Claude Code on the computer, connects each one, and prints the few steps left for you. They are in the IDE sections below. <code>autodebug doctor</code> checks everything at any time.</p>
+  <p>To update later: <code>pipx upgrade autodebug</code>, then <code>autodebug setup</code> again.</p>
 
-  <h2 id="per-ide">Steps per IDE <a class="anchor" href="#per-ide" aria-label="Link to this section">#</a></h2>
-  <h3 id="vscode">VS Code</h3>
+  <section class="ide" aria-labelledby="vscode">
+  <h2 id="vscode">VS Code <a class="anchor" href="#vscode" aria-label="Link to this section">#</a></h2>
+  <h3>Before you start</h3>
+  <ul>
+    <li>C++: the <strong>C/C++</strong> extension or <strong>CodeLLDB</strong>. Python: <strong>Python</strong> and <strong>Python Debugger</strong>.</li>
+    <li>A launch configuration that debugs your program in <code>.vscode/launch.json</code>, and optionally a build task in <code>.vscode/tasks.json</code>. If you can start it with F5, AutoDebug can run it.</li>
+  </ul>
+  <h3>Connect</h3>
   <ol class="steps">
-    <li><p>Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.</p></li>
-    <li><p>If VS Code asks whether to trust or start the <strong>autodebug</strong> server, allow it.</p></li>
+    <li><p>Run <code>autodebug setup</code> (see <a href="#install">Install</a>). It installs the extension and adds the <code>autodebug</code> server to VS Code.</p></li>
+    <li><p>Command Palette → <strong>Developer: Reload Window</strong>. The status bar now shows <strong>AutoDebug</strong>.</p></li>
+    <li><p>Open the Copilot chat in <strong>Agent</strong> mode. In its tools list, make sure <strong>autodebug</strong> is ticked. If VS Code asks whether to trust or start the server, allow it.</p></li>
   </ol>
-  <h3 id="cursor">Cursor</h3>
+  <h3>Check</h3>
+  <p><code>autodebug doctor</code> lists a <strong>VS Code window open</strong> line with your project folder.</p>
+  <h3>Debug</h3>
   <ol class="steps">
-    <li><p>Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.</p></li>
+    <li><p>Ask the agent, for example:</p>
+      <blockquote>Use the autodebug tools to find why moving a shape changes its area. Build first, stop in polygon_area, trace total, and write a report.</blockquote></li>
+    <li><p>VS Code shows the <strong>Approve</strong> dialog. Read it (see <a href="#safety">Debug safely</a>) and click <strong>Approve</strong> within 2 minutes.</p></li>
+    <li><p>The agent builds, stops, steps and traces. The report is written to <code>autodebug-reports/</code> in the project.</p></li>
+  </ol>
+  <div class="note"><p>Cursor's agent and Claude Code can debug in a VS Code window too. Name it in the prompt when another IDE is open: "use the VS Code window".</p></div>
+  </section>
+
+  <section class="ide" aria-labelledby="cursor">
+  <h2 id="cursor">Cursor <a class="anchor" href="#cursor" aria-label="Link to this section">#</a></h2>
+  <h3>Before you start</h3>
+  <ul>
+    <li>C++: <strong>CodeLLDB</strong>. Microsoft's C/C++ debugger does not run in Cursor. Python: <strong>Python</strong> and <strong>Python Debugger</strong>.</li>
+    <li>A launch configuration in <code>.vscode/launch.json</code> (Cursor reads the same files as VS Code).</li>
+  </ul>
+  <h3>Connect</h3>
+  <ol class="steps">
+    <li><p>Run <code>autodebug setup</code>. It installs the extension; Cursor keeps it updated from Open VSX.</p></li>
+    <li><p>Command Palette → <strong>Developer: Reload Window</strong>, in every Cursor window. The status bar shows <strong>AutoDebug</strong>.</p></li>
     <li><p>Nothing to turn on: the extension registers the server with Cursor itself. <strong>Cursor Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot.</p></li>
-    <li><p>Start a new chat. A chat that was already open does not get the tools.</p></li>
+    <li><p>Start a <strong>new</strong> chat in Agent mode. A chat that was already open does not get the tools.</p></li>
   </ol>
-  <h3 id="visualstudio">Visual Studio 2022 and 2026</h3>
+  <h3>Check</h3>
+  <p><code>autodebug doctor</code> lists a <strong>Cursor window open</strong> line. If it says an <code>mcp.json</code> entry "still starts autodebug", run <code>autodebug setup cursor</code>: an old entry makes Cursor show the server switched off.</p>
+  <h3>Debug</h3>
   <ol class="steps">
-    <li><p>Start Visual Studio and open your solution. View → Output → <strong>AutoDebug</strong> says it is listening.</p></li>
-    <li><p>Set the startup project and choose the <strong>Debug</strong> configuration. Its debug settings become the launch configuration the agent uses. For a CMake project, paths are relative to the CMake source folder.</p></li>
-    <li><p>For Copilot in Visual Studio only: in the chat, <strong>Tools</strong> → tick <strong>autodebug</strong>. Visual Studio starts MCP tools switched off. Cursor's agent and Claude Code need nothing more.</p></li>
+    <li><p>Ask the agent in the new chat, for example:</p>
+      <blockquote>Use the autodebug tools with launch configuration "Debug C++ (CodeLLDB)". Find why moving a shape changes its area and write a report.</blockquote></li>
+    <li><p>Cursor shows the <strong>Approve</strong> dialog in its window. Click <strong>Approve</strong> within 2 minutes.</p></li>
+    <li><p>The report is written to <code>autodebug-reports/</code> in the project.</p></li>
   </ol>
-  <h3 id="claude">Claude Code</h3>
-  <p>Nothing. <code>setup</code> adds the server to <code>~/.claude.json</code>; start a new Claude Code session.</p>
+  <div class="note"><p>Cursor's agent can also debug in Visual Studio: open the solution there and say "use the Visual Studio window (ide: visualstudio)".</p></div>
+  </section>
 
-  <h2 id="agents">Which agent, which IDE <a class="anchor" href="#agents" aria-label="Link to this section">#</a></h2>
-  <p>The agent and the IDE are separate. Any connected agent can debug in any IDE window that runs the AutoDebug extension. Cursor's agent can debug a C++ program in Visual Studio, and Claude Code can debug in Cursor.</p>
-  <table class="ref wide">
-    <thead><tr><th>Agent</th><th>Debugs in</th></tr></thead>
-    <tbody>
-      <tr><td>Cursor's agent</td><td>Cursor, VS Code, Visual Studio</td></tr>
-      <tr><td>Claude Code</td><td>VS Code, Cursor, Visual Studio</td></tr>
-      <tr><td>Copilot in VS Code</td><td>VS Code, Cursor, Visual Studio</td></tr>
-      <tr><td>Copilot in Visual Studio</td><td>Visual Studio, VS Code, Cursor</td></tr>
-    </tbody>
-  </table>
-  <p>When windows of more than one IDE are open, name the IDE in the prompt, for example "use the Visual Studio window".</p>
+  <section class="ide" aria-labelledby="visualstudio">
+  <h2 id="visualstudio">Visual Studio 2022 / 2026 <a class="anchor" href="#visualstudio" aria-label="Link to this section">#</a></h2>
+  <h3>Before you start</h3>
+  <ul>
+    <li>The <strong>Desktop development with C++</strong> workload. C++ only; Python in Visual Studio is not supported yet.</li>
+    <li>A solution whose startup project runs your program. For CMake, generate one first, for example <code>cmake -S . -B build\vs</code>.</li>
+  </ul>
+  <h3>Connect</h3>
+  <ol class="steps">
+    <li><p>Close every Visual Studio window, then run <code>autodebug setup</code>. It installs the extension and adds the server for Copilot in Visual Studio.</p></li>
+    <li><p>Start Visual Studio and open the solution. <strong>View → Output</strong>, choose <strong>AutoDebug</strong>: it says it is listening.</p></li>
+    <li><p>Set the <strong>startup project</strong> and the <strong>Debug</strong> configuration. Their debug settings become the launch configuration the agent sees, for example <code>geometry (Debug|x64)</code>.</p></li>
+    <li><p>Pick the agent:</p>
+      <ul>
+        <li><strong>Cursor's agent or Claude Code:</strong> nothing more to do.</li>
+        <li><strong>Copilot in Visual Studio:</strong> in the chat, <strong>Tools</strong> → tick <strong>autodebug</strong>. Visual Studio starts MCP tools switched off.</li>
+      </ul></li>
+  </ol>
+  <h3>Check</h3>
+  <p><code>autodebug doctor</code> lists a <strong>Visual Studio window open</strong> line with the solution's folder.</p>
+  <h3>Debug</h3>
+  <ol class="steps">
+    <li><p>Ask the agent, and name Visual Studio when Cursor or VS Code is open too:</p>
+      <blockquote>Use the autodebug tools with the Visual Studio window (ide: visualstudio) and launch configuration "geometry (Debug|x64)". Build first, stop at geometry.cpp line 16, trace total, and write a report.</blockquote></li>
+    <li><p>The <strong>Approve</strong> dialog opens on top of your other windows. Click <strong>Approve</strong> within 2 minutes; unanswered, it closes and nothing runs.</p></li>
+    <li><p>Visual Studio builds and starts the program. A breakpoint shows as not bound until the program has loaded; that is normal.</p></li>
+  </ol>
+  <div class="note"><p>For a CMake project, paths are relative to the CMake source folder (<code>geometry.cpp</code>, not <code>cpp/geometry.cpp</code>). If the agent reports <code>NOT_BUILT</code>, the program has not been built yet; it retries with the build task it names.</p></div>
+  </section>
 
-  <h2 id="debug">Debug <a class="anchor" href="#debug" aria-label="Link to this section">#</a></h2>
-  <p>Open the project in the IDE and ask the agent, for example:</p>
-  <blockquote>The app crashes when I delete the last item in a list. Use the autodebug tools: build the Debug configuration, stop where the item is removed, find the root cause and write a report.</blockquote>
-  <p>Try it first on <code>examples/AutoDebugDemo</code> in the repository: moving a shape changes its area, in C++ and in Python.</p>
+  <section class="ide" aria-labelledby="claude">
+  <h2 id="claude">Claude Code <a class="anchor" href="#claude" aria-label="Link to this section">#</a></h2>
+  <p>Nothing to do after <code>autodebug setup</code>: it adds the server to <code>~/.claude.json</code>. Start a new Claude Code session, open the program in VS Code, Cursor or Visual Studio, and ask as above, naming the IDE.</p>
+  </section>
 
-  <h2 id="approve">The Approve dialog <a class="anchor" href="#approve" aria-label="Link to this section">#</a></h2>
-  <p>When the agent starts a session, the IDE shows a dialog with its goal, the build command, the program and arguments, the breakpoints, and the step and time limits. Approve runs exactly that, once. Closing the dialog, or two minutes without an answer, refuses. A message in the chat is never an approval.</p>
-  <p>In Visual Studio the dialog stays on top of other windows. In VS Code and Cursor it opens in the IDE window; switch to it.</p>
+  <h2 id="safety">Debug safely <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
+  <p>The Approve dialog shows the goal, the build command, the program and its arguments, the breakpoints, and the step and time limits. Approve runs exactly that, once.</p>
+  <ul>
+    <li><strong>Read before you click.</strong> Approve only a program, build command and arguments you expect. Closing the dialog, Deny, or two minutes without an answer refuses.</li>
+    <li><strong>A chat message is never an approval.</strong> Only the dialog in the IDE starts anything.</li>
+    <li><strong>The agent cannot change your program's state.</strong> No expression evaluation and no changes to variables. Values that look secret are hidden from it.</li>
+    <li><strong>Use test data.</strong> Debug a test or a small reproduction, never a production system or real customer data. What the agent reads goes to its model provider.</li>
+    <li><strong>It stays local.</strong> AutoDebug listens on 127.0.0.1 only, with a random token, and collects no data.</li>
+  </ul>
 
   <h2 id="terminal">No tools in the chat <a class="anchor" href="#terminal" aria-label="Link to this section">#</a></h2>
   <p>Some apps drop MCP tools from a chat without an error. The agent can then run the same tools in its terminal, in the same debug session:</p>
-  <div class="block plain"><pre>py -m autodebug run list_targets ide=visualstudio
-py -m autodebug run help</pre></div>
-  <p>Values need no JSON: <code>breakpoints=geometry.cpp:16</code>, <code>variables=total,i</code>. <code>setup</code> with a project folder writes the exact command for your computer into the project's <code>AGENTS.md</code>.</p>
-
-  <h2 id="reports">Reports <a class="anchor" href="#reports" aria-label="Link to this section">#</a></h2>
-  <p>Each report is a Markdown file in <code>autodebug-reports/</code> in the project. It states the problem, how the program was run, a numbered timeline of every approval, build, stop, step and trace, the root cause with its confidence, and the fix. Values that look like secrets appear as <code>***REDACTED***</code>.</p>
+  <div class="block plain"><pre>autodebug run list_targets ide=visualstudio
+autodebug run help</pre></div>
+  <p>To tell agents this for a project once: <code>autodebug setup &lt;project folder&gt;</code>. It writes the command into the project's <code>AGENTS.md</code>.</p>
 
   <h2 id="troubleshooting">Troubleshooting <a class="anchor" href="#troubleshooting" aria-label="Link to this section">#</a></h2>
   <table class="ref">
     <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
     <tbody>
-      <tr><td>The agent has no autodebug tools</td><td>Cursor: reload the window and start a new chat; <strong>Settings → Customize → MCPs</strong> should show <strong>extension-autodebug</strong> with a green dot. Copilot in Visual Studio: <strong>Tools</strong> → tick <strong>autodebug</strong>. Any agent can use <a href="#terminal"><code>autodebug run</code></a>.</td></tr>
-      <tr><td>No window is running the AutoDebug extension</td><td>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>. Visual Studio: View → Output → <strong>AutoDebug</strong>.</td></tr>
-      <tr><td>No Approve dialog</td><td>Switch to the IDE window. The agent reports "no answer within 2 minutes" when nobody answered.</td></tr>
-      <tr><td><code>NOT_BUILT</code></td><td>The program has not been built yet. The agent retries with the build task it names.</td></tr>
-      <tr><td>Visual Studio is open during setup</td><td>Close every Visual Studio window, then run <code>setup</code> again.</td></tr>
-      <tr><td>No debugger for type "…"</td><td>Install that debugger extension (see <a href="#need">What you need</a>) and reload the window.</td></tr>
+      <tr><td>The agent has no autodebug tools</td><td>Start a new chat. Cursor: <strong>MCPs</strong> should show <strong>extension-autodebug</strong> with a green dot. Copilot: tick <strong>autodebug</strong> in its tools. Any agent can use <a href="#terminal"><code>autodebug run</code></a>.</td></tr>
+      <tr><td>No window is running the extension</td><td>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>. Visual Studio: <strong>View → Output → AutoDebug</strong>.</td></tr>
+      <tr><td>No Approve dialog</td><td>Switch to the IDE window. "No answer within 2 minutes" means nobody clicked; ask the agent to try again.</td></tr>
+      <tr><td><code>NOT_BUILT</code></td><td>The agent retries with the build task it names.</td></tr>
+      <tr><td>Setup says Visual Studio is open</td><td>Close every Visual Studio window and run <code>autodebug setup</code> again.</td></tr>
+      <tr><td>No debugger for type "…"</td><td>Install that debugger extension (see the IDE's "Before you start") and reload the window.</td></tr>
     </tbody>
   </table>
 
@@ -329,39 +370,13 @@ py -m autodebug run help</pre></div>
   <table class="ref">
     <thead><tr><th>Command</th><th>Does</th></tr></thead>
     <tbody>
-      <tr><td><code>autodebug setup</code></td><td>Connect every IDE and agent found. <code>setup cursor</code>, <code>vscode</code>, <code>visualstudio</code> or <code>claude</code> connects one. Add a project folder for project-only entries and <code>AGENTS.md</code>.</td></tr>
-      <tr><td><code>autodebug doctor</code></td><td>Check the setup, the open IDE windows and the AutoDebug service</td></tr>
-      <tr><td><code>autodebug run &lt;tool&gt; key=value …</code></td><td>Call a debugging tool from a terminal; <code>run help</code> lists them</td></tr>
-      <tr><td><code>autodebug serve</code></td><td>The MCP server; the IDE or agent starts it</td></tr>
+      <tr><td><code>autodebug setup</code></td><td>Connect every IDE and agent found. <code>setup cursor</code>, <code>vscode</code>, <code>visualstudio</code> or <code>claude</code> connects one.</td></tr>
+      <tr><td><code>autodebug doctor</code></td><td>Check the setup and the open IDE windows</td></tr>
+      <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Call a debugging tool from a terminal; <code>run help</code> lists them</td></tr>
+      <tr><td><code>pipx upgrade autodebug</code></td><td>Update, then run <code>autodebug setup</code> again</td></tr>
     </tbody>
   </table>
-  <p>On Windows write <code>py -m autodebug</code>; on macOS and Linux <code>~/.autodebug/bin/python -m autodebug</code>. To update, run the install command again with <code>--force-reinstall</code>, then <code>setup</code>.</p>
-
-  <h2 id="tools">Agent tools <a class="anchor" href="#tools" aria-label="Link to this section">#</a></h2>
-  <table class="ref">
-    <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
-    <tbody>
-      <tr><td><code>list_targets</code></td><td>IDE windows, their launch configurations and build tasks</td></tr>
-      <tr><td><code>start_session</code></td><td>Asks for approval, builds, sets breakpoints, launches or attaches, and waits for the first stop</td></tr>
-      <tr><td><code>step</code></td><td>Over, into or out, up to 20 times, with the variables that changed</td></tr>
-      <tr><td><code>continue</code></td><td>Runs to the next stop, or past other breakpoints to a chosen line</td></tr>
-      <tr><td><code>trace</code></td><td>Runs to a line repeatedly and records each variable before and after it runs</td></tr>
-      <tr><td><code>inspect</code>, <code>stack</code>, <code>threads</code></td><td>Variables (including nested paths), the call stack, and threads</td></tr>
-      <tr><td><code>breakpoints</code>, <code>exceptions</code></td><td>Source and function breakpoints during the session; exception filters</td></tr>
-      <tr><td><code>wait</code>, <code>pause</code>, <code>stop_session</code></td><td>Follows, interrupts or ends the session</td></tr>
-      <tr><td><code>write_report</code></td><td>Writes the root-cause report with a timeline of the session</td></tr>
-    </tbody>
-  </table>
-
-  <h2 id="how-it-works">How it works and safety <a class="anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
-  <p>The agent calls the <code>autodebug</code> MCP server, or <code>autodebug run</code> in a terminal. Both reach one AutoDebug service on your computer, which holds the debug session and its report, and talks to the extension in the IDE window over 127.0.0.1 with a random token. The extension shows the Approve dialog and runs only what you approved. The full contract is in <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
-  <ul>
-    <li>One approval covers one debug session and exactly what the dialog showed.</li>
-    <li>No expression evaluation and no changes to variables.</li>
-    <li>Values that look secret are redacted before the agent or the report sees them.</li>
-    <li>Only 127.0.0.1, with a random token. Breakpoint files must be inside the project or folders you list.</li>
-    <li>What the agent reads goes to its model provider, as with any AI agent. Debug only code and data you are allowed to share with it.</li>
-  </ul>
+  <p>How it works in detail: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
 
   <footer>
     <span>AutoDebug 0.5.1 · MIT License</span>
@@ -383,7 +398,8 @@ py -m autodebug run help</pre></div>
     }
   }
   tabs.forEach((t) => t.addEventListener("click", () => choose(t)));
-  if (!/Windows/.test(navigator.userAgent)) choose(tabs[1]);
+  if (/Mac/.test(navigator.platform || navigator.userAgent)) choose(tabs[1]);
+  else if (!/Win/.test(navigator.platform || navigator.userAgent)) choose(tabs[2]);
 
   // Copy buttons on code blocks
   for (const block of document.querySelectorAll(".block")) {

@@ -266,8 +266,10 @@ reported by the agent), open questions.
 
 ## Setup
 
-Install: `pip install git+https://github.com/TEEJORAM/AutoDebug.git` (the
-standard-library build backend needs nothing else). `autodebug setup [FOLDER]`
+Install: `pipx install autodebug` from PyPI (the release workflow publishes a
+`v<version>` tag there with trusted publishing; the extension goes to Open VSX as
+`SwagatTeejoram.autodebug`; the VS Code and Visual Studio Marketplaces are planned).
+`autodebug setup [FOLDER]`
 with no IDE named detects VS Code and Cursor (their command-line launchers),
 Visual Studio 2022/2026 (vswhere) and Claude Code (`claude` or its home files),
 connects each one as below, and ends with the one manual step per IDE that no
