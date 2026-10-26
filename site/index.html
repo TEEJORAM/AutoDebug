@@ -91,9 +91,6 @@
   ol.steps p { margin: 0 0 0.4rem; }
 
   /* Code blocks with OS switch and copy */
-  .tabs { display: flex; gap: 0.25rem; margin: 1rem 0 -1px; flex-wrap: wrap; }
-  .tabs button { font: 600 0.9rem/1 var(--sans); color: var(--ink-soft); background: none; border: 1px solid transparent; border-bottom: none; border-radius: 5px 5px 0 0; padding: 0.55rem 0.9rem; cursor: pointer; }
-  .tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); border-color: var(--rule); }
   .block { position: relative; margin: 0 0 1.25rem; }
   .block pre { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 0 5px 5px 5px; padding: 0.9rem 5rem 0.9rem 1rem; overflow-x: auto; line-height: 1.6; }
   .block.plain pre { border-radius: 5px; }
@@ -110,14 +107,10 @@
   table.ref th { font: 600 0.9rem/1.4 var(--sans); color: var(--ink-soft); }
   table.ref td:first-child { width: 30%; }
   table.ref td:first-child code { white-space: nowrap; }
-  table.ref.pairs td:first-child { width: 19%; }
   .status { font-weight: 600; white-space: nowrap; }
   .status.live { color: var(--ok); }
   .status.planned { color: var(--ink-soft); }
 
-  /* One section per IDE */
-  .ide { border-top: 2px solid var(--ink); margin-top: 3.5rem; padding-top: 0.25rem; }
-  .ide > h2 { border-bottom: none; margin-top: 0.75rem; }
 
   footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); font-size: 0.9rem; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 
@@ -137,6 +130,35 @@
     html { scroll-behavior: auto; }
     .js .trace tbody tr { opacity: 1; transition: none; }
   }
+
+  /* Get started: pick your system, IDE and agent */
+  .picker { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 1.1rem 1.2rem 0.4rem; margin: 1.25rem 0 0.5rem; }
+  .pick { margin: 0 0 0.9rem; }
+  .pick legend, .pick-label { font: 600 0.9rem/1.3 var(--sans); color: var(--ink-soft); margin: 0 0 0.45rem; padding: 0; }
+  .pick fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .options button { font: 500 0.92rem/1.2 var(--sans); color: var(--ink); background: #fbfaf7; border: 1px solid var(--rule); border-radius: 999px; padding: 0.45rem 0.85rem; cursor: pointer; }
+  .options button:hover { border-color: var(--ink-soft); }
+  .options button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .guide { margin: 1.25rem 0 0; }
+  .guide h3 { margin-top: 0.5rem; }
+  .guide .who { color: var(--ink-soft); margin: 0 0 1rem; }
+  .guide ol.steps > li { margin-bottom: 1.15rem; }
+  .guide .block { margin: 0.5rem 0 0.25rem; }
+  .guide .block pre { border-radius: 5px; }
+  .tip { font-size: 0.95rem; color: var(--ink-soft); }
+
+  /* Troubleshooting: one question at a time */
+  details.q { border: 1px solid var(--rule); background: var(--panel); border-radius: 5px; margin: 0 0 0.5rem; }
+  details.q summary { cursor: pointer; padding: 0.65rem 0.9rem; font-weight: 600; list-style: none; }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::before { content: "+"; display: inline-block; width: 1.1rem; color: var(--ink-soft); }
+  details.q[open] summary::before { content: "−"; }
+  details.q > div { padding: 0 0.9rem 0.8rem 2rem; }
+  details.q p { margin: 0 0 0.4rem; }
+  .block.prompt pre { white-space: pre-wrap; }
+  .options button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .options button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -156,26 +178,13 @@
   </div>
   <p class="version">Version 0.5.5 · MIT License</p>
   <nav aria-label="Contents">
-    <p>Start</p>
     <ul>
       <li><a href="#what">What it is</a></li>
-      <li><a href="#get">Where to get it</a></li>
-      <li><a href="#install">Install</a></li>
-    </ul>
-    <p>Connect and debug</p>
-    <ul>
-      <li><a href="#pairs">IDE and agent</a></li>
-      <li><a href="#vscode">VS Code</a></li>
-      <li><a href="#cursor">Cursor</a></li>
-      <li><a href="#visualstudio">Visual Studio 2022 / 2026</a></li>
-      <li><a href="#claude">Claude Code</a></li>
-    </ul>
-    <p>Reference</p>
-    <ul>
+      <li><a href="#start">Get started</a></li>
       <li><a href="#safety">Debug safely</a></li>
-      <li><a href="#terminal">No tools in the chat</a></li>
-      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#help">Troubleshooting</a></li>
       <li><a href="#commands">Commands</a></li>
+      <li><a href="#get">Where to get it</a></li>
     </ul>
   </nav>
   <a class="repo" href="https://github.com/TEEJORAM/AutoDebug">Source on GitHub</a>
@@ -220,206 +229,113 @@
     <li><strong>Languages:</strong> whatever the IDE's debugger runs: C++ and Python in VS Code and Cursor; C++ in Visual Studio.</li>
   </ul>
 
-  <h2 id="get">Where to get it <a class="anchor" href="#get" aria-label="Link to this section">#</a></h2>
-  <table class="ref">
-    <thead><tr><th>Store</th><th>What</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td><a href="https://pypi.org/project/autodebug/">PyPI</a></td><td><code>autodebug</code>: the Python program and <code>autodebug setup</code>. Every IDE starts here.</td><td><span class="status live">Available</span></td></tr>
-      <tr><td><a href="https://open-vsx.org/extension/SwagatTeejoram/autodebug">Open VSX</a></td><td>The extension <code>SwagatTeejoram.autodebug</code>, which Cursor installs and updates from.</td><td><span class="status live">Available</span></td></tr>
-      <tr><td>VS Code Marketplace</td><td>The same extension for VS Code. Until then, <code>autodebug setup</code> installs it.</td><td><span class="status planned">Planned</span></td></tr>
-      <tr><td>Visual Studio Marketplace</td><td>The Visual Studio extension. Until then, <code>autodebug setup</code> installs it from the GitHub release.</td><td><span class="status planned">Planned</span></td></tr>
-    </tbody>
-  </table>
+  <h2 id="start">Get started <a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
+  <p>Pick your system, the IDE you debug in and the agent you chat with. They can be different apps: for example, chat in Cursor and debug in Visual Studio.</p>
 
-  <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
-  <p>You need Python 3.11 or newer. If you use Visual Studio, close it first. Then, in a terminal:</p>
-  <div class="tabs" role="tablist" aria-label="Operating system">
-    <button type="button" role="tab" id="tab-win" aria-controls="os-win" aria-selected="true">Windows</button>
-    <button type="button" role="tab" id="tab-mac" aria-controls="os-mac" aria-selected="false">macOS</button>
-    <button type="button" role="tab" id="tab-linux" aria-controls="os-linux" aria-selected="false">Linux</button>
+  <div class="picker" id="picker">
+    <div class="pick"><fieldset><legend>Your system</legend><div class="options" data-pick="os">
+      <button type="button" data-value="win">Windows</button>
+      <button type="button" data-value="mac">macOS</button>
+      <button type="button" data-value="linux">Linux</button>
+    </div></fieldset></div>
+    <div class="pick"><fieldset><legend>Debug in</legend><div class="options" data-pick="ide">
+      <button type="button" data-value="visualstudio">Visual Studio 2022 / 2026</button>
+      <button type="button" data-value="vscode">VS Code</button>
+      <button type="button" data-value="cursor">Cursor</button>
+    </div></fieldset></div>
+    <div class="pick"><fieldset><legend>Chat with</legend><div class="options" data-pick="agent">
+      <button type="button" data-value="cursor">Cursor's agent</button>
+      <button type="button" data-value="copilot-vscode">Copilot in VS Code</button>
+      <button type="button" data-value="copilot-vs">Copilot in Visual Studio</button>
+      <button type="button" data-value="claude">Claude Code</button>
+    </div></fieldset></div>
   </div>
-  <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>py -m pip install --upgrade autodebug
+
+  <div class="guide" aria-live="polite">
+    <h3 id="guide-title">Your steps</h3>
+    <p class="who" id="guide-who"></p>
+    <ol class="steps">
+      <li id="step-debugger"></li>
+      <li>
+        <p><strong>Install AutoDebug and connect everything.</strong> You need Python 3.11 or newer.</p>
+        <div class="block" id="os-win" data-os="win"><pre>py -m pip install --upgrade autodebug
 py -m autodebug setup</pre></div>
-  <div class="block" id="os-mac" role="tabpanel" aria-labelledby="tab-mac" hidden><pre>brew install pipx
+        <div class="block" id="os-mac" data-os="mac"><pre>brew install pipx
 pipx ensurepath
 pipx install autodebug
 autodebug setup</pre></div>
-  <div class="block" id="os-linux" role="tabpanel" aria-labelledby="tab-linux" hidden><pre>sudo apt install pipx
+        <div class="block" id="os-linux" data-os="linux"><pre>sudo apt install pipx
 pipx ensurepath
 pipx install autodebug
 autodebug setup</pre></div>
-  <p>On Windows, <code>py</code> is the Python launcher, so nothing has to be added to your PATH; write <code>py -m autodebug</code> wherever this page says <code>autodebug</code>. On macOS and Linux, open a new terminal after <code>pipx ensurepath</code>. <code>autodebug setup</code> finds VS Code, Cursor, Visual Studio and Claude Code on the computer, connects each one, and prints the few steps left for you. They are in the IDE sections below.</p>
-  <p><code>autodebug doctor</code> checks everything at any time: which AutoDebug runs and from where, the connected IDEs, the open IDE windows, and whether a newer version is on PyPI. Setup and doctor always print commands in the form that works on your computer, such as <code>py -m autodebug doctor</code> on Windows.</p>
-  <p><strong>To update</strong>, run setup again (<code>py -m autodebug setup</code> on Windows). When PyPI has a newer AutoDebug, setup installs that exact version first, replacing every file of the old copy, then reconnects your IDEs with it. Nothing else to do; <code>--no-update</code> skips it.</p>
-
-  <h2 id="pairs">IDE and agent <a class="anchor" href="#pairs" aria-label="Link to this section">#</a></h2>
-  <p>Two roles, which can be the same app or two different apps:</p>
-  <ul>
-    <li><strong>The IDE you debug in</strong> runs your program under its debugger and shows the <strong>Approve</strong> dialog. It needs the AutoDebug extension and your project open.</li>
-    <li><strong>The agent you chat with</strong> needs the <strong>autodebug</strong> tools switched on in its app.</li>
-  </ul>
-  <table class="ref pairs">
-    <thead><tr><th>Debug in</th><th>Agent</th><th>Switch on in the agent's app</th><th>Say in the prompt</th></tr></thead>
-    <tbody>
-      <tr><td>VS Code</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>Nothing extra</td></tr>
-      <tr><td>VS Code</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>"debug in VS Code", or set it once (below)</td></tr>
-      <tr><td>Cursor</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>Nothing extra</td></tr>
-      <tr><td>Cursor</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>"debug in Cursor", or set it once (below)</td></tr>
-      <tr><td>Visual Studio 2022 / 2026</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>Nothing extra: Visual Studio's configurations, such as <code>geometry (Debug|x64)</code>, exist only there</td></tr>
-      <tr><td>Visual Studio 2022 / 2026</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>Nothing extra (as above)</td></tr>
-      <tr><td>Visual Studio 2022 / 2026</td><td>Copilot in Visual Studio</td><td>In the chat, <strong>Tools</strong> → tick <strong>autodebug</strong></td><td>Nothing extra</td></tr>
-      <tr><td>Any of them</td><td>Claude Code</td><td>Nothing</td><td>Name the IDE when more than one is open</td></tr>
-    </tbody>
-  </table>
-  <p><strong>The Approve dialog always opens in the IDE you debug in</strong>, not in the agent's chat. With Cursor as the agent and Visual Studio as the IDE, you chat in Cursor and click Approve in Visual Studio.</p>
-  <p><strong>Set your IDE once.</strong> When two IDEs have the same project open with the same launch configurations (VS Code and Cursor share <code>.vscode/launch.json</code>), tell AutoDebug which one you debug in, and agents use it without being told:</p>
-  <div class="block plain"><pre>autodebug setup --debug-in visualstudio</pre></div>
-  <p>Use <code>vscode</code>, <code>cursor</code> or <code>visualstudio</code>, or <code>any</code> to clear it. On Windows, write <code>py -m autodebug</code>. Without a choice, AutoDebug uses the window that has the launch configuration, and asks the agent to name the IDE only when several do.</p>
-  <h3>Do</h3>
-  <ul>
-    <li>Open the project in the IDE you debug in before you ask. In Visual Studio: the solution, the startup project, and the <strong>Debug</strong> configuration.</li>
-    <li>Keep both apps running until the report is written.</li>
-    <li>Start a new chat after <code>autodebug setup</code> or after switching tools on.</li>
-    <li>Read the Approve dialog, then click Approve within 2 minutes.</li>
-  </ul>
-  <h3>Don't</h3>
-  <ul>
-    <li>Don't start your own debug session (F5) in that IDE while the agent's session runs. One session at a time; a second one is refused.</li>
-    <li>Don't open the same folder in two windows of the same IDE. If you have to, the agent must name the folder (<code>workspace_folder</code>).</li>
-    <li>Don't switch off the AutoDebug extension in the IDE you debug in, or the autodebug tools in the agent's app.</li>
-    <li>In Cursor, don't add an <code>autodebug</code> entry to <code>mcp.json</code> by hand. Cursor starts it switched off, and the extension then stands aside.</li>
-    <li>Don't answer the agent with "approved" in the chat. Only the dialog approves.</li>
-  </ul>
-
-  <section class="ide" aria-labelledby="vscode">
-  <h2 id="vscode">VS Code <a class="anchor" href="#vscode" aria-label="Link to this section">#</a></h2>
-  <h3>Before you start</h3>
-  <ul>
-    <li>C++: the <strong>C/C++</strong> extension or <strong>CodeLLDB</strong>. Python: <strong>Python</strong> and <strong>Python Debugger</strong>.</li>
-    <li>A launch configuration that debugs your program in <code>.vscode/launch.json</code>, and optionally a build task in <code>.vscode/tasks.json</code>. If you can start it with F5, AutoDebug can run it.</li>
-  </ul>
-  <h3>Connect</h3>
-  <ol class="steps">
-    <li><p>Run <code>autodebug setup</code> (see <a href="#install">Install</a>). It installs the extension and adds the <code>autodebug</code> server to VS Code.</p></li>
-    <li><p>Command Palette → <strong>Developer: Reload Window</strong>. The status bar now shows <strong>AutoDebug</strong>.</p></li>
-    <li><p>Open the Copilot chat in <strong>Agent</strong> mode. In its tools list, make sure <strong>autodebug</strong> is ticked. If VS Code asks whether to trust or start the server, allow it.</p></li>
-  </ol>
-  <h3>Check</h3>
-  <p><code>autodebug doctor</code> lists a <strong>VS Code window open</strong> line with your project folder.</p>
-  <h3>Debug</h3>
-  <ol class="steps">
-    <li><p>Ask the agent, for example:</p>
-      <blockquote>Use the autodebug tools to find why moving a shape changes its area. Build first, stop in polygon_area, trace total, and write a report.</blockquote></li>
-    <li><p>VS Code shows the <strong>Approve</strong> dialog. Read it (see <a href="#safety">Debug safely</a>) and click <strong>Approve</strong> within 2 minutes.</p></li>
-    <li><p>The agent builds, stops, steps and traces. The report is written to <code>autodebug-reports/</code> in the project.</p></li>
-  </ol>
-  <div class="note"><p>Cursor's agent and Claude Code can debug in a VS Code window too: see <a href="#pairs">IDE and agent</a>.</p></div>
-  </section>
-
-  <section class="ide" aria-labelledby="cursor">
-  <h2 id="cursor">Cursor <a class="anchor" href="#cursor" aria-label="Link to this section">#</a></h2>
-  <h3>Before you start</h3>
-  <ul>
-    <li>C++: <strong>CodeLLDB</strong>. Microsoft's C/C++ debugger does not run in Cursor. Python: <strong>Python</strong> and <strong>Python Debugger</strong>.</li>
-    <li>A launch configuration in <code>.vscode/launch.json</code> (Cursor reads the same files as VS Code).</li>
-  </ul>
-  <h3>Connect</h3>
-  <ol class="steps">
-    <li><p>Run <code>autodebug setup</code>. It installs the extension; Cursor keeps it updated from Open VSX.</p></li>
-    <li><p>Command Palette → <strong>Developer: Reload Window</strong>, in every Cursor window. The status bar shows <strong>AutoDebug</strong>.</p></li>
-    <li><p>Nothing to turn on: the extension registers the server with Cursor itself. <strong>Cursor Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot.</p></li>
-    <li><p>Start a <strong>new</strong> chat in Agent mode. A chat that was already open does not get the tools.</p></li>
-  </ol>
-  <h3>Check</h3>
-  <p><code>autodebug doctor</code> lists a <strong>Cursor window open</strong> line. If it says an <code>mcp.json</code> entry "still starts autodebug", run <code>autodebug setup cursor</code>: an old entry makes Cursor show the server switched off.</p>
-  <h3>Debug</h3>
-  <ol class="steps">
-    <li><p>Ask the agent in the new chat, for example:</p>
-      <blockquote>Use the autodebug tools with launch configuration "Debug C++ (CodeLLDB)". Find why moving a shape changes its area and write a report.</blockquote></li>
-    <li><p>Cursor shows the <strong>Approve</strong> dialog in its window. Click <strong>Approve</strong> within 2 minutes.</p></li>
-    <li><p>The report is written to <code>autodebug-reports/</code> in the project.</p></li>
-  </ol>
-  <div class="note"><p>Cursor's agent can also debug in Visual Studio or VS Code: see <a href="#pairs">IDE and agent</a>.</p></div>
-  </section>
-
-  <section class="ide" aria-labelledby="visualstudio">
-  <h2 id="visualstudio">Visual Studio 2022 / 2026 <a class="anchor" href="#visualstudio" aria-label="Link to this section">#</a></h2>
-  <h3>Before you start</h3>
-  <ul>
-    <li>The <strong>Desktop development with C++</strong> workload. C++ only; Python in Visual Studio is not supported yet.</li>
-    <li>A solution whose startup project runs your program. For CMake, generate one first, for example <code>cmake -S . -B build\vs</code>.</li>
-  </ul>
-  <h3>Connect</h3>
-  <ol class="steps">
-    <li><p>Close every Visual Studio window, then run <code>autodebug setup</code>. It installs the extension and adds the server for Copilot in Visual Studio.</p></li>
-    <li><p>Start Visual Studio and open the solution. <strong>View → Output</strong>, choose <strong>AutoDebug</strong>: it says it is listening.</p></li>
-    <li><p>Set the <strong>startup project</strong> and the <strong>Debug</strong> configuration. Their debug settings become the launch configuration the agent sees, for example <code>geometry (Debug|x64)</code>.</p></li>
-    <li><p>Pick the agent:</p>
-      <ul>
-        <li><strong>Cursor's agent or Claude Code:</strong> nothing more to do.</li>
-        <li><strong>Copilot in Visual Studio:</strong> in the chat, <strong>Tools</strong> → tick <strong>autodebug</strong>. Visual Studio starts MCP tools switched off.</li>
-      </ul></li>
-  </ol>
-  <h3>Check</h3>
-  <p><code>autodebug doctor</code> lists a <strong>Visual Studio window open</strong> line with the solution's folder.</p>
-  <h3>Debug</h3>
-  <ol class="steps">
-    <li><p>Ask the agent. Visual Studio's configurations exist only there, so it is chosen even when Cursor or VS Code is open too:</p>
-      <blockquote>Use the autodebug tools with the Visual Studio window (ide: visualstudio) and launch configuration "geometry (Debug|x64)". Build first, stop at geometry.cpp line 16, trace total, and write a report.</blockquote></li>
-    <li><p>The <strong>Approve</strong> dialog opens on top of your other windows. Click <strong>Approve</strong> within 2 minutes; unanswered, it closes and nothing runs.</p></li>
-    <li><p>Visual Studio builds and starts the program. A breakpoint shows as not bound until the program has loaded; that is normal.</p></li>
-  </ol>
-  <div class="note"><p>For a CMake project, paths are relative to the CMake source folder (<code>geometry.cpp</code>, not <code>cpp/geometry.cpp</code>). If the agent reports <code>NOT_BUILT</code>, the program has not been built yet; it retries with the build task it names.</p></div>
-  </section>
-
-  <section class="ide" aria-labelledby="claude">
-  <h2 id="claude">Claude Code <a class="anchor" href="#claude" aria-label="Link to this section">#</a></h2>
-  <p>Nothing to do after <code>autodebug setup</code>: it adds the server to <code>~/.claude.json</code>. Start a new Claude Code session, open the program in VS Code, Cursor or Visual Studio, and ask as above, naming the IDE.</p>
-  </section>
+        <p class="tip" id="step-install-tip"></p>
+        <div id="step-prefer" hidden>
+          <p id="prefer-text"></p>
+          <div class="block plain"><pre id="prefer-command"></pre></div>
+        </div>
+      </li>
+      <li id="step-open"></li>
+      <li id="step-tools"></li>
+      <li id="step-ask">
+        <p><strong>Ask the agent.</strong> For example, with the demo in <code>examples/</code>; use your own launch configuration and file:</p>
+        <div class="block plain prompt"><pre id="prompt"></pre></div>
+      </li>
+      <li id="step-approve"></li>
+    </ol>
+    <noscript><p>This guide needs JavaScript. The same steps are in the <a href="https://github.com/TEEJORAM/AutoDebug#readme">README</a>.</p></noscript>
+  </div>
 
   <h2 id="safety">Debug safely <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
-  <p>The Approve dialog shows the goal, the build command, the program and its arguments, the breakpoints, and the step and time limits. Approve runs exactly that, once.</p>
   <ul>
-    <li><strong>Read before you click.</strong> Approve only a program, build command and arguments you expect. Closing the dialog, Deny, or two minutes without an answer refuses.</li>
-    <li><strong>A chat message is never an approval.</strong> Only the dialog in the IDE starts anything.</li>
-    <li><strong>The agent cannot change your program's state.</strong> No expression evaluation and no changes to variables. Values that look secret are hidden from it.</li>
-    <li><strong>Use test data.</strong> Debug a test or a small reproduction, never a production system or real customer data. What the agent reads goes to its model provider.</li>
-    <li><strong>It stays local.</strong> AutoDebug listens on 127.0.0.1 only, with a random token, and collects no data. Setup and doctor only ask PyPI for the newest version number.</li>
+    <li><strong>Read the Approve dialog.</strong> It shows the goal, the build, the program, the breakpoints and the limits. Approve runs exactly that, once.</li>
+    <li><strong>Only the dialog approves.</strong> A "yes" in the chat does nothing. Closing the dialog, Deny, or two minutes without an answer refuses.</li>
+    <li><strong>Don't press F5 during the agent's session.</strong> One debug session at a time.</li>
+    <li><strong>The agent cannot change your program.</strong> No expression evaluation and no writes to variables; values that look secret are hidden.</li>
+    <li><strong>Use test data.</strong> What the agent reads goes to its model provider. AutoDebug itself listens on 127.0.0.1 only and collects no data.</li>
   </ul>
 
-  <h2 id="terminal">No tools in the chat <a class="anchor" href="#terminal" aria-label="Link to this section">#</a></h2>
-  <p>Some apps drop MCP tools from a chat without an error. The agent can then run the same tools in its terminal, in the same debug session:</p>
-  <div class="block plain"><pre>autodebug run list_targets ide=visualstudio
-autodebug run help</pre></div>
-  <p>To tell agents this for a project once: <code>autodebug setup &lt;project folder&gt;</code>. It writes the command into the project's <code>AGENTS.md</code>.</p>
-
-  <h2 id="troubleshooting">Troubleshooting <a class="anchor" href="#troubleshooting" aria-label="Link to this section">#</a></h2>
-  <table class="ref">
-    <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
-    <tbody>
-      <tr><td>The agent has no autodebug tools</td><td>Start a new chat. Cursor: <strong>MCPs</strong> should show <strong>extension-autodebug</strong> with a green dot. Copilot: tick <strong>autodebug</strong> in its tools. Any agent can use <a href="#terminal"><code>autodebug run</code></a>.</td></tr>
-      <tr><td>No window is running the extension</td><td>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>. Visual Studio: <strong>View → Output → AutoDebug</strong>.</td></tr>
-      <tr><td>No Approve dialog</td><td>Switch to the IDE window. "No answer within 2 minutes" means nobody clicked; ask the agent to try again.</td></tr>
-      <tr><td><code>NOT_BUILT</code></td><td>The agent retries with the build task it names.</td></tr>
-      <tr><td>"pipx" or "autodebug" is not recognized</td><td>Windows: use <code>py -m pip install --upgrade autodebug</code> and <code>py -m autodebug</code>. macOS and Linux: run <code>pipx ensurepath</code> and open a new terminal.</td></tr>
-      <tr><td>"Requirement already satisfied" and setup behaves like an old version</td><td>Run <code>py -m autodebug setup</code> (or <code>autodebug setup</code>): it replaces the old copy with the newest version itself. <code>autodebug doctor</code> shows the version that runs.</td></tr>
-      <tr><td>Doctor says a newer AutoDebug is available</td><td>Run setup; it installs the new version and reconnects everything.</td></tr>
-      <tr><td>Setup says Visual Studio is open</td><td>Close every Visual Studio window and run <code>autodebug setup</code> again.</td></tr>
-      <tr><td>No debugger for type "…"</td><td>Install that debugger extension (see the IDE's "Before you start") and reload the window.</td></tr>
-    </tbody>
-  </table>
+  <h2 id="help">Troubleshooting <a class="anchor" href="#help" aria-label="Link to this section">#</a></h2>
+  <details class="q"><summary>The agent has no autodebug tools</summary><div>
+    <p>Start a new chat. In Cursor, <strong>Settings → Customize → MCPs</strong> must show <strong>extension-autodebug</strong> with a green dot; switch it on if it says Disabled. In Copilot, tick <strong>autodebug</strong> in the chat's tools.</p>
+    <p>Any agent can also use the same tools in its terminal: <code>autodebug run list_targets</code> (Windows: <code>py -m autodebug run list_targets</code>).</p>
+  </div></details>
+  <details class="q"><summary>No Approve dialog appears</summary><div>
+    <p>It opens in the IDE you debug in, not in the chat. Switch to that IDE. In Visual Studio it stays on top; it closes after 2 minutes, and the agent then reports "no answer".</p>
+  </div></details>
+  <details class="q"><summary>"No window is running the extension"</summary><div>
+    <p>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>, then the status bar shows AutoDebug. Visual Studio: <strong>View → Output → AutoDebug</strong> says it is listening.</p>
+  </div></details>
+  <details class="q"><summary>The agent asks which IDE to use</summary><div>
+    <p>Several IDEs have the same launch configuration. Set yours once: <code>autodebug setup --debug-in visualstudio</code> (or <code>cursor</code>, <code>vscode</code>).</p>
+  </div></details>
+  <details class="q"><summary>"pipx" or "autodebug" is not recognized</summary><div>
+    <p>Windows: use <code>py -m pip install --upgrade autodebug</code> and <code>py -m autodebug</code>. macOS and Linux: run <code>pipx ensurepath</code>, then open a new terminal.</p>
+  </div></details>
+  <details class="q"><summary>NOT_BUILT, or setup says Visual Studio is open</summary><div>
+    <p><code>NOT_BUILT</code>: the program has not been built; the agent retries with the build task it names. For setup, close every Visual Studio window and run it again.</p>
+  </div></details>
 
   <h2 id="commands">Commands <a class="anchor" href="#commands" aria-label="Link to this section">#</a></h2>
   <table class="ref">
     <thead><tr><th>Command</th><th>Does</th></tr></thead>
     <tbody>
-      <tr><td><code>autodebug setup</code></td><td>Connect every IDE and agent found. <code>setup cursor</code>, <code>vscode</code>, <code>visualstudio</code> or <code>claude</code> connects one.</td></tr>
-      <tr><td><code>autodebug doctor</code></td><td>Check the setup and the open IDE windows</td></tr>
-      <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Call a debugging tool from a terminal; <code>run help</code> lists them</td></tr>
-      <tr><td><code>autodebug setup</code> again</td><td>Update: installs the newest AutoDebug first, then reconnects</td></tr>
+      <tr><td><code>autodebug setup</code></td><td>Connects every IDE and agent found, and updates AutoDebug first when a newer version is out. <code>--debug-in &lt;ide&gt;</code> sets the IDE you debug in.</td></tr>
+      <tr><td><code>autodebug doctor</code></td><td>Checks the setup, the open IDE windows and the version.</td></tr>
+      <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Calls a debugging tool from a terminal; <code>run help</code> lists them.</td></tr>
     </tbody>
   </table>
-  <p>How it works in detail: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+  <p class="tip">On Windows, write <code>py -m autodebug</code> instead of <code>autodebug</code>. Details: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+
+  <h2 id="get">Where to get it <a class="anchor" href="#get" aria-label="Link to this section">#</a></h2>
+  <table class="ref">
+    <thead><tr><th>Store</th><th>What</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://pypi.org/project/autodebug/">PyPI</a></td><td><code>autodebug</code>, with <code>autodebug setup</code></td><td><span class="status live">Available</span></td></tr>
+      <tr><td><a href="https://open-vsx.org/extension/SwagatTeejoram/autodebug">Open VSX</a></td><td>The extension for Cursor</td><td><span class="status live">Available</span></td></tr>
+      <tr><td>VS Code Marketplace</td><td>The extension for VS Code; until then, setup installs it</td><td><span class="status planned">Planned</span></td></tr>
+      <tr><td>Visual Studio Marketplace</td><td>The Visual Studio extension; until then, setup installs it</td><td><span class="status planned">Planned</span></td></tr>
+    </tbody>
+  </table>
 
   <footer>
     <span>AutoDebug 0.5.5 · MIT License</span>
@@ -430,19 +346,105 @@ autodebug run help</pre></div>
 
 <script>
   document.documentElement.classList.add("js");
+  const $ = (id) => document.getElementById(id);
 
-  // Operating system tabs
-  const tabs = [...document.querySelectorAll(".tabs [role=tab]")];
-  function choose(tab) {
-    for (const t of tabs) {
-      const selected = t === tab;
-      t.setAttribute("aria-selected", String(selected));
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !selected;
-    }
+  // Get started: the steps for one system, IDE and agent
+  const IDE = {
+    vscode: {
+      name: "VS Code",
+      debugger: "<strong>Install the debugger in VS Code.</strong> C++: the <strong>C/C++</strong> extension or <strong>CodeLLDB</strong>. Python: <strong>Python Debugger</strong>. You need a launch configuration in <code>.vscode/launch.json</code>: if F5 starts your program, AutoDebug can run it.",
+      open: "<strong>Open your project in VS Code</strong>, then Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.",
+      config: "Debug C++ (CodeLLDB)",
+    },
+    cursor: {
+      name: "Cursor",
+      debugger: "<strong>Install the debugger in Cursor.</strong> C++: <strong>CodeLLDB</strong> (Microsoft's C/C++ debugger does not run in Cursor). Python: <strong>Python Debugger</strong>. You need a launch configuration in <code>.vscode/launch.json</code>.",
+      open: "<strong>Open your project in Cursor</strong>, then Command Palette → <strong>Developer: Reload Window</strong> in every Cursor window. The status bar shows <strong>AutoDebug</strong>.",
+      config: "Debug C++ (CodeLLDB)",
+    },
+    visualstudio: {
+      name: "Visual Studio",
+      debugger: "<strong>Check Visual Studio.</strong> It needs the <strong>Desktop development with C++</strong> workload and a solution whose startup project runs your program (C++ only). For CMake, generate one first: <code>cmake -S . -B build\\vs</code>.",
+      open: "<strong>Open the solution in Visual Studio.</strong> Set the startup project and the <strong>Debug</strong> configuration. <strong>View → Output → AutoDebug</strong> says it is listening. The agent sees the configuration as, for example, <code>geometry (Debug|x64)</code>.",
+      config: "geometry (Debug|x64)",
+    },
+  };
+  const AGENT = {
+    cursor: { name: "Cursor's agent", app: "cursor", appName: "Cursor",
+      tools: "<strong>In Cursor, start a new chat in Agent mode.</strong> Nothing to switch on: <strong>Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot. Don't add autodebug to <code>mcp.json</code> by hand." },
+    "copilot-vscode": { name: "Copilot in VS Code", app: "vscode", appName: "VS Code",
+      tools: "<strong>In VS Code, open the Copilot chat in Agent mode</strong>, open its tools list and tick <strong>autodebug</strong>. If VS Code asks to trust or start the server, allow it." },
+    "copilot-vs": { name: "Copilot in Visual Studio", app: "visualstudio", appName: "Visual Studio",
+      tools: "<strong>In Visual Studio's Copilot chat, choose Agent mode, then Tools → tick autodebug.</strong> Visual Studio starts MCP tools switched off." },
+    claude: { name: "Claude Code", app: null, appName: "Claude Code",
+      tools: "<strong>Start a new Claude Code session.</strong> Setup already added the server to <code>~/.claude.json</code>; nothing to switch on." },
+  };
+
+  const guess = /Mac/.test(navigator.platform || navigator.userAgent) ? "mac"
+    : /Win/.test(navigator.platform || navigator.userAgent) ? "win" : "linux";
+  const state = { os: guess, ide: guess === "win" ? "visualstudio" : "vscode", agent: guess === "win" ? "cursor" : "copilot-vscode" };
+  try {
+    const saved = JSON.parse(localStorage.getItem("autodebug-guide") || "{}");
+    for (const k of Object.keys(state)) if (typeof saved[k] === "string") state[k] = saved[k];
+  } catch (_) { /* no storage: use the defaults */ }
+
+  const buttons = (pick) => [...document.querySelectorAll(`[data-pick="${pick}"] button`)];
+  function allowed(pick, value) {
+    if (pick === "ide" && value === "visualstudio") return state.os === "win";
+    if (pick === "agent" && value === "copilot-vs") return state.ide === "visualstudio";
+    return true;
   }
-  tabs.forEach((t) => t.addEventListener("click", () => choose(t)));
-  if (/Mac/.test(navigator.platform || navigator.userAgent)) choose(tabs[1]);
-  else if (!/Win/.test(navigator.platform || navigator.userAgent)) choose(tabs[2]);
+
+  function render() {
+    // Visual Studio runs on Windows only; Copilot in Visual Studio debugs only in Visual Studio.
+    if (!allowed("ide", state.ide)) state.ide = "vscode";
+    if (!allowed("agent", state.agent)) state.agent = "cursor";
+    for (const pick of ["os", "ide", "agent"]) {
+      for (const b of buttons(pick)) {
+        b.setAttribute("aria-pressed", String(b.dataset.value === state[pick]));
+        b.disabled = !allowed(pick, b.dataset.value);
+        b.title = b.disabled ? (pick === "ide" ? "Visual Studio runs on Windows" : "Pick Visual Studio under Debug in") : "";
+      }
+    }
+    const ide = IDE[state.ide], agent = AGENT[state.agent], win = state.os === "win";
+    const cmd = win ? "py -m autodebug" : "autodebug";
+    const sameApp = agent.app === state.ide;
+
+    $("guide-title").textContent = `Your steps: ${agent.name}, debugging in ${ide.name}`;
+    $("guide-who").textContent = sameApp
+      ? `You chat and debug in ${ide.name}.`
+      : `You chat in ${agent.appName} and debug in ${ide.name}. Keep both open.`;
+
+    $("step-debugger").innerHTML = `<p>${ide.debugger}</p>`;
+    for (const os of ["win", "mac", "linux"]) $("os-" + os).hidden = os !== state.os;
+    $("step-install-tip").innerHTML = (win
+      ? "<code>py</code> is the Python launcher, so nothing has to be added to PATH."
+      : "Open a new terminal after <code>pipx ensurepath</code>.")
+      + (state.ide === "visualstudio" ? " Close every Visual Studio window before you run setup." : "")
+      + " Setup connects every IDE and agent it finds, and updates AutoDebug when a newer version is out.";
+
+    $("step-prefer").hidden = sameApp;
+    $("prefer-text").innerHTML = `Then tell AutoDebug you debug in ${ide.name}, so the agent never has to ask:`;
+    $("prefer-command").textContent = `${cmd} setup --debug-in ${state.ide}`;
+
+    let open = ide.open;
+    if (!sameApp && (agent.app === "cursor" || agent.app === "vscode"))
+      open += ` Reload the ${agent.appName} window once too, so it picks up the extension.`;
+    $("step-open").innerHTML = `<p>${open}</p>`;
+    $("step-tools").innerHTML = `<p>${agent.tools}</p>`;
+    $("prompt").textContent = `Use the autodebug tools with launch configuration "${ide.config}" in ${ide.name}. `
+      + (state.ide === "visualstudio" ? "Build first, stop at geometry.cpp line 16, trace total, " : "Find why moving a shape changes its area, ")
+      + "and write a report.";
+    $("step-approve").innerHTML = `<p><strong>Switch to ${ide.name} and click Approve</strong> in its dialog within 2 minutes`
+      + (sameApp ? "." : `. It opens there, not in ${agent.appName}.`)
+      + " The agent then builds, stops, steps and writes the report to <code>autodebug-reports/</code> in your project.</p>";
+
+    try { localStorage.setItem("autodebug-guide", JSON.stringify(state)); } catch (_) { /* fine */ }
+  }
+  for (const pick of ["os", "ide", "agent"]) {
+    for (const b of buttons(pick)) b.addEventListener("click", () => { state[pick] = b.dataset.value; render(); });
+  }
+  render();
 
   // Copy buttons on code blocks
   for (const block of document.querySelectorAll(".block")) {
@@ -464,7 +466,7 @@ autodebug run help</pre></div>
 
   // Small screens: contents toggle
   const menu = document.querySelector(".menu");
-  const sidebar = document.getElementById("sidebar");
+  const sidebar = $("sidebar");
   menu.addEventListener("click", () => {
     const open = sidebar.classList.toggle("open");
     menu.setAttribute("aria-expanded", String(open));
@@ -489,7 +491,7 @@ autodebug run help</pre></div>
   // The one moment of motion: the debugger steps 12 → 15, stops, and the trace fills in.
   const rows = [...document.querySelectorAll(".trace tbody tr")];
   const lines = [...document.querySelectorAll(".ln")];
-  const status = document.getElementById("status");
+  const status = $("status");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduced) {
     rows.forEach((r) => r.classList.add("shown"));
