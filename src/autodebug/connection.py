@@ -127,6 +127,41 @@ def version_problem(window: Window) -> DebugError:
     return DebugError("OLD_EXTENSION", found + fix)
 
 
+def preferences_file() -> Path:
+    return state_folder() / "preferences.json"
+
+
+def preferred_ide() -> str | None:
+    """The IDE the developer debugs in when several are open (`autodebug setup --debug-in`), or None."""
+    try:
+        value = json.loads(preferences_file().read_text(encoding="utf-8")).get("debug_in")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if value in IDE_NAMES else None
+
+
+def set_preferred_ide(ide: str | None) -> Path:
+    path = preferences_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data = data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        data = {}
+    if ide:
+        data["debug_in"] = ide
+    else:
+        data.pop("debug_in", None)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return path
+
+
+def matching(windows: list[Window], folder: str | None, ide: str | None = None) -> list[Window]:
+    """Current windows of `ide` (if given) with `folder` open (if given)."""
+    return [w for w in windows if w.current and (not ide or w.ide == ide)
+            and (not folder or any(same_folder(f, folder) for f in w.folders))]
+
+
 def choose(windows: list[Window], folder: str | None, ide: str | None = None) -> Window:
     """The window to debug in: of `ide` if given, with `folder` open if given, else the only one."""
     if ide:

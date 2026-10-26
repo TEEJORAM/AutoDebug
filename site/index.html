@@ -110,6 +110,7 @@
   table.ref th { font: 600 0.9rem/1.4 var(--sans); color: var(--ink-soft); }
   table.ref td:first-child { width: 30%; }
   table.ref td:first-child code { white-space: nowrap; }
+  table.ref.pairs td:first-child { width: 19%; }
   .status { font-weight: 600; white-space: nowrap; }
   .status.live { color: var(--ok); }
   .status.planned { color: var(--ink-soft); }
@@ -153,7 +154,7 @@
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
-  <p class="version">Version 0.5.4 · MIT License</p>
+  <p class="version">Version 0.5.5 · MIT License</p>
   <nav aria-label="Contents">
     <p>Start</p>
     <ul>
@@ -163,6 +164,7 @@
     </ul>
     <p>Connect and debug</p>
     <ul>
+      <li><a href="#pairs">IDE and agent</a></li>
       <li><a href="#vscode">VS Code</a></li>
       <li><a href="#cursor">Cursor</a></li>
       <li><a href="#visualstudio">Visual Studio 2022 / 2026</a></li>
@@ -250,6 +252,45 @@ autodebug setup</pre></div>
   <p><code>autodebug doctor</code> checks everything at any time: which AutoDebug runs and from where, the connected IDEs, the open IDE windows, and whether a newer version is on PyPI. Setup and doctor always print commands in the form that works on your computer, such as <code>py -m autodebug doctor</code> on Windows.</p>
   <p><strong>To update</strong>, run setup again (<code>py -m autodebug setup</code> on Windows). When PyPI has a newer AutoDebug, setup installs that exact version first, replacing every file of the old copy, then reconnects your IDEs with it. Nothing else to do; <code>--no-update</code> skips it.</p>
 
+  <h2 id="pairs">IDE and agent <a class="anchor" href="#pairs" aria-label="Link to this section">#</a></h2>
+  <p>Two roles, which can be the same app or two different apps:</p>
+  <ul>
+    <li><strong>The IDE you debug in</strong> runs your program under its debugger and shows the <strong>Approve</strong> dialog. It needs the AutoDebug extension and your project open.</li>
+    <li><strong>The agent you chat with</strong> needs the <strong>autodebug</strong> tools switched on in its app.</li>
+  </ul>
+  <table class="ref pairs">
+    <thead><tr><th>Debug in</th><th>Agent</th><th>Switch on in the agent's app</th><th>Say in the prompt</th></tr></thead>
+    <tbody>
+      <tr><td>VS Code</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>Nothing extra</td></tr>
+      <tr><td>VS Code</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>"debug in VS Code", or set it once (below)</td></tr>
+      <tr><td>Cursor</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>Nothing extra</td></tr>
+      <tr><td>Cursor</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>"debug in Cursor", or set it once (below)</td></tr>
+      <tr><td>Visual Studio 2022 / 2026</td><td>Cursor's agent</td><td>Nothing: <strong>extension-autodebug</strong> is on by itself</td><td>Nothing extra: Visual Studio's configurations, such as <code>geometry (Debug|x64)</code>, exist only there</td></tr>
+      <tr><td>Visual Studio 2022 / 2026</td><td>Copilot in VS Code</td><td>Agent mode; in its tools, tick <strong>autodebug</strong></td><td>Nothing extra (as above)</td></tr>
+      <tr><td>Visual Studio 2022 / 2026</td><td>Copilot in Visual Studio</td><td>In the chat, <strong>Tools</strong> → tick <strong>autodebug</strong></td><td>Nothing extra</td></tr>
+      <tr><td>Any of them</td><td>Claude Code</td><td>Nothing</td><td>Name the IDE when more than one is open</td></tr>
+    </tbody>
+  </table>
+  <p><strong>The Approve dialog always opens in the IDE you debug in</strong>, not in the agent's chat. With Cursor as the agent and Visual Studio as the IDE, you chat in Cursor and click Approve in Visual Studio.</p>
+  <p><strong>Set your IDE once.</strong> When two IDEs have the same project open with the same launch configurations (VS Code and Cursor share <code>.vscode/launch.json</code>), tell AutoDebug which one you debug in, and agents use it without being told:</p>
+  <div class="block plain"><pre>autodebug setup --debug-in visualstudio</pre></div>
+  <p>Use <code>vscode</code>, <code>cursor</code> or <code>visualstudio</code>, or <code>any</code> to clear it. On Windows, write <code>py -m autodebug</code>. Without a choice, AutoDebug uses the window that has the launch configuration, and asks the agent to name the IDE only when several do.</p>
+  <h3>Do</h3>
+  <ul>
+    <li>Open the project in the IDE you debug in before you ask. In Visual Studio: the solution, the startup project, and the <strong>Debug</strong> configuration.</li>
+    <li>Keep both apps running until the report is written.</li>
+    <li>Start a new chat after <code>autodebug setup</code> or after switching tools on.</li>
+    <li>Read the Approve dialog, then click Approve within 2 minutes.</li>
+  </ul>
+  <h3>Don't</h3>
+  <ul>
+    <li>Don't start your own debug session (F5) in that IDE while the agent's session runs. One session at a time; a second one is refused.</li>
+    <li>Don't open the same folder in two windows of the same IDE. If you have to, the agent must name the folder (<code>workspace_folder</code>).</li>
+    <li>Don't switch off the AutoDebug extension in the IDE you debug in, or the autodebug tools in the agent's app.</li>
+    <li>In Cursor, don't add an <code>autodebug</code> entry to <code>mcp.json</code> by hand. Cursor starts it switched off, and the extension then stands aside.</li>
+    <li>Don't answer the agent with "approved" in the chat. Only the dialog approves.</li>
+  </ul>
+
   <section class="ide" aria-labelledby="vscode">
   <h2 id="vscode">VS Code <a class="anchor" href="#vscode" aria-label="Link to this section">#</a></h2>
   <h3>Before you start</h3>
@@ -272,7 +313,7 @@ autodebug setup</pre></div>
     <li><p>VS Code shows the <strong>Approve</strong> dialog. Read it (see <a href="#safety">Debug safely</a>) and click <strong>Approve</strong> within 2 minutes.</p></li>
     <li><p>The agent builds, stops, steps and traces. The report is written to <code>autodebug-reports/</code> in the project.</p></li>
   </ol>
-  <div class="note"><p>Cursor's agent and Claude Code can debug in a VS Code window too. Name it in the prompt when another IDE is open: "use the VS Code window".</p></div>
+  <div class="note"><p>Cursor's agent and Claude Code can debug in a VS Code window too: see <a href="#pairs">IDE and agent</a>.</p></div>
   </section>
 
   <section class="ide" aria-labelledby="cursor">
@@ -298,7 +339,7 @@ autodebug setup</pre></div>
     <li><p>Cursor shows the <strong>Approve</strong> dialog in its window. Click <strong>Approve</strong> within 2 minutes.</p></li>
     <li><p>The report is written to <code>autodebug-reports/</code> in the project.</p></li>
   </ol>
-  <div class="note"><p>Cursor's agent can also debug in Visual Studio: open the solution there and say "use the Visual Studio window (ide: visualstudio)".</p></div>
+  <div class="note"><p>Cursor's agent can also debug in Visual Studio or VS Code: see <a href="#pairs">IDE and agent</a>.</p></div>
   </section>
 
   <section class="ide" aria-labelledby="visualstudio">
@@ -323,7 +364,7 @@ autodebug setup</pre></div>
   <p><code>autodebug doctor</code> lists a <strong>Visual Studio window open</strong> line with the solution's folder.</p>
   <h3>Debug</h3>
   <ol class="steps">
-    <li><p>Ask the agent, and name Visual Studio when Cursor or VS Code is open too:</p>
+    <li><p>Ask the agent. Visual Studio's configurations exist only there, so it is chosen even when Cursor or VS Code is open too:</p>
       <blockquote>Use the autodebug tools with the Visual Studio window (ide: visualstudio) and launch configuration "geometry (Debug|x64)". Build first, stop at geometry.cpp line 16, trace total, and write a report.</blockquote></li>
     <li><p>The <strong>Approve</strong> dialog opens on top of your other windows. Click <strong>Approve</strong> within 2 minutes; unanswered, it closes and nothing runs.</p></li>
     <li><p>Visual Studio builds and starts the program. A breakpoint shows as not bound until the program has loaded; that is normal.</p></li>
@@ -381,7 +422,7 @@ autodebug run help</pre></div>
   <p>How it works in detail: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
 
   <footer>
-    <span>AutoDebug 0.5.4 · MIT License</span>
+    <span>AutoDebug 0.5.5 · MIT License</span>
     <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
   </footer>
 </div>

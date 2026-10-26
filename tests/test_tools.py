@@ -75,6 +75,43 @@ class NotBuilt(ToolsTest):
         self.assertEqual(self.debugger.start_session(launch_configuration="Run file", **args)["status"], "awaiting_approval")
 
 
+class TwoIdes(ToolsTest):
+    """Cursor (where the developer chats) and Visual Studio (where they debug) have the same project open."""
+
+    def setUp(self):
+        super().setUp()
+        import os
+        from unittest import mock
+        patch = mock.patch.dict(os.environ, {"AUTODEBUG_HOME": str(self.root / "state")})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.vs = self.extension(ide="visualstudio", launch=[
+            {"name": "geometry (Debug|x64)", "type": "debugpy", "request": "launch", "module": "unittest"}])
+
+    def args(self, launch):
+        return {"launch_configuration": launch, "breakpoints": [{"file": "geometry.py", "line": 15}],
+                "goal": "x", "wait_seconds": 0}
+
+    def test_the_window_with_the_launch_configuration_is_chosen(self):
+        result = self.debugger.start_session(**self.args("geometry (Debug|x64)"))
+        self.assertEqual(result["status"], "awaiting_approval")
+        self.assertIn("Visual Studio", result["next"])
+        self.assertTrue(any(op == "approve" for op, _ in self.vs.calls))
+        self.assertFalse(any(op == "approve" for op, _ in self.fake.calls))
+
+    def test_a_configuration_in_both_needs_the_ide_or_the_developers_choice(self):
+        both = self.extension(ide="visualstudio")  # Visual Studio also has "Debug tests"
+        error = self.assertCode("AMBIGUOUS_WINDOW", self.debugger.start_session, **self.args("Debug tests"))
+        self.assertIn("autodebug setup --debug-in", error.message)
+        from autodebug.connection import set_preferred_ide
+        set_preferred_ide("cursor")
+        self.assertIn("Cursor", self.debugger.start_session(**self.args("Debug tests"))["next"])
+        self.debugger.stop_session()
+        self.assertEqual(self.debugger.list_targets()["debug_in"], "cursor")
+        self.assertIn("ide=cursor", self.debugger.list_targets()["next"])
+        self.assertTrue(both)
+
+
 class Targets(ToolsTest):
     def test_lists_windows_and_targets(self):
         found = self.debugger.list_targets()
