@@ -23,13 +23,11 @@ Studio), and any other agent that supports MCP or has a terminal.
 
 You need Python 3.11 or newer. If you use Visual Studio, close it first.
 
-Windows:
+Windows (PowerShell):
 
 ```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
-pipx install autodebug
-autodebug setup
+py -m pip install autodebug
+py -m autodebug setup
 ```
 
 macOS:
@@ -50,10 +48,13 @@ pipx install autodebug
 autodebug setup
 ```
 
-After `pipx ensurepath`, open a new terminal before the last two lines.
+On Windows, `py` is the Python launcher, so nothing has to be added to your
+PATH: write `py -m autodebug` wherever these docs say `autodebug`. On macOS and
+Linux, open a new terminal after `pipx ensurepath`.
 `autodebug setup` finds VS Code, Cursor, Visual Studio and Claude Code, connects
 each one, and prints the few steps left for you (below). `autodebug doctor`
-checks everything. To update: `pipx upgrade autodebug`, then `autodebug setup`.
+checks everything. To update: `py -m pip install --upgrade autodebug` (Windows) or
+`pipx upgrade autodebug`, then run setup again.
 
 ## Connect and debug
 

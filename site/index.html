@@ -236,10 +236,8 @@
     <button type="button" role="tab" id="tab-mac" aria-controls="os-mac" aria-selected="false">macOS</button>
     <button type="button" role="tab" id="tab-linux" aria-controls="os-linux" aria-selected="false">Linux</button>
   </div>
-  <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>py -m pip install --user pipx
-py -m pipx ensurepath
-pipx install autodebug
-autodebug setup</pre></div>
+  <div class="block" id="os-win" role="tabpanel" aria-labelledby="tab-win"><pre>py -m pip install autodebug
+py -m autodebug setup</pre></div>
   <div class="block" id="os-mac" role="tabpanel" aria-labelledby="tab-mac" hidden><pre>brew install pipx
 pipx ensurepath
 pipx install autodebug
@@ -248,8 +246,8 @@ autodebug setup</pre></div>
 pipx ensurepath
 pipx install autodebug
 autodebug setup</pre></div>
-  <p>After <code>pipx ensurepath</code>, open a new terminal before the last two lines. <code>autodebug setup</code> finds VS Code, Cursor, Visual Studio and Claude Code on the computer, connects each one, and prints the few steps left for you. They are in the IDE sections below. <code>autodebug doctor</code> checks everything at any time.</p>
-  <p>To update later: <code>pipx upgrade autodebug</code>, then <code>autodebug setup</code> again.</p>
+  <p>On Windows, <code>py</code> is the Python launcher, so nothing has to be added to your PATH; write <code>py -m autodebug</code> wherever this page says <code>autodebug</code>. On macOS and Linux, open a new terminal after <code>pipx ensurepath</code>. <code>autodebug setup</code> finds VS Code, Cursor, Visual Studio and Claude Code on the computer, connects each one, and prints the few steps left for you. They are in the IDE sections below. <code>autodebug doctor</code> checks everything at any time.</p>
+  <p>To update later: <code>py -m pip install --upgrade autodebug</code> on Windows, <code>pipx upgrade autodebug</code> on macOS and Linux; then run setup again.</p>
 
   <section class="ide" aria-labelledby="vscode">
   <h2 id="vscode">VS Code <a class="anchor" href="#vscode" aria-label="Link to this section">#</a></h2>
@@ -361,6 +359,7 @@ autodebug run help</pre></div>
       <tr><td>No window is running the extension</td><td>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>. Visual Studio: <strong>View → Output → AutoDebug</strong>.</td></tr>
       <tr><td>No Approve dialog</td><td>Switch to the IDE window. "No answer within 2 minutes" means nobody clicked; ask the agent to try again.</td></tr>
       <tr><td><code>NOT_BUILT</code></td><td>The agent retries with the build task it names.</td></tr>
+      <tr><td>"pipx" or "autodebug" is not recognized</td><td>Windows: use <code>py -m pip install autodebug</code> and <code>py -m autodebug</code>. macOS and Linux: run <code>pipx ensurepath</code> and open a new terminal.</td></tr>
       <tr><td>Setup says Visual Studio is open</td><td>Close every Visual Studio window and run <code>autodebug setup</code> again.</td></tr>
       <tr><td>No debugger for type "…"</td><td>Install that debugger extension (see the IDE's "Before you start") and reload the window.</td></tr>
     </tbody>
@@ -373,7 +372,7 @@ autodebug run help</pre></div>
       <tr><td><code>autodebug setup</code></td><td>Connect every IDE and agent found. <code>setup cursor</code>, <code>vscode</code>, <code>visualstudio</code> or <code>claude</code> connects one.</td></tr>
       <tr><td><code>autodebug doctor</code></td><td>Check the setup and the open IDE windows</td></tr>
       <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Call a debugging tool from a terminal; <code>run help</code> lists them</td></tr>
-      <tr><td><code>pipx upgrade autodebug</code></td><td>Update, then run <code>autodebug setup</code> again</td></tr>
+      <tr><td><code>pipx upgrade autodebug</code></td><td>Update (Windows: <code>py -m pip install --upgrade autodebug</code>), then run setup again</td></tr>
     </tbody>
   </table>
   <p>How it works in detail: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
