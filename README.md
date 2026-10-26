@@ -56,9 +56,14 @@ each one, and prints the few steps left for you (below). `autodebug doctor`
 checks everything: which AutoDebug runs and from where, the connected IDEs, the
 open IDE windows, and whether a newer version is on PyPI. Setup and doctor print
 commands in the form that works on your computer (`py -m autodebug doctor` on
-Windows). To update: `py -m pip install --upgrade autodebug` (Windows) or
-`pipx upgrade autodebug`, then run setup again; it also updates the AutoDebug
-section of every `AGENTS.md` it wrote.
+Windows).
+
+**To update**, run setup again (`py -m autodebug setup` on Windows). When PyPI
+has a newer AutoDebug, setup installs that exact version first, replacing every
+file of the old copy (pip's cache cannot hold it back), and then reconnects your
+IDEs with the new version. It also updates the AutoDebug section of every
+`AGENTS.md` it wrote. `--no-update` skips this; a source checkout is never
+changed (`git pull` instead).
 
 ## Connect and debug
 

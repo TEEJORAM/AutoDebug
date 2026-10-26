@@ -302,10 +302,17 @@ section of every `AGENTS.md` it wrote before (recorded in
 `agents-folders.json` in the state folder) and of the open IDE windows' folders,
 so agents never run an older AutoDebug; `doctor FOLDER` flags a stale one.
 
-**Updates.** `setup` and `doctor` ask PyPI for the newest version (one HTTPS
-request, 3 seconds at most, ignored when offline) and print the upgrade command
-when it is newer. `doctor` also prints which AutoDebug runs, from where, and with
-which Python.
+**Updates.** `setup` first asks PyPI for the newest version (one HTTPS request,
+3 seconds at most, ignored when offline). When it is newer, setup installs
+exactly that version into the Python it runs on (`pip install --upgrade
+--force-reinstall --no-deps --no-cache-dir autodebug==X`, or `pipx install
+--force` for a pipx copy), which replaces every file of the old copy and gets
+past pip's cached package list, then runs `setup` again in a new process with
+the new code (`AUTODEBUG_UPDATED=1` stops a second update). A failed update is
+reported with the command to run, and setup goes on with the current version.
+`--no-update` skips it; a source checkout is never changed. `doctor` prints which
+AutoDebug runs, from where and with which Python, and says when PyPI has a newer
+one.
 
 `autodebug setup cursor|vscode [FOLDER]` builds the extension package, installs
 it with the IDE's own `--install-extension`, and writes the MCP entry: Cursor's
