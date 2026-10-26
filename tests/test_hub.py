@@ -114,6 +114,13 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
                               capture_output=True, text=True, env=self.env, timeout=60)
         self.assertEqual(done.returncode, 2)
         self.assertIn("stack has no argument 'depth'", done.stderr)
+        # The command an agent ran on Windows: the error names the argument and what to do instead.
+        done = subprocess.run([sys.executable, str(SRC / "autodebug"), "run", "start_session",
+                               "launch_configuration=geometry (Debug|x64)", "breakpoints=geometry.cpp:16",
+                               "goal=find why", "wait_seconds=120"], capture_output=True, text=True, env=self.env, timeout=60)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("start_session: wait_seconds must be between 0 and 55; got 120.0; call wait to keep waiting",
+                      done.stderr)
 
 
 class InProcess(ServiceTest):

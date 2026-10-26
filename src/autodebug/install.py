@@ -208,6 +208,7 @@ This project can be debugged with the IDE's own debugger (VS Code, Cursor or Vis
 - Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal, and `build_task` from
   `list_targets` so the program is built from the current source) → `wait` while it is
   awaiting_approval, building or starting → `inspect`, `step`, `trace` → `stop_session` → `write_report`.
+  One call waits at most 55 seconds (`wait_seconds`); to wait longer for the Approve click, call `wait` again.
   Call the tools one at a time. Paths are relative to the workspace folder that `list_targets` shows.
 {AGENTS_END}
 """

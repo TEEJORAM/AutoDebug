@@ -79,6 +79,13 @@ service is just another client of the extension, and only the IDE dialog approve
 
 ## Agent tools
 
+Arguments are checked against each tool's schema before anything runs (MCP, the
+service and `autodebug run` share one check). A rejected call names the argument,
+what is allowed and what to do instead, for example `start_session: wait_seconds
+must be between 0 and 55; got 120; call wait to keep waiting`, so an agent fixes
+the call instead of looking for other causes. One call waits at most 55 seconds;
+an agent waits longer for the Approve click by calling `wait` again.
+
 | Tool | Does |
 |---|---|
 | `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately) and build tasks. `ide` limits it to one IDE |

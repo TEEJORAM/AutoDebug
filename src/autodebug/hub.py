@@ -114,13 +114,14 @@ class Hub:
             return {"ok": True}
         if op != "call":
             return {"error": "BAD_REQUEST", "message": f"unknown op {op}"}
-        from autodebug.mcp_server import TOOLS, _valid, call_tool
+        from autodebug.mcp_server import TOOLS, argument_problem, call_tool
 
         name, arguments = request.get("name"), request.get("arguments") or {}
         if name not in TOOLS:
             return {"result": {"error": "BAD_REQUEST", "message": f"unknown tool {name}"}, "is_error": True}
-        if not _valid(arguments, TOOLS[name][1]):
-            return {"result": {"error": "BAD_REQUEST", "message": f"invalid arguments for {name}"}, "is_error": True}
+        problem = argument_problem(arguments, TOOLS[name][1])
+        if problem:
+            return {"result": {"error": "BAD_REQUEST", "message": f"{name}: {problem}"}, "is_error": True}
         self.last_call = time.monotonic()
         with self._tool_lock:
             result, is_error = call_tool(self.debugger, name, arguments)

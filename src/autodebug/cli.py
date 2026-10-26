@@ -377,7 +377,7 @@ def tool_guide() -> str:
 
 def _run(args: argparse.Namespace) -> int:
     from autodebug import hub
-    from autodebug.mcp_server import TOOLS, _valid
+    from autodebug.mcp_server import TOOLS, argument_problem
 
     if not args.tool or args.tool in ("help", "-h", "--help"):
         print(tool_guide())
@@ -390,9 +390,9 @@ def _run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"autodebug: {exc}", file=sys.stderr)
         return 2
-    if not _valid(arguments, TOOLS[args.tool][1]):
-        required = ", ".join(TOOLS[args.tool][1].get("required", ())) or "none"
-        print(f"autodebug: invalid arguments for {args.tool} (required: {required}); see `run help`", file=sys.stderr)
+    problem = argument_problem(arguments, TOOLS[args.tool][1])
+    if problem:
+        print(f"autodebug: {args.tool}: {problem}", file=sys.stderr)
         return 2
     try:
         result, is_error = hub.call(args.tool, arguments)
