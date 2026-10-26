@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
-from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover
+from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
@@ -73,6 +73,44 @@ class Debugger:
 
     def _window(self, folder: str | None, ide: str | None = None) -> Window:
         return choose(self._find_windows(), folder, ide)
+
+    def _window_for(self, folder: str | None, ide: str | None, launch: str) -> Window:
+        """The window to start `launch` in. When the developer did not name an IDE and several windows match
+        (say Cursor, where they chat, and Visual Studio, where they debug): their `--debug-in` choice, else the
+        only window that has a launch configuration with that name."""
+        try:
+            return self._window(folder, ide)
+        except DebugError as exc:
+            if exc.code != "AMBIGUOUS_WINDOW":
+                raise
+        windows = matching(self._find_windows(), folder, ide)
+        preferred = None if ide else preferred_ide()
+        if preferred and [w for w in windows if w.ide == preferred]:
+            windows = [w for w in windows if w.ide == preferred]
+            if len(windows) == 1:
+                return windows[0]
+        having = [w for w in windows if launch in self._launch_names(w, folder)]
+        if len(having) == 1:
+            return having[0]
+        listed = "; ".join(f"{IDE_NAMES.get(w.ide, w.ide)}: {', '.join(w.folders)}" for w in (having or windows))
+        raise DebugError("AMBIGUOUS_WINDOW", f'"{launch}" can run in several windows ({listed}). Pass ide '
+                         "(cursor, vscode or visualstudio) and, for two windows of one IDE, workspace_folder. The "
+                         "developer can set the IDE they debug in once: autodebug setup --debug-in <ide>.")
+
+    def _launch_names(self, window: Window, folder: str | None) -> set[str]:
+        try:
+            connection = self._connect(window)
+        except DebugError:
+            return set()
+        try:
+            names = set()
+            for f in [folder] if folder else list(window.folders):
+                names |= {c.get("name") for c in connection.call("targets", {"folder": f}).get("launch", [])}
+            return names
+        except DebugError:
+            return set()
+        finally:
+            connection.close()
 
     def _session(self) -> Session:
         if self.connection is None:
@@ -203,8 +241,14 @@ class Debugger:
             finally:
                 connection.close()
             found.append({"ide": window.ide, "folders": targets})
-        return {"windows": found,
-                "next": "Call start_session with a launch configuration name, the breakpoints and your goal."}
+        result = {"windows": found,
+                  "next": "Call start_session with a launch configuration name, the breakpoints and your goal."}
+        preferred = preferred_ide()
+        if preferred and not ide and len({w["ide"] for w in found}) > 1:
+            result["debug_in"] = preferred
+            result["next"] += (f" The developer debugs in {IDE_NAMES[preferred]}: start the session there "
+                               f"(ide={preferred}).")
+        return result
 
     def start_session(self, launch_configuration: str, breakpoints: list[dict], goal: str,
                       workspace_folder: str | None = None, build_task: str | None = None,
@@ -212,7 +256,7 @@ class Debugger:
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
                       function_breakpoints: list[str] | None = None, ide: str | None = None) -> dict:
-        window = self._window(workspace_folder, ide)
+        window = self._window_for(workspace_folder, ide, launch_configuration)
         if self.connection is not None:
             self.connection.close()
         self.connection = self._connect(window)

@@ -77,6 +77,18 @@ An agent can therefore start a session over MCP and finish it in the terminal (o
 the reverse), and the report keeps the whole timeline. Approval is unchanged: the
 service is just another client of the extension, and only the IDE dialog approves.
 
+## Choosing the window
+
+`start_session` debugs in one IDE window. With `ide` and `workspace_folder` it
+takes the window they name. When the developer named neither and several
+windows match (Cursor, where they chat, and Visual Studio, where they debug, both
+with the project open), it takes: (1) the IDE set with `autodebug setup
+--debug-in <ide>` (`preferences.json` in the state folder), else (2) the only
+window whose project has a launch configuration of that name (Visual Studio's
+`geometry (Debug|x64)` exists only there), else it fails with `AMBIGUOUS_WINDOW`,
+naming the windows and both ways out. `list_targets` reports the preferred IDE
+(`debug_in`) when windows of several IDEs are open.
+
 ## Agent tools
 
 Arguments are checked against each tool's schema before anything runs (MCP, the

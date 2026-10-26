@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import discover, state_folder, version_problem
+from autodebug.connection import discover, preferred_ide, set_preferred_ide, state_folder, version_problem
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
@@ -167,6 +167,10 @@ def _setup(args: argparse.Namespace) -> int:
         return 1
     print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
     install.write_server_file()
+    if args.debug_in:
+        set_preferred_ide(None if args.debug_in == "any" else args.debug_in)
+        _ok("agents debug in " + (IDES[args.debug_in] + " when several IDEs are open" if args.debug_in != "any"
+                                  else "the IDE that has the launch configuration (no preference)"))
     failed, left = False, []
     for name in targets:
         if name == "visualstudio":
@@ -190,7 +194,8 @@ def _setup(args: argparse.Namespace) -> int:
     print(f"""
 Then open your project, start a new agent chat and ask, for example:
   "Use the autodebug tools to find why <the bug> happens and write a report."
-Click Approve when the IDE asks. Check everything with: {you_run()} doctor""")
+Click Approve when the IDE asks. Check everything with: {you_run()} doctor
+Chat in one app and debug in another IDE? Set the IDE once: {you_run()} setup --debug-in visualstudio|cursor|vscode""")
     return 1 if failed else 0
 
 
@@ -416,6 +421,10 @@ def _doctor(args: argparse.Namespace) -> int:
     where = "a source checkout" if _from_checkout() else "installed"
     _ok(f"AutoDebug {__version__}, {where} at {Path(__file__).resolve().parent}, run with {sys.executable}")
     _ok(f"in a terminal: {you_run()}")
+    preferred = preferred_ide()
+    print(f"  ok    debugs in {IDES[preferred]} when several IDEs are open" if preferred else
+          f"  -     no preferred IDE; with several open, agents use the one that has the launch configuration "
+          f"(set one: {you_run()} setup --debug-in visualstudio|cursor|vscode)")
     if _update_notice():
         problems += 1
     if sys.version_info >= (3, 11):
@@ -501,6 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("folder", nargs="?", help="a project folder: its own MCP entries and AGENTS.md")
     setup.add_argument("--no-install", action="store_true", help="only write the MCP entry")
     setup.add_argument("--no-update", action="store_true", help="do not install a newer AutoDebug from PyPI first")
+    setup.add_argument("--debug-in", choices=sorted(IDES) + ["any"],
+                       help="the IDE you debug in when several are open (any: no preference)")
     setup.add_argument("--vsix", help="Visual Studio: install this extension package instead of downloading it")
     setup.set_defaults(handler=_setup)
     run = commands.add_parser("run", help="call a debugging tool from a terminal (`run help` lists them)",

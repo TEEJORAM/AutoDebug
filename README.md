@@ -84,6 +84,29 @@ changed (`git pull` instead).
 | Visual Studio | Open the solution; **View → Output → AutoDebug** says it is listening. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: chat → **Tools** → tick **autodebug**. |
 | Claude Code | Nothing. Start a new session. |
 
+**IDE and agent can be different apps.** The IDE you debug in runs the program and
+shows the Approve dialog; the agent you chat with needs the autodebug tools on.
+
+| Debug in | Agent | Switch on in the agent's app | Say in the prompt |
+|---|---|---|---|
+| VS Code | Copilot in VS Code | Agent mode → tools → tick **autodebug** | Nothing extra |
+| VS Code | Cursor's agent | Nothing (**extension-autodebug** is on) | "debug in VS Code", or `--debug-in vscode` |
+| Cursor | Cursor's agent | Nothing | Nothing extra |
+| Cursor | Copilot in VS Code | Agent mode → tools → tick **autodebug** | "debug in Cursor", or `--debug-in cursor` |
+| Visual Studio | Cursor's agent | Nothing | Nothing extra (its configurations exist only there) |
+| Visual Studio | Copilot in VS Code | Agent mode → tools → tick **autodebug** | Nothing extra |
+| Visual Studio | Copilot in Visual Studio | Chat → **Tools** → tick **autodebug** | Nothing extra |
+| Any | Claude Code | Nothing | Name the IDE when several are open |
+
+The Approve dialog always opens in the IDE you debug in, not in the chat. If you
+use two IDEs on one project, set the one you debug in once:
+`autodebug setup --debug-in visualstudio` (or `vscode`, `cursor`; `any` clears it).
+
+**Don't** start your own debug session (F5) in that IDE while the agent's runs,
+open the same folder in two windows of one IDE, switch off the AutoDebug
+extension or the autodebug tools, or add `autodebug` to Cursor's `mcp.json` by
+hand (Cursor starts it switched off). A chat message is never an approval.
+
 **Debug:** open the project and ask the agent, naming the IDE when more than one
 is open, for example:
 
