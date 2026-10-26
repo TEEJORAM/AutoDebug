@@ -47,6 +47,13 @@
   .sidebar li a { display: block; padding: 0.22rem 0 0.22rem 0.75rem; border-left: 2px solid transparent; color: var(--side-text); text-decoration: none; font-size: 0.95rem; }
   .sidebar li a:hover { color: #fff; border-left-color: var(--side-dim); }
   .sidebar li a[aria-current="true"] { color: #fff; border-left-color: var(--breakpoint); }
+  /* Each contents item says what is in it, which also fills the sidebar */
+  .sidebar li a { padding: 0.6rem 0 0.6rem 0.9rem; font-size: 1rem; }
+  .sidebar li a small { display: block; font-size: 0.8rem; line-height: 1.35; color: var(--side-dim); margin-top: 0.15rem; }
+  .sidebar li a[aria-current="true"] small { color: var(--side-text); }
+  .sidebar li + li { border-top: 1px solid #1c1c1a; }
+  .sidebar { display: flex; flex-direction: column; }
+  .sidebar .repo { margin-top: auto; padding-top: 2rem; }
   .sidebar .repo { display: block; margin-top: 2rem; font-size: 0.9rem; color: var(--side-text); }
 
   /* Reading column: cement */
@@ -119,6 +126,10 @@
     .sidebar { position: static; width: auto; padding: 1rem 1.25rem; }
     .sidebar nav, .sidebar .repo, .version { display: none; }
     .sidebar.open nav, .sidebar.open .repo { display: block; }
+    .sidebar { display: block; }
+    .sidebar .repo { margin-top: 1.5rem; padding-top: 0; }
+    .sidebar li a small { display: none; }
+    .sidebar li a { padding: 0.45rem 0 0.45rem 0.9rem; }
     .sidebar .top { display: flex; justify-content: space-between; align-items: center; }
     .menu { display: inline-block; font: 600 0.9rem/1 var(--sans); color: #fff; background: none; border: 1px solid var(--side-dim); border-radius: 4px; padding: 0.45rem 0.7rem; cursor: pointer; }
     main { margin-left: 0; }
@@ -179,12 +190,12 @@
   <p class="version">Version 0.5.5 · MIT License</p>
   <nav aria-label="Contents">
     <ul>
-      <li><a href="#what">What it is</a></li>
-      <li><a href="#start">Get started</a></li>
-      <li><a href="#safety">Debug safely</a></li>
-      <li><a href="#help">Troubleshooting</a></li>
-      <li><a href="#commands">Commands</a></li>
-      <li><a href="#get">Where to get it</a></li>
+      <li><a href="#what">What it is<small>Two parts, which IDEs and agents</small></a></li>
+      <li><a href="#start">Get started<small>Your steps in about 2 minutes</small></a></li>
+      <li><a href="#safety">Debug safely<small>What Approve means</small></a></li>
+      <li><a href="#help">Troubleshooting<small>Six common problems</small></a></li>
+      <li><a href="#commands">Commands<small>setup, doctor, run</small></a></li>
+      <li><a href="#get">Where to get it<small>PyPI, Open VSX, Marketplaces</small></a></li>
     </ul>
   </nav>
   <a class="repo" href="https://github.com/TEEJORAM/AutoDebug">Source on GitHub</a>
