@@ -125,7 +125,35 @@ def _setup_claude(args: argparse.Namespace) -> tuple[bool, list[str]]:
     return False, []
 
 
+def _self_update(args: argparse.Namespace) -> int | None:
+    """Before connecting anything: when PyPI has a newer AutoDebug, install it and run setup again with
+    the new code. Returns that run's exit code, or None to go on with this version (no newer one, a source
+    checkout, offline, --no-update, or the update failed, which is reported)."""
+    if args.no_update or _from_checkout() or os.environ.get("AUTODEBUG_UPDATED") == "1":
+        return None
+    latest = install.latest_version()
+    if not latest or not install.is_newer(latest, __version__):
+        return None
+    print(f"Updating AutoDebug {__version__} → {latest} (the older copy is replaced)")
+    try:
+        result = install.upgrade_self(latest)
+    except (OSError, subprocess.SubprocessError) as exc:
+        result = subprocess.CompletedProcess([], 1, "", str(exc))
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or [""]
+        _bad(f"could not update automatically ({detail[0][:200]}); run: {_upgrade_command(latest)}. "
+             f"Going on with {__version__}.")
+        return None
+    _ok(f"AutoDebug {latest} installed; continuing with it\n")
+    again = [sys.executable, "-m", "autodebug", "setup", *args.argv[1:]]
+    sys.stdout.flush()  # our lines first, then the new version's
+    return subprocess.run(again, env=dict(os.environ, AUTODEBUG_UPDATED="1"), check=False).returncode
+
+
 def _setup(args: argparse.Namespace) -> int:
+    updated = _self_update(args)
+    if updated is not None:
+        return updated
     target, folder = args.ide, args.folder
     if target and target not in TARGETS and target != "all":
         if folder:
@@ -154,7 +182,8 @@ def _setup(args: argparse.Namespace) -> int:
     open_folders = [f for window in discover() for f in window.folders]
     for path in install.refresh_agent_instructions(run_command(), open_folders):
         _ok(f"agent instructions updated to this AutoDebug in {path}")
-    _update_notice()
+    if args.no_update or _from_checkout():  # otherwise _self_update already looked
+        _update_notice()
     print("\nLeft for you:" if left else "\nNothing left to set up.")
     for number, step in enumerate(left, 1):
         print(f"  {number}. {step}")
@@ -165,19 +194,23 @@ Click Approve when the IDE asks. Check everything with: {you_run()} doctor""")
     return 1 if failed else 0
 
 
-def _upgrade_command() -> str:
+def _upgrade_command(version: str | None = None) -> str:
+    """The manual update command, with an exact version so pip's cached package list cannot hold it back."""
     if _from_checkout():
         return "git pull in the AutoDebug folder"
+    pinned = f"autodebug=={version}" if version else "autodebug"
     if you_run() == "py -m autodebug":
-        return "py -m pip install --upgrade autodebug"
-    return "pipx upgrade autodebug (or: pip install --upgrade autodebug)"
+        return f"py -m pip install --upgrade --no-cache-dir {pinned}"
+    return f"pipx install --force {pinned} (or: pip install --upgrade --no-cache-dir {pinned})"
 
 
 def _update_notice() -> bool:
     """Say when PyPI has a newer AutoDebug than this one; True when it does."""
     latest = install.latest_version()
     if latest and install.is_newer(latest, __version__):
-        _bad(f"AutoDebug {latest} is available (this is {__version__}): {_upgrade_command()}, then {you_run()} setup")
+        how = (f"{_upgrade_command(latest)}" if _from_checkout()
+               else f"{you_run()} setup installs it and reconnects everything")
+        _bad(f"AutoDebug {latest} is available (this is {__version__}): {how}")
         return True
     return False
 
@@ -460,6 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("ide", nargs="?", metavar="ide", help="cursor, vscode, visualstudio or claude (default: all found)")
     setup.add_argument("folder", nargs="?", help="a project folder: its own MCP entries and AGENTS.md")
     setup.add_argument("--no-install", action="store_true", help="only write the MCP entry")
+    setup.add_argument("--no-update", action="store_true", help="do not install a newer AutoDebug from PyPI first")
     setup.add_argument("--vsix", help="Visual Studio: install this extension package instead of downloading it")
     setup.set_defaults(handler=_setup)
     run = commands.add_parser("run", help="call a debugging tool from a terminal (`run help` lists them)",
@@ -486,6 +520,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.argv = list(sys.argv[1:] if argv is None else argv)
     if args.command is None:
         parser.print_help()
         return 2

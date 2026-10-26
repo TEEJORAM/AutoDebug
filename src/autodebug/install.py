@@ -283,6 +283,20 @@ def latest_version(timeout: float = 3) -> str | None:
     return version if isinstance(version, str) else None
 
 
+def upgrade_self(version: str) -> subprocess.CompletedProcess:
+    """Install exactly `version` from PyPI into this Python, replacing every file of the copy that runs now.
+    The exact version and --no-cache-dir get past pip's cached package list (up to 10 minutes old), which
+    otherwise answers "Requirement already satisfied" right after a release; --force-reinstall replaces the
+    files even when pip believes they are current. AutoDebug has no dependencies, hence --no-deps."""
+    command = [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "--no-deps", "--no-cache-dir",
+               "--disable-pip-version-check", "--no-warn-script-location", f"autodebug=={version}"]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
+    if result.returncode != 0 and "pipx" in Path(sys.prefix).parts and shutil.which("pipx"):
+        result = subprocess.run([shutil.which("pipx"), "install", "--force", f"autodebug=={version}"],
+                                capture_output=True, text=True, timeout=600, check=False)
+    return result
+
+
 def is_newer(candidate: str, current: str) -> bool:
     def parts(version: str) -> tuple[int, ...]:
         return tuple(int(p) for p in version.split(".") if p.isdigit())

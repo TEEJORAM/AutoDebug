@@ -258,7 +258,7 @@ class Commands(InstallTest):
                 mock.patch.object(install, "claude_present", return_value=True):
             code, out = self.run_cli("setup")
             self.assertIn("Check everything with: py -m autodebug doctor", out)
-            self.assertIn("py -m pip install --upgrade autodebug", cli._upgrade_command())
+            self.assertEqual(cli._upgrade_command("0.6.0"), "py -m pip install --upgrade --no-cache-dir autodebug==0.6.0")
 
     def test_setup_brings_old_agent_instructions_up_to_date(self):
         project, other = self.home / "Demo", self.home / "Other"
@@ -283,6 +283,58 @@ class Commands(InstallTest):
         self.assertIn("AutoDebug 99.0.0 is available", out)
         self.assertTrue(install.is_newer("0.5.10", "0.5.2"))
         self.assertFalse(install.is_newer("0.5.1", "0.5.1"))
+
+
+class SelfUpdate(InstallTest):
+    """`setup` installs a newer AutoDebug from PyPI first, replacing the old copy, then runs again with it."""
+
+    def setUp(self):
+        super().setUp()
+        installed = mock.patch.object(cli, "_from_checkout", return_value=False)
+        newer = mock.patch.object(install, "latest_version", return_value="9.9.9")
+        for patch in (installed, newer):
+            patch.start()
+            self.addCleanup(patch.stop)
+        os.environ.pop("AUTODEBUG_UPDATED", None)
+
+    def test_a_newer_version_is_installed_and_setup_runs_again_with_it(self):
+        done = mock.Mock(returncode=0, stdout="Successfully installed autodebug-9.9.9", stderr="")
+        with mock.patch.object(install, "upgrade_self", return_value=done) as upgrade, \
+                mock.patch.object(cli.subprocess, "run", return_value=mock.Mock(returncode=0)) as again, \
+                mock.patch.object(install, "ide_command") as ide:
+            code, out = self.run_cli("setup", "cursor", "--no-install")
+        self.assertEqual(code, 0)
+        upgrade.assert_called_once_with("9.9.9")
+        self.assertIn("Updating AutoDebug", out)
+        self.assertEqual(again.call_args.args[0], [sys.executable, "-m", "autodebug", "setup", "cursor", "--no-install"])
+        self.assertEqual(again.call_args.kwargs["env"]["AUTODEBUG_UPDATED"], "1")  # the new run does not update again
+        ide.assert_not_called()  # the old version connects nothing
+
+    def test_a_failed_update_is_reported_and_setup_goes_on(self):
+        failed = mock.Mock(returncode=1, stdout="", stderr="ERROR: Could not install packages: permission denied")
+        with mock.patch.object(install, "upgrade_self", return_value=failed):
+            code, out = self.run_cli("setup", "claude")
+        self.assertIn("could not update automatically (ERROR: Could not install packages: permission denied)", out)
+        self.assertIn("autodebug==9.9.9", out)
+        self.assertIn("Claude Code: MCP server added", out)
+
+    def test_no_update_after_an_update_with_no_update_or_from_a_checkout(self):
+        with mock.patch.object(install, "upgrade_self") as upgrade:
+            with mock.patch.dict(os.environ, {"AUTODEBUG_UPDATED": "1"}):
+                self.run_cli("setup", "claude")
+            self.run_cli("setup", "claude", "--no-update")
+            with mock.patch.object(cli, "_from_checkout", return_value=True):
+                self.run_cli("setup", "claude")
+        upgrade.assert_not_called()
+
+    def test_the_upgrade_pins_the_version_and_skips_pips_cache(self):
+        with mock.patch.object(install.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            install.upgrade_self("9.9.9")
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], [sys.executable, "-m", "pip", "install"])
+        for flag in ("--no-cache-dir", "--force-reinstall", "--no-deps"):
+            self.assertIn(flag, command)
+        self.assertEqual(command[-1], "autodebug==9.9.9")
 
 
 class License(unittest.TestCase):
