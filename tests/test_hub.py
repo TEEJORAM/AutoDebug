@@ -179,6 +179,11 @@ class Arguments(unittest.TestCase):
         self.assertEqual(parse_tool_arguments("trace", ["file=geometry.cpp", "line=16", "variables=total,i",
                                                         "variables=points", "after=false"]),
                          {"file": "geometry.cpp", "line": 16, "variables": ["total", "i", "points"], "after": False})
+        # A sentence stays whole; repeating the key adds another (the report's open question was split at a comma).
+        self.assertEqual(parse_tool_arguments("write_report", [
+            "open_questions=A rebuild was not run, so the corrected totals were not observed",
+            "open_questions=Is the L-bracket closed?"])["open_questions"],
+            ["A rebuild was not run, so the corrected totals were not observed", "Is the L-bracket closed?"])
         self.assertEqual(parse_tool_arguments("continue", ["until=geometry.cpp:20"]),
                          {"until": {"file": "geometry.cpp", "line": 20}})
         self.assertEqual(parse_tool_arguments("breakpoints", ['add=[{"file": "a.py", "line": 3, "condition": "i > 2"}]']),

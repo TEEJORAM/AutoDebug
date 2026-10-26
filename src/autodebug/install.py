@@ -200,7 +200,8 @@ This project can be debugged with the IDE's own debugger (VS Code, Cursor or Vis
 - If they are not (some apps drop MCP tools), run the same tools in the terminal. It is the same session:
   - `{command} run list_targets ide=visualstudio` (or `ide=cursor`, `ide=vscode`; omit when one IDE is open)
   - `{command} run help` lists every tool and its arguments. Values need no JSON:
-    `breakpoints=geometry.cpp:16` `variables=total,i`; quote a whole pair that has spaces:
+    `breakpoints=geometry.cpp:16` `variables=total,i`; for `open_questions` repeat the key once per sentence;
+    quote a whole pair that has spaces:
     `"launch_configuration=geometry (Debug|x64)"`.
 - Do not read AutoDebug's source, connection files or IDE logs to find the tools: use the commands above.
 - `start_session` opens an Approve dialog in the IDE. Tell the developer to click **Approve** there

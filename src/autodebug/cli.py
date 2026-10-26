@@ -310,6 +310,10 @@ def you_run() -> str:
     return run_command()
 
 
+#: List arguments whose items are sentences, so a comma does not split them: open_questions="A, b" is one item.
+SENTENCE_LISTS = {"open_questions"}
+
+
 def _coerce(key: str, text: str, schema: dict):
     """One `key=value` from the command line, read by the tool's schema so no JSON quoting is needed:
     breakpoints=geometry.cpp:16,util.cpp:4  variables=total,i  max_steps=50  after=false."""
@@ -332,6 +336,8 @@ def _coerce(key: str, text: str, schema: dict):
             raise ValueError(f"{key} must be file:line, e.g. {key}=geometry.cpp:16")
         return {"file": file, "line": int(line)}
     if kind == "array":
+        if key in SENTENCE_LISTS:  # sentences contain commas: one item per key=value; repeat the key for more
+            return [text]
         return [_coerce(key, part.strip(), schema["items"]) for part in text.split(",") if part.strip()]
     return text
 
@@ -361,7 +367,8 @@ def tool_guide() -> str:
     command = run_command()
     lines = [f"Usage: {command} run <tool> key=value ...   (prints the tool's JSON result)", "",
              "The same tools as the AutoDebug MCP server, in the same session. Values need no JSON:",
-             "  breakpoints=geometry.cpp:16,other.cpp:4   variables=total,i   after=false", "",
+             "  breakpoints=geometry.cpp:16,other.cpp:4   variables=total,i   after=false",
+             '  "open_questions=A sentence, with commas" (repeat the key for each sentence)', "",
              "Example:",
              f'  {command} run list_targets ide=visualstudio',
              f'  {command} run start_session ide=visualstudio "launch_configuration=geometry (Debug|x64)" '
