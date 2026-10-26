@@ -75,6 +75,11 @@ class Protocol(unittest.TestCase):
                        call(3, "step", {"surprise": 1}), call(4, "nope"), call(5, "trace", {"file": "a.py"})])
         for request_id in range(1, 6):
             self.assertEqual(replies[request_id]["error"]["code"], -32602, replies[request_id])
+        messages = [replies[i]["error"]["message"] for i in range(1, 6)]
+        self.assertEqual(messages[0], "step: kind must be one of: over, into, out; got 'sideways'")
+        self.assertEqual(messages[1], "step: count must be between 1 and 20; got 99")
+        self.assertIn("step: unknown argument surprise; allowed: kind, count, wait_ms", messages[2])
+        self.assertIn("trace: missing line, variables", messages[4])
 
     def test_debug_errors_are_tool_errors(self):
         reply = run([call(1, "step")])[1]["result"]

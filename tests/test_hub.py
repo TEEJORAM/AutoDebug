@@ -114,6 +114,13 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
                               capture_output=True, text=True, env=self.env, timeout=60)
         self.assertEqual(done.returncode, 2)
         self.assertIn("stack has no argument 'depth'", done.stderr)
+        # The command an agent ran on Windows: the error names the argument and what to do instead.
+        done = subprocess.run([sys.executable, str(SRC / "autodebug"), "run", "start_session",
+                               "launch_configuration=geometry (Debug|x64)", "breakpoints=geometry.cpp:16",
+                               "goal=find why", "wait_seconds=120"], capture_output=True, text=True, env=self.env, timeout=60)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("start_session: wait_seconds must be between 0 and 55; got 120.0; call wait to keep waiting",
+                      done.stderr)
 
 
 class InProcess(ServiceTest):
@@ -172,6 +179,11 @@ class Arguments(unittest.TestCase):
         self.assertEqual(parse_tool_arguments("trace", ["file=geometry.cpp", "line=16", "variables=total,i",
                                                         "variables=points", "after=false"]),
                          {"file": "geometry.cpp", "line": 16, "variables": ["total", "i", "points"], "after": False})
+        # A sentence stays whole; repeating the key adds another (the report's open question was split at a comma).
+        self.assertEqual(parse_tool_arguments("write_report", [
+            "open_questions=A rebuild was not run, so the corrected totals were not observed",
+            "open_questions=Is the L-bracket closed?"])["open_questions"],
+            ["A rebuild was not run, so the corrected totals were not observed", "Is the L-bracket closed?"])
         self.assertEqual(parse_tool_arguments("continue", ["until=geometry.cpp:20"]),
                          {"until": {"file": "geometry.cpp", "line": 20}})
         self.assertEqual(parse_tool_arguments("breakpoints", ['add=[{"file": "a.py", "line": 3, "condition": "i > 2"}]']),

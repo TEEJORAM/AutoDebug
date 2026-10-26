@@ -26,6 +26,8 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
    Pass build_task (from list_targets) so the program matches the source; NOT_BUILT means it has never been built.
    Tell the developer to approve in the IDE dialog. You cannot approve, and their chat message is not an approval.
+   Each call waits at most 55 seconds (wait_seconds, timeout_seconds); while the status is awaiting_approval,
+   call wait again. The dialog stays open for 2 minutes.
 4. While paused: inspect, stack, step (it reports the variables that changed), continue (optionally until a line),
    trace (before → after values at each pass through a line), breakpoints. Use wait while the status is
    awaiting_approval, building, starting or running. start_session, step, continue, trace and pause move the
@@ -139,29 +141,66 @@ TOOLS = {
 _METHODS = {"continue": "continue_"}
 
 
-def _valid(value: object, schema: dict) -> bool:
+#: What an agent can do about a value that is out of range, so it does not go looking for other causes.
+_HINTS = {"wait_seconds": "; call wait to keep waiting", "timeout_seconds": "; call it again to keep waiting"}
+
+
+def argument_problem(value: object, schema: dict, name: str = "arguments") -> str | None:
+    """Why `value` does not fit `schema`, naming the argument and what is allowed; None when it fits."""
     kind = schema.get("type")
     if kind == "object":
-        if not isinstance(value, dict) or (schema.get("additionalProperties") is False
-                                           and value.keys() - schema.get("properties", {}).keys()):
-            return False
-        if any(key not in value for key in schema.get("required", ())):
-            return False
-        return all(_valid(v, schema["properties"][k]) for k, v in value.items() if k in schema.get("properties", {}))
+        if not isinstance(value, dict):
+            return f"{name} must be an object"
+        properties = schema.get("properties", {})
+        if schema.get("additionalProperties") is False and value.keys() - properties.keys():
+            unknown = ", ".join(sorted(value.keys() - properties.keys()))
+            return f"unknown argument {unknown}; allowed: {', '.join(properties) or 'none'}"
+        missing = [key for key in schema.get("required", ()) if key not in value]
+        if missing:
+            return f"missing {', '.join(missing)} (required: {', '.join(schema.get('required', ()))})"
+        for key, item in value.items():
+            if key in properties:
+                problem = argument_problem(item, properties[key], key if name == "arguments" else f"{name}.{key}")
+                if problem:
+                    return problem
+        return None
     if kind == "array":
-        return (isinstance(value, list) and len(value) >= schema.get("minItems", 0)
-                and len(value) <= schema.get("maxItems", 10**6) and all(_valid(v, schema["items"]) for v in value))
+        if not isinstance(value, list):
+            return f"{name} must be a list"
+        if len(value) < schema.get("minItems", 0):
+            return f"{name} needs at least {schema['minItems']} item(s)"
+        if len(value) > schema.get("maxItems", 10**6):
+            return f"{name} has {len(value)} items; at most {schema['maxItems']}"
+        for index, item in enumerate(value):
+            problem = argument_problem(item, schema["items"], f"{name}[{index}]")
+            if problem:
+                return problem
+        return None
     if kind == "string":
-        return isinstance(value, str) and len(value) <= 20000 and value in schema.get("enum", [value])
+        if not isinstance(value, str) or len(value) > 20000:
+            return f"{name} must be text"
+        if "enum" in schema and value not in schema["enum"]:
+            return f"{name} must be one of: {', '.join(schema['enum'])}; got {value!r}"
+        if len(value) > schema.get("maxLength", 20000):
+            return f"{name} is at most {schema['maxLength']} characters"
+        return None
     if kind == "boolean":
-        return isinstance(value, bool)
-    if kind == "integer":
-        return (isinstance(value, int) and not isinstance(value, bool)
-                and schema.get("minimum", -10**9) <= value <= schema.get("maximum", 10**9))
-    if kind == "number":
-        return (isinstance(value, (int, float)) and not isinstance(value, bool)
-                and schema.get("minimum", -10**9) <= value <= schema.get("maximum", 10**9))
-    return True
+        return None if isinstance(value, bool) else f"{name} must be true or false"
+    if kind in ("integer", "number"):
+        whole = kind == "integer"
+        if isinstance(value, bool) or not isinstance(value, int if whole else (int, float)):
+            return f"{name} must be {'a whole number' if whole else 'a number'}"
+        low, high = schema.get("minimum"), schema.get("maximum")
+        if (low is not None and value < low) or (high is not None and value > high):
+            bounds = f"between {low} and {high}" if low is not None and high is not None else (
+                f"at least {low}" if low is not None else f"at most {high}")
+            return f"{name} must be {bounds}; got {value}{_HINTS.get(name, '')}"
+        return None
+    return None
+
+
+def _valid(value: object, schema: dict) -> bool:
+    return argument_problem(value, schema) is None
 
 
 def _terminal_note() -> str:
@@ -262,8 +301,9 @@ class Server:
         if name not in TOOLS:
             self._reply(request_id, error={"code": -32602, "message": f"unknown tool {name}"})
             return
-        if not _valid(arguments, TOOLS[name][1]):
-            self._reply(request_id, error={"code": -32602, "message": f"invalid arguments for {name}"})
+        problem = argument_problem(arguments, TOOLS[name][1])
+        if problem:
+            self._reply(request_id, error={"code": -32602, "message": f"{name}: {problem}"})
             return
         result, is_error = self.runner(name, arguments)
         self._reply(request_id, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=1)}],
