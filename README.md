@@ -26,7 +26,7 @@ You need Python 3.11 or newer. If you use Visual Studio, close it first.
 Windows (PowerShell):
 
 ```powershell
-py -m pip install autodebug
+py -m pip install --upgrade autodebug
 py -m autodebug setup
 ```
 
