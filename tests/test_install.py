@@ -35,7 +35,9 @@ class Package(unittest.TestCase):
         self.assertIn("listen(0, '127.0.0.1'", source)
 
 
-class Config(unittest.TestCase):
+class InstallTest(unittest.TestCase):
+    """A temporary home and state folder; the CLI runs against them."""
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -48,11 +50,22 @@ class Config(unittest.TestCase):
         home.start()
         self.addCleanup(home.stop)
         from autodebug import hub  # doctor checks the service; do not leave one running after the test
+        offline = mock.patch.object(install, "latest_version", return_value=None)  # tests never ask PyPI
+        offline.start()
+        self.addCleanup(offline.stop)
         for name, value in (("connect_service", {}), ("status", {"version": "test", "pid": 1, "busy": False})):
             patch = mock.patch.object(hub, name, return_value=value)
             patch.start()
             self.addCleanup(patch.stop)
 
+    def run_cli(self, *argv):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli.main(list(argv))
+        return code, out.getvalue()
+
+
+class Config(InstallTest):
     def test_cursor_global_config_keeps_other_servers(self):
         path = self.home / ".cursor" / "mcp.json"
         path.parent.mkdir()
@@ -80,12 +93,6 @@ class Config(unittest.TestCase):
         with self.assertRaises(ValueError):
             install.write_config("cursor")
         self.assertIn("// mine", path.read_text())
-
-    def run_cli(self, *argv):
-        out = io.StringIO()
-        with redirect_stdout(out):
-            code = cli.main(list(argv))
-        return code, out.getvalue()
 
     def test_setup_installs_and_configures(self):
         calls = []
@@ -227,6 +234,55 @@ class Config(unittest.TestCase):
         self.assertIn(" run list_targets ide=visualstudio", text)
         self.assertIn("click **Approve**", text)
         self.assertTrue(install.has_agent_instructions(str(project)))
+
+
+class Commands(InstallTest):
+    def setUp(self):
+        super().setUp()
+        cli.you_run.cache_clear()
+        self.addCleanup(cli.you_run.cache_clear)
+
+    def test_an_installed_autodebug_is_run_with_this_python(self):
+        with mock.patch.object(cli, "_from_checkout", return_value=False), \
+                mock.patch.object(cli.shutil, "which", return_value=None):
+            expected = Path(sys.executable).as_posix()
+            self.assertIn(" -m autodebug", cli.run_command())
+            self.assertTrue(cli.run_command().replace('"', "").replace("& ", "").startswith(expected))
+
+    def test_windows_messages_say_py_when_autodebug_is_not_on_path(self):
+        with mock.patch.object(cli, "_from_checkout", return_value=False), \
+                mock.patch.object(cli.shutil, "which", return_value=None), \
+                mock.patch.object(cli, "_py_is_this_python", return_value=True), \
+                mock.patch.object(install, "ide_command", return_value=None), \
+                mock.patch.object(install, "vsix_installer", return_value=None), \
+                mock.patch.object(install, "claude_present", return_value=True):
+            code, out = self.run_cli("setup")
+            self.assertIn("Check everything with: py -m autodebug doctor", out)
+            self.assertIn("py -m pip install --upgrade autodebug", cli._upgrade_command())
+
+    def test_setup_brings_old_agent_instructions_up_to_date(self):
+        project, other = self.home / "Demo", self.home / "Other"
+        project.mkdir()
+        other.mkdir()
+        install.write_agent_instructions(str(project), "C:/old/checkout/src/autodebug")
+        (other / "AGENTS.md").write_text("# no AutoDebug section\n", encoding="utf-8")
+        code, out = self.run_cli("doctor", str(project))
+        self.assertIn("tells agents to run another AutoDebug", out)
+        refreshed = install.refresh_agent_instructions(cli.run_command(), [str(other)])
+        self.assertEqual(refreshed, [project.resolve() / "AGENTS.md"])
+        self.assertNotIn("C:/old/checkout", (project / "AGENTS.md").read_text(encoding="utf-8"))
+        self.assertEqual((other / "AGENTS.md").read_text(encoding="utf-8"), "# no AutoDebug section\n")
+        self.assertEqual(install.refresh_agent_instructions(cli.run_command(), []), [])  # already current
+
+    def test_doctor_says_which_autodebug_runs_and_when_a_newer_one_exists(self):
+        from autodebug import __version__
+        with mock.patch.object(install, "latest_version", return_value="99.0.0"):
+            code, out = self.run_cli("doctor")
+        self.assertEqual(code, 1)
+        self.assertIn(f"AutoDebug {__version__}, ", out)
+        self.assertIn("AutoDebug 99.0.0 is available", out)
+        self.assertTrue(install.is_newer("0.5.10", "0.5.2"))
+        self.assertFalse(install.is_newer("0.5.1", "0.5.1"))
 
 
 class License(unittest.TestCase):

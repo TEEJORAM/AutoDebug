@@ -291,6 +291,22 @@ FOLDER that is not an IDE name is the project folder. Claude Code gets the
 entry in `~/.claude.json` (or `FOLDER/.mcp.json`) under `mcpServers`, keeping
 its other settings.
 
+**Commands on this computer.** Messages from `setup` and `doctor` name the
+command that works in the developer's terminal: `autodebug` when it is on PATH,
+`py -m autodebug` on Windows when the `py` launcher starts the same Python (pip
+puts `autodebug.exe` in a folder that is usually not on PATH), else this Python
+with `-m autodebug`. The command written for agents (`AGENTS.md`, the MCP
+instructions) is `autodebug` on PATH or `<this python> -m autodebug`, and the
+checkout folder when run from a source checkout. `setup` rewrites the AutoDebug
+section of every `AGENTS.md` it wrote before (recorded in
+`agents-folders.json` in the state folder) and of the open IDE windows' folders,
+so agents never run an older AutoDebug; `doctor FOLDER` flags a stale one.
+
+**Updates.** `setup` and `doctor` ask PyPI for the newest version (one HTTPS
+request, 3 seconds at most, ignored when offline) and print the upgrade command
+when it is newer. `doctor` also prints which AutoDebug runs, from where, and with
+which Python.
+
 `autodebug setup cursor|vscode [FOLDER]` builds the extension package, installs
 it with the IDE's own `--install-extension`, and writes the MCP entry: Cursor's
 global `~/.cursor/mcp.json`, VS Code's user `mcp.json`, or `FOLDER`'s project

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -65,7 +67,7 @@ def _setup_visual_studio(args: argparse.Namespace) -> tuple[bool, list[str]]:
             except (OSError, ValueError) as exc:
                 _bad(f"could not get the extension ({exc}). Download AutoDebug.VisualStudio.vsix for version "
                      f"{__version__} from {install.VS_RELEASE.format(version=__version__)} and run: "
-                     "autodebug setup visualstudio --vsix <file>")
+                     f"{you_run()} setup visualstudio --vsix <file>")
                 vsix = None
                 failed = True
             if vsix is not None:
@@ -133,7 +135,7 @@ def _setup(args: argparse.Namespace) -> int:
     targets = detect() if target in (None, "all") else [target]
     if not targets:
         _bad("found none of VS Code, Cursor, Visual Studio 2022/2026 or Claude Code; install one, or name it: "
-             "autodebug setup cursor|vscode|visualstudio|claude")
+             f"{you_run()} setup cursor|vscode|visualstudio|claude")
         return 1
     print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
     install.write_server_file()
@@ -149,14 +151,35 @@ def _setup(args: argparse.Namespace) -> int:
         left += steps
     if folder:
         _ok(f"agent instructions written to {install.write_agent_instructions(folder, run_command())}")
+    open_folders = [f for window in discover() for f in window.folders]
+    for path in install.refresh_agent_instructions(run_command(), open_folders):
+        _ok(f"agent instructions updated to this AutoDebug in {path}")
+    _update_notice()
     print("\nLeft for you:" if left else "\nNothing left to set up.")
     for number, step in enumerate(left, 1):
         print(f"  {number}. {step}")
     print(f"""
 Then open your project, start a new agent chat and ask, for example:
   "Use the autodebug tools to find why <the bug> happens and write a report."
-Click Approve when the IDE asks. Check everything with: autodebug doctor""")
+Click Approve when the IDE asks. Check everything with: {you_run()} doctor""")
     return 1 if failed else 0
+
+
+def _upgrade_command() -> str:
+    if _from_checkout():
+        return "git pull in the AutoDebug folder"
+    if you_run() == "py -m autodebug":
+        return "py -m pip install --upgrade autodebug"
+    return "pipx upgrade autodebug (or: pip install --upgrade autodebug)"
+
+
+def _update_notice() -> bool:
+    """Say when PyPI has a newer AutoDebug than this one; True when it does."""
+    latest = install.latest_version()
+    if latest and install.is_newer(latest, __version__):
+        _bad(f"AutoDebug {latest} is available (this is {__version__}): {_upgrade_command()}, then {you_run()} setup")
+        return True
+    return False
 
 
 def _agents(args: argparse.Namespace) -> int:
@@ -208,17 +231,50 @@ def _hub(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_command() -> str:
-    """How an agent's terminal runs this AutoDebug: `autodebug` when installed, else this Python and checkout."""
+def _from_checkout() -> bool:
     package = Path(__file__).resolve().parent
-    if not (package.parent.name == "src" and (package.parents[1] / "pyproject.toml").is_file()):
-        found = shutil.which("autodebug")
-        if found:
-            return "autodebug"
-    parts = [Path(sys.executable).as_posix(), package.as_posix()]
-    if any(" " in part for part in parts):
-        return "& " + " ".join(f'"{part}"' for part in parts) if os.name == "nt" else " ".join(f'"{p}"' for p in parts)
-    return " ".join(parts)
+    return package.parent.name == "src" and (package.parents[1] / "pyproject.toml").is_file()
+
+
+def _quoted(parts: list[str]) -> str:
+    if not any(" " in part for part in parts):
+        return " ".join(parts)
+    quoted = " ".join(f'"{part}"' if " " in part else part for part in parts)
+    return f"& {quoted}" if os.name == "nt" else quoted  # PowerShell runs a quoted program only after &
+
+
+def _py_is_this_python() -> bool:
+    """Whether the Windows `py` launcher starts this same Python, so `py -m autodebug` runs this AutoDebug."""
+    launcher = shutil.which("py") if os.name == "nt" else None
+    if not launcher:
+        return False
+    try:
+        done = subprocess.run([launcher, "-c", "import sys; print(sys.executable)"], capture_output=True, text=True,
+                              timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return os.path.normcase(done.stdout.strip()) == os.path.normcase(sys.executable)
+
+
+def run_command() -> str:
+    """How an agent's terminal runs this AutoDebug, written into AGENTS.md and the MCP instructions: the
+    `autodebug` command when it is on PATH, else this Python with `-m autodebug` (a checkout: its folder)."""
+    if _from_checkout():
+        return _quoted([Path(sys.executable).as_posix(), Path(__file__).resolve().parent.as_posix()])
+    if shutil.which("autodebug"):
+        return "autodebug"
+    return _quoted([Path(sys.executable).as_posix(), "-m", "autodebug"])
+
+
+@functools.cache
+def you_run() -> str:
+    """The command to tell the developer in messages: what works in their terminal on this computer.
+    On Windows pip puts `autodebug.exe` in a folder that is not on PATH, but `py -m autodebug` works."""
+    if not _from_checkout() and shutil.which("autodebug"):
+        return "autodebug"
+    if _py_is_this_python():
+        return "py -m autodebug"
+    return run_command()
 
 
 def _coerce(key: str, text: str, schema: dict):
@@ -317,6 +373,11 @@ def _run(args: argparse.Namespace) -> int:
 def _doctor(args: argparse.Namespace) -> int:
     print(f"AutoDebug {__version__} doctor\n")
     problems = 0
+    where = "a source checkout" if _from_checkout() else "installed"
+    _ok(f"AutoDebug {__version__}, {where} at {Path(__file__).resolve().parent}, run with {sys.executable}")
+    _ok(f"in a terminal: {you_run()}")
+    if _update_notice():
+        problems += 1
     if sys.version_info >= (3, 11):
         _ok(f"Python {sys.version.split()[0]}")
     else:
@@ -326,7 +387,7 @@ def _doctor(args: argparse.Namespace) -> int:
     if server.get("command") == sys.executable:
         _ok(f"VS Code and Cursor windows can register the server themselves ({install.server_file()})")
     else:
-        print(f"  -     {install.server_file()} is missing or names another Python; run `autodebug setup` so "
+        print(f"  -     {install.server_file()} is missing or names another Python; run `{you_run()} setup` so "
               "VS Code and Cursor windows can register the server themselves")
     for ide, name in TARGETS.items():
         for folder in [None] + ([args.folder] if args.folder else []):
@@ -335,7 +396,7 @@ def _doctor(args: argparse.Namespace) -> int:
             if ide == "cursor":  # the extension registers the server; an mcp.json entry only gets in its way
                 if entry is not None:
                     _bad(f"Cursor: {where} still starts autodebug, so Cursor shows it switched off; run "
-                         "`autodebug setup cursor` to let the extension register it instead")
+                         f"`{you_run()} setup cursor` to let the extension register it instead")
                     problems += 1
                 continue
             if entry is None:
@@ -343,11 +404,11 @@ def _doctor(args: argparse.Namespace) -> int:
                     print(f"  -     {name}: not set up ({where})")
                 continue
             if "--demo" in entry.get("args", []) or entry.get("args", [])[-1:] != ["serve"]:
-                _bad(f"{name}: {where} starts an old server command; run `autodebug setup {ide}"
+                _bad(f"{name}: {where} starts an old server command; run `{you_run()} setup {ide}"
                      + (f" {folder}" if folder else "") + "`")
                 problems += 1
             elif entry.get("command") != sys.executable:
-                _bad(f"{name}: {where} uses {entry.get('command')}, not this Python; run `autodebug setup {ide}`")
+                _bad(f"{name}: {where} uses {entry.get('command')}, not this Python; run `{you_run()} setup {ide}`")
                 problems += 1
             else:
                 _ok(f"{name}: {where}")
@@ -373,10 +434,15 @@ def _doctor(args: argparse.Namespace) -> int:
         problems += 1
     print(f"  ok    terminal command for agents: {run_command()} run help")
     if args.folder:
-        if install.has_agent_instructions(args.folder):
-            _ok(f"agent instructions in {Path(args.folder).resolve() / 'AGENTS.md'}")
+        agents_md = Path(args.folder).resolve() / "AGENTS.md"
+        if install.has_agent_instructions(args.folder) and install.agent_instructions(run_command()) not in \
+                agents_md.read_text(encoding="utf-8"):
+            _bad(f"{agents_md} tells agents to run another AutoDebug; run `{you_run()} setup {args.folder}`")
+            problems += 1
+        elif install.has_agent_instructions(args.folder):
+            _ok(f"agent instructions in {agents_md}")
         else:
-            _bad(f"no AutoDebug section in {Path(args.folder).resolve() / 'AGENTS.md'}; run `autodebug agents {args.folder}`")
+            _bad(f"no AutoDebug section in {Path(args.folder).resolve() / 'AGENTS.md'}; run `{you_run()} agents {args.folder}`")
             problems += 1
     print("\nReady." if not problems else f"\n{problems} thing(s) to fix.")
     return 1 if problems else 0
