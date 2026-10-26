@@ -213,9 +213,29 @@ This project can be debugged with the IDE's own debugger (VS Code, Cursor or Vis
 """
 
 
+def _agents_record() -> Path:
+    from autodebug.connection import state_folder
+
+    return state_folder() / "agents-folders.json"
+
+
+def written_agent_folders() -> list[str]:
+    """Folders whose AGENTS.md this computer's setup wrote, so a later setup can refresh them."""
+    try:
+        data = json.loads(_agents_record().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [f for f in data if isinstance(f, str)] if isinstance(data, list) else []
+
+
 def write_agent_instructions(folder: str, command: str) -> Path:
     """Add or refresh the AutoDebug section of <folder>/AGENTS.md (read by Cursor, Copilot, Codex and others)."""
     path = Path(folder).expanduser().resolve() / "AGENTS.md"
+    folders = written_agent_folders()
+    if str(path.parent) not in folders:
+        record = _agents_record()
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(json.dumps(folders + [str(path.parent)], indent=1), encoding="utf-8")
     block = agent_instructions(command)
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
     if AGENTS_START in text and AGENTS_END in text:
@@ -228,9 +248,45 @@ def write_agent_instructions(folder: str, command: str) -> Path:
     return path
 
 
+def refresh_agent_instructions(command: str, folders: list[str]) -> list[Path]:
+    """Rewrite the AutoDebug section, with this command, in every AGENTS.md that already has one: the folders
+    setup wrote before plus `folders` (the open IDE windows). An agent then never runs an older AutoDebug."""
+    refreshed = []
+    for folder in dict.fromkeys([*written_agent_folders(), *folders]):
+        path = Path(folder) / "AGENTS.md"
+        try:
+            if not has_agent_instructions(folder) or agent_instructions(command) in path.read_text(encoding="utf-8"):
+                continue
+            refreshed.append(write_agent_instructions(folder, command))
+        except OSError:
+            continue
+    return refreshed
+
+
 def has_agent_instructions(folder: str) -> bool:
     path = Path(folder).expanduser().resolve() / "AGENTS.md"
     return path.is_file() and AGENTS_START in path.read_text(encoding="utf-8", errors="replace")
+
+
+# -- updates ----------------------------------------------------------------------
+
+PYPI_JSON = "https://pypi.org/pypi/autodebug/json"
+
+
+def latest_version(timeout: float = 3) -> str | None:
+    """The newest AutoDebug on PyPI, or None when PyPI cannot be reached (offline, proxy): never an error."""
+    try:
+        with urllib.request.urlopen(PYPI_JSON, timeout=timeout) as response:  # noqa: S310 (fixed https URL)
+            version = json.loads(response.read())["info"]["version"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return version if isinstance(version, str) else None
+
+
+def is_newer(candidate: str, current: str) -> bool:
+    def parts(version: str) -> tuple[int, ...]:
+        return tuple(int(p) for p in version.split(".") if p.isdigit())
+    return parts(candidate) > parts(current)
 
 
 # -- MCP configuration ------------------------------------------------------------

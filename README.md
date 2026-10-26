@@ -53,8 +53,12 @@ PATH: write `py -m autodebug` wherever these docs say `autodebug`. On macOS and
 Linux, open a new terminal after `pipx ensurepath`.
 `autodebug setup` finds VS Code, Cursor, Visual Studio and Claude Code, connects
 each one, and prints the few steps left for you (below). `autodebug doctor`
-checks everything. To update: `py -m pip install --upgrade autodebug` (Windows) or
-`pipx upgrade autodebug`, then run setup again.
+checks everything: which AutoDebug runs and from where, the connected IDEs, the
+open IDE windows, and whether a newer version is on PyPI. Setup and doctor print
+commands in the form that works on your computer (`py -m autodebug doctor` on
+Windows). To update: `py -m pip install --upgrade autodebug` (Windows) or
+`pipx upgrade autodebug`, then run setup again; it also updates the AutoDebug
+section of every `AGENTS.md` it wrote.
 
 ## Connect and debug
 
