@@ -33,6 +33,7 @@ class Report:
     model: str
     how_confirmed: str | None = None
     verification: str | None = None
+    fix_verified: bool = False  # the agent applied the fix and saw the bug gone
     plan: dict = field(default_factory=dict)
     ticket: str | None = None
     steps_to_reproduce: list[str] = field(default_factory=list)
@@ -110,8 +111,10 @@ def render(report: Report) -> str:
     lines += ["## Solution", "", _prose(report.solution), ""]
     if report.pattern:
         lines += [f"Follows the existing pattern: {_line(report.pattern, 1000)}", ""]
-    if report.verification:
-        lines += [f"Checked: {_line(report.verification, 1000)} (reported by the AI agent)", ""]
+    if report.fix_verified and report.verification:
+        lines += [f"Verified: {_line(report.verification, 1000)} (reported by the AI agent)", ""]
+    else:
+        lines += ["Not verified yet: the fix has not been applied and tested.", ""]
 
     estimate = round(report.tool_characters / CHARS_PER_TOKEN)
     lines += ["## AI usage", "",

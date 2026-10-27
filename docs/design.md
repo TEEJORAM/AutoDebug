@@ -403,7 +403,9 @@ for a report they can read rather than a dump:
    them as the IDE does.
 5. **Root cause**: "What went wrong" and "Why", then the confidence (`confirmed`
    needs `how_confirmed` and a reproduced bug).
-6. **Solution**, the existing code it follows (`pattern`), and how it was checked.
+6. **Solution**, the existing code it follows (`pattern`), then "Verified: ..." only
+   when the agent applied the fix and saw the bug gone (`fix_verified` with
+   `verification`), else "Not verified yet".
 7. **AI usage**: the `model` the agent reports (required), `token_usage` only when
    the agent's app shows it (otherwise "not reported", never a guess), and
    AutoDebug's own share: its tool calls since the previous report and the size of
