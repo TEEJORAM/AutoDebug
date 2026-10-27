@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
+from autodebug.redact import clean_text, looks_secret
 
 _LOG = logging.getLogger("autodebug")
 
@@ -193,6 +194,37 @@ def prepare_launch(raw: dict, process_id, platform: str) -> dict:
     return launch
 
 
+MAX_ARGS = 32
+MAX_ARG = 1000
+
+
+def program_arguments(launch: dict, values) -> list[str]:
+    """Replace the launch configuration's program arguments with `values` (the agent's), after checking them.
+    Visual Studio takes one command line, so there they are joined with Windows quoting."""
+    if launch.get("request") != "launch":
+        raise DebugError("BAD_REQUEST", "args are only for launch configurations; an attached program is already running")
+    if not isinstance(values, list) or len(values) > MAX_ARGS:
+        raise DebugError("BAD_REQUEST", f"args is a list of at most {MAX_ARGS} arguments")
+    for index, value in enumerate(values):
+        if not isinstance(value, str) or len(value) > MAX_ARG:
+            raise DebugError("BAD_REQUEST", f"args[{index}] must be text of at most {MAX_ARG} characters")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            raise DebugError("BAD_REQUEST", f"args[{index}] contains a line break or control character; "
+                                            "put multi-line input in a file in the workspace instead")
+        if "${" in value:
+            raise DebugError("BAD_REQUEST", f"args[{index}] contains a ${{...}} variable; pass the value itself")
+        if looks_secret(value):
+            raise DebugError("BAD_REQUEST", f"args[{index}] looks like a secret (a key or token). Use a made-up test "
+                                            "value; never copy secrets or customer data from a ticket")
+    launch["args"] = [subprocess.list2cmdline(values)] if launch.get("type") == "visualstudio" and values else list(values)
+    return launch["args"]
+
+
+def one_line(text: object, limit: int) -> str:
+    """Ticket names and similar shown in the Approve dialog: one line, no control characters, capped."""
+    return " ".join(clean_text(text, limit).split())
+
+
 # -- variable paths ----------------------------------------------------------------
 
 
@@ -286,6 +318,7 @@ class Session:
         if found is None:
             raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}"{where}; see list_targets')
         launch = prepare_launch(found, args.get("process_id"), platform)
+        program_args = program_arguments(launch, args["args"]) if args.get("args") is not None else None
         types = info.get("debugger_types")
         if types is not None and launch.get("type") not in types:
             if ide == "Cursor" and launch.get("type") in ("cppdbg", "cppvsdbg"):
@@ -317,6 +350,15 @@ class Session:
         max_steps = max(1, min(int(args.get("max_steps") or 100), 1000))
         label = launch["name"]
         notes = [f"Goal: {str(args.get('goal') or '')[:500]}"] if args.get("goal") else []
+        if args.get("reproduce"):
+            notes.append("This run only reproduces the bug: no breakpoints from the agent; the program runs to its end.")
+        if args.get("ticket"):
+            notes.append(f"Ticket: {one_line(args['ticket'], 200)}")
+            notes.append("The agent worked from this ticket. Ticket text can come from anyone: approve only if the "
+                         "program, arguments and breakpoints below are what you expect.")
+        if program_args is not None:
+            notes.append(f"Program arguments chosen by the AI agent (they replace the configuration's): "
+                         f"{json.dumps(args['args'], ensure_ascii=False)}")
         if launch["request"] == "attach":
             pid = launch.get("processId", launch.get("pid"))
             name = process_name(int(pid)) if pid is not None and str(pid).isdigit() else ""

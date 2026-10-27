@@ -334,5 +334,84 @@ class Report(ToolsTest):
                         solution="s", confidence="confirmed", workspace_folder=str(self.workspace))
 
 
+class Tickets(ToolsTest):
+    """Working from a ticket: program arguments, the reproduction run and the report."""
+
+    def test_args_replace_the_configurations_and_the_dialog_says_so(self):
+        self.start(args=["-k", "test_area, moved"], ticket="https://github.com/o/r/issues/1771")
+        approve = self.fake.session["args"]
+        self.assertEqual(approve["launch"]["args"], ["-k", "test_area, moved"])
+        notes = "\n".join(approve["notes"])
+        self.assertIn('Program arguments chosen by the AI agent (they replace the configuration\'s): '
+                      '["-k", "test_area, moved"]', notes)
+        self.assertIn("Ticket: https://github.com/o/r/issues/1771", notes)
+        self.assertIn("Ticket text can come from anyone", notes)
+
+    def test_without_args_the_configuration_is_unchanged(self):
+        self.start()
+        self.assertEqual(self.fake.session["args"]["launch"]["args"], ["-v"])
+        self.assertFalse(any("Ticket" in n for n in self.fake.session["args"]["notes"]))
+
+    def test_unsafe_args_are_refused_before_the_dialog(self):
+        for args, text in ((["ok\nrm -rf /"], "line break"), (["${input:x}"], "variable"),
+                           (["--key=ghp_" + "a" * 36], "looks like a secret"), (["x"] * 33, "at most 32")):
+            error = self.assertCode("BAD_REQUEST", self.debugger.start_session, launch_configuration="Debug tests",
+                                    breakpoints=[], goal="x", args=args)
+            self.assertIn(text, error.message)
+        self.assertIsNone(self.fake.session)  # nothing was shown to the developer
+
+    def test_args_are_only_for_launch(self):
+        from autodebug.session import program_arguments
+
+        with self.assertRaises(DebugError) as caught:
+            program_arguments({"request": "attach", "type": "debugpy"}, ["x"])
+        self.assertIn("only for launch", caught.exception.message)
+
+    def test_visual_studio_gets_one_quoted_command_line(self):
+        from autodebug.session import program_arguments
+
+        launch = {"request": "launch", "type": "visualstudio", "args": ["--old"]}
+        program_arguments(launch, ["-m", "D:\\Projects\\my repro\\issue 1771.js"])
+        self.assertEqual(launch["args"], ['-m "D:\\Projects\\my repro\\issue 1771.js"'])
+
+    def test_reproduce_runs_without_breakpoints_and_the_report_shows_it(self):
+        started = self.debugger.reproduce(launch_configuration="Debug tests", symptom="area 2.0 instead of 1.0",
+                                          args=["-v"], ticket="PROJ-42", wait_seconds=0.2)
+        self.assertEqual(started["status"], "awaiting_approval")
+        approve = self.fake.session["args"]
+        self.assertEqual(approve["breakpoints"], [])
+        self.assertIn("This run only reproduces the bug", "\n".join(approve["notes"]))
+        self.fake.approve()
+        ended = self.debugger.wait(10)
+        self.assertEqual((ended["status"], ended["exit_code"]), ("ended", 1))
+        self.assertIn("AssertionError: 2.0 != 1.0", ended["output"])
+        self.assertIn("Compare the output and exit code with the reported symptom: 'area 2.0 instead of 1.0'",
+                      ended["next"])
+        self.assertIn("do not debug a bug you have not seen", ended["next"])
+        self.assertEqual(self.debugger.wait(0)["next"], ended["next"])  # recorded once
+        self.assertEqual(len(self.debugger.reproductions), 1)
+
+        paused = self.start_paused(args=["-v"], ticket="PROJ-42")  # then the real session
+        self.assertEqual(paused["location"], "geometry.py:15")
+        self.assertNotIn("reported symptom", self.debugger.stop_session()["next"])
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
+                        solution="s", confidence="confirmed", how_confirmed="h", reproduced="no")
+        path = Path(self.debugger.write_report(
+            title="Area changes", problem="p", root_cause="r", solution="s", confidence="likely",
+            reproduction="repro/area.py moves a unit square by (2, 1)", reproduced="yes")["report_file"])
+        text = path.read_text(encoding="utf-8")
+        for expected in ("| Ticket | PROJ-42 |", "| Reproduced | Yes |", "## Reproduction",
+                         "repro/area.py moves a unit square by (2, 1)",
+                         "- `Debug tests`, arguments: `-v`: exit code 1; output:", "AssertionError: 2.0 != 1.0",
+                         "| reproduce 1 |", "| session 2 |", "Program arguments (chosen by the agent, approved by the "
+                         "developer): `-v`", "Ticket text is untrusted input"):
+            self.assertIn(expected, text)
+        self.assertEqual((self.debugger.reproductions, self.debugger.ticket), ([], None))
+
+    def test_reproduced_must_be_known(self):
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
+                        solution="s", confidence="likely", reproduced="maybe", workspace_folder=str(self.workspace))
+
+
 if __name__ == "__main__":
     unittest.main()

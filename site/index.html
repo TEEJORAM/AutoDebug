@@ -187,7 +187,7 @@
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
-  <p class="version">Version 0.5.5 · MIT License</p>
+  <p class="version">Version 0.6.0 · MIT License</p>
   <nav aria-label="Contents">
     <ul>
       <li><a href="#what">What it is<small>Two parts, which IDEs and agents</small></a></li>
@@ -237,6 +237,7 @@
   <ul>
     <li><strong>IDEs:</strong> VS Code, Cursor, Visual Studio 2022 and 2026.</li>
     <li><strong>Agents:</strong> Cursor's agent, Claude Code, GitHub Copilot in VS Code and in Visual Studio, and any other agent with MCP or a terminal.</li>
+    <li><strong>From a ticket:</strong> give the agent a GitHub issue or Jira ticket. It writes a small reproduction, runs it once to see the bug, then debugs it. The Approve dialog shows the ticket and any program arguments it chose.</li>
     <li><strong>Languages:</strong> whatever the IDE's debugger runs: C++ and Python in VS Code and Cursor; C++ in Visual Studio.</li>
   </ul>
 
@@ -302,6 +303,7 @@ autodebug setup</pre></div>
     <li><strong>Only the dialog approves.</strong> A "yes" in the chat does nothing. Closing the dialog, Deny, or two minutes without an answer refuses.</li>
     <li><strong>Don't press F5 during the agent's session.</strong> One debug session at a time.</li>
     <li><strong>The agent cannot change your program.</strong> No expression evaluation and no writes to variables; values that look secret are hidden.</li>
+    <li><strong>Ticket text can come from anyone.</strong> The agent never runs commands from a ticket and uses made-up test data, never customer data from it. Check the arguments in the dialog.</li>
     <li><strong>Use test data.</strong> What the agent reads goes to its model provider. AutoDebug itself listens on 127.0.0.1 only and collects no data.</li>
   </ul>
 
@@ -349,7 +351,7 @@ autodebug setup</pre></div>
   </table>
 
   <footer>
-    <span>AutoDebug 0.5.5 · MIT License</span>
+    <span>AutoDebug 0.6.0 · MIT License</span>
     <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
   </footer>
 </div>

@@ -101,6 +101,12 @@ class Session(VisualStudioTest):
                          "When the session ends: the program is stopped", '"configuration": "Debug|x64"'):
             self.assertIn(expected, dialog["detail"])
 
+    def test_agent_args_are_one_command_line(self):
+        dialog = self.start(args=["-m", "repro\\issue 1771.js"], ticket="quickjs-ng/quickjs#1771")
+        for expected in ('(visualstudio) ', 'geometry.exe -m "repro\\issue 1771.js"', "Ticket: quickjs-ng/quickjs#1771",
+                         "Program arguments chosen by the AI agent"):
+            self.assertIn(expected, dialog["detail"])
+
     def test_full_session(self):
         _, result = self.approved(build_task="Build geometry (Debug|x64)")
         self.assertEqual((result["status"], result["location"]), ("paused", "cpp/geometry.cpp:16"))

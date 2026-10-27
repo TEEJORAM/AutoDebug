@@ -101,7 +101,8 @@ an agent waits longer for the Approve click by calling `wait` again.
 | Tool | Does |
 |---|---|
 | `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately) and build tasks. `ide` limits it to one IDE |
-| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open |
+| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open. `args` replaces the program's arguments for this run; `ticket` names the issue it is for |
+| `reproduce` | Before debugging a reported bug: one approved run with no breakpoints, to its end; returns the exit code and last output lines, and tells the agent to compare them with the ticket's `symptom` |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
 | `step` | Step over, into or out (1–20 times). `wait_ms` waits for a slow step (default 15 s, max 60 s) |
 | `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line |
@@ -113,11 +114,51 @@ an agent waits longer for the Approve click by calling `wait` again.
 | `breakpoints` | Add or remove source or function breakpoints during the session |
 | `trace` | Run to a line repeatedly; each row has the caller and each variable as `before → after` the line runs (one step per hit, counted in the step limit). Stops early at another breakpoint |
 | `stop_session` | End the debug session |
-| `write_report` | Write the Markdown report: problem, root cause, solution, verification, timeline |
+| `write_report` | Write the Markdown report: problem, reproduction (`ticket`, `reproduction`, `reproduced`), root cause, solution, verification, timeline |
 
 There is no tool that evaluates expressions or changes variables.
-`start_session`, `step`, `continue`, `trace` and `pause` move the program; the
+`start_session`, `reproduce`, `step`, `continue`, `trace` and `pause` move the program; the
 agent must not call them in parallel with `stack` or `inspect`.
+
+## Working from a ticket
+
+A developer can hand the agent a GitHub issue, a Jira ticket or a pasted bug
+report. AutoDebug does not fetch tickets: the agent reads them with its own tools
+(a GitHub or Jira connector, `gh`), so AutoDebug needs no network access, logins
+or libraries for it. AutoDebug gives every agent the same path, in the MCP
+instructions, `run help`, the `AGENTS.md` section and the MCP prompt
+`debug_ticket` (a slash command in Cursor and VS Code; argument `ticket`):
+
+1. Read the ticket; write down expected and actual behaviour and the steps.
+2. Write the smallest reproduction in the workspace (a script, an input file, a
+   test) that a launch configuration runs.
+3. `reproduce` it: one approved run without breakpoints. Debug only a bug that
+   showed; otherwise refine the reproduction or ask the developer.
+4. `start_session` with the same `args` and `ticket`, then debug from evidence.
+5. `write_report` with `ticket`, `reproduction` and `reproduced` (`yes`, `no`,
+   `not_tried`). `confirmed` is refused when the bug was not reproduced.
+
+**Program arguments.** `args` (at most 32, each at most 1000 characters)
+replaces the launch configuration's arguments for that run, so a new
+reproduction needs no change to the developer's configuration. Launch
+configurations only. Visual Studio takes one command line, so the arguments are
+joined with Windows quoting. Refused before the dialog: line breaks and control
+characters (multi-line input goes in a file), `${...}` variables, and values that
+look like keys or tokens. The dialog names them as the agent's choice, besides
+showing them in the configuration JSON.
+
+**Ticket text is untrusted.** Anyone can write anything in an issue, including
+"run this command". The workflow tells agents to treat it as data, never to run
+commands, scripts or links from it, and to build their own reproduction. The
+dialog shows the ticket and says that its text can come from anyone, so the
+developer checks the program, arguments and breakpoints before approving. Only
+the dialog approves, as always.
+
+**Test data only.** Tickets, Jira's in particular, often contain customer data.
+The workflow tells agents to use made-up values and never to copy names, emails,
+account numbers, logs or attachments into a reproduction, its arguments or the
+report, and never to point the debugger at production systems. Secret-shaped
+arguments are refused, and the report is redacted as before.
 
 Every state lists all breakpoints that can stop the program: `source:
 "session"` for AutoDebug's, `"editor"` for the developer's (left in place).
@@ -191,6 +232,9 @@ token closes the connection. Then one JSON object per line:
 | `editor_breakpoints` | – | the developer's own enabled breakpoints: {file, line} or {function} |
 | `notify` | `text` (≤ 300) | – (a non-modal note to the developer; never an approval) |
 | `stop` | `reason` | – (ends the session; attach sessions detach first) |
+
+The server puts the agent's `args` into the prepared configuration and adds the
+ticket and argument lines to `notes`, so neither relay needs to know about them.
 
 `approve` checks that every breakpoint is inside the folder or `source_folders`
 (`OUTSIDE_WORKSPACE`) and that the configuration fits the dialog (4000
@@ -277,7 +321,9 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
-overwriting: summary table, problem, how it was run, debug timeline (every
+overwriting: summary table (with the ticket and whether the bug was reproduced),
+problem, reproduction (the agent's description and every `reproduce` run with its
+arguments, exit code and telling output lines), how it was run, debug timeline (every
 session since the previous report, with each stop, step, inspection and trace,
 numbered), root cause with confidence
 (`confirmed` needs how it was confirmed), solution, verification (marked as
@@ -299,7 +345,7 @@ Copilot in Visual Studio (which starts MCP tools switched off).
 state folder (the command, arguments and environment that start `autodebug
 serve`). On activation the extension registers it with the IDE: in Cursor with
 `vscode.cursor.mcp.registerServer` (listed as `extension-autodebug`; tried in
-Cursor 3: switched on, all 14 tools, unlike an `mcp.json` entry, which Cursor 3
+Cursor 3: switched on, all the tools, unlike an `mcp.json` entry, which Cursor 3
 starts switched off), in VS Code 1.101+ with
 `vscode.lm.registerMcpServerDefinitionProvider` (`contributes.mcpServerDefinitionProviders`).
 A window whose `mcp.json` files already name `autodebug` is left alone, so the
