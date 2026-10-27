@@ -304,6 +304,7 @@ class Report(ToolsTest):
             what_went_wrong="The closing edge is never added.", why="The loop stops at len(points) - 1.",
             solution="Use range(n) and points[(i + 1) % n].", confidence="confirmed",
             how_confirmed="The failing test passes with the fix.", verification="python -m unittest passes.",
+            fix_verified=True,
         )["report_file"])
         self.assertEqual(path.parent, self.workspace / "autodebug-reports")
         text = path.read_text(encoding="utf-8")
@@ -314,7 +315,7 @@ class Report(ToolsTest):
         self.assertEqual(text.count("\n## "), 6)  # and no others (no timeline, no tables)
         self.assertIn("Not tried.\n\nSteps: NA", text)
         self.assertIn("Confidence: Confirmed. The failing test passes with the fix.", text)
-        self.assertIn("Checked: python -m unittest passes. (reported by the AI agent)", text)
+        self.assertIn("Verified: python -m unittest passes. (reported by the AI agent)", text)
         self.assertIn("Debugged in Cursor with `Debug tests`, interpreted language: no build type.", text)
         for absent in ("| stopped |", "Call stack", "total: 0.0", "Timeline", "|---|"):
             self.assertNotIn(absent, text)
@@ -336,6 +337,18 @@ class Report(ToolsTest):
         self.assertIn("- Tokens: about 180k (Cursor usage page)", text)
         self.assertRegex(text, r"- AutoDebug: 2 tool calls, about \d[\d,]* tokens")
         self.assertEqual(self.debugger.usage, {"calls": 0, "characters": 0})
+
+    def test_an_unverified_fix_says_so(self):
+        path = Path(self.debugger.write_report(
+            model="m", title="t", problem="p", what_went_wrong="w", why="r", solution="s", confidence="likely",
+            verification="The fix was not applied. The repro still fails.", workspace_folder=str(self.workspace))["report_file"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("Not verified yet: the fix has not been applied and tested.", text)
+        self.assertNotIn("The fix was not applied", text)
+        self.assertNotIn("Verified:", text)
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model="m", title="t", problem="p",
+                        what_went_wrong="w", why="r", solution="s", confidence="likely", fix_verified=True,
+                        workspace_folder=str(self.workspace))
 
     def test_the_model_is_required(self):
         self.assertCode("BAD_REQUEST", self.debugger.write_report, model=" ", title="t", problem="p",

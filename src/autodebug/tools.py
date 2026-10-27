@@ -664,7 +664,7 @@ class Debugger:
                      workspace_folder: str | None = None, ticket: str | None = None,
                      steps_to_reproduce: list[str] | None = None, reproduced: str | None = None,
                      debug_findings: str | None = None, pattern: str | None = None,
-                     token_usage: str | None = None) -> dict:
+                     token_usage: str | None = None, fix_verified: bool = False) -> dict:
         folder = workspace_folder or self.folder
         if not folder:
             raise DebugError("BAD_REQUEST", "pass workspace_folder: there is no session to take it from")
@@ -679,12 +679,16 @@ class Debugger:
                                             "use likely or unconfirmed")
         if reproduced == "yes" and not steps_to_reproduce:
             raise DebugError("BAD_REQUEST", "reproduced=yes needs steps_to_reproduce (one short step per item)")
+        if fix_verified and not verification:
+            raise DebugError("BAD_REQUEST", "fix_verified needs verification: how you applied the fix and what showed "
+                                            "the bug gone")
         if not str(model).strip():
             raise DebugError("BAD_REQUEST", "model names the AI model you are (as your app shows it); write unknown "
                                             "if you do not know")
         path = report.write(folder, report.Report(
             title=title, problem=problem, what_went_wrong=what_went_wrong, why=why, solution=solution,
             confidence=confidence, model=model, how_confirmed=how_confirmed, verification=verification,
+            fix_verified=bool(fix_verified),
             plan=self.plan, ticket=ticket or self.ticket, steps_to_reproduce=list(steps_to_reproduce or []),
             reproduced=reproduced, runs=list(self.reproductions), debug_findings=debug_findings,
             captures=list(self.evidence), pattern=pattern, token_usage=token_usage,
