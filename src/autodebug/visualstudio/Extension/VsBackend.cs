@@ -611,7 +611,7 @@ namespace AutoDebug.VisualStudio
             if (main.WindowState == vsWindowState.vsWindowStateMinimize) main.WindowState = vsWindowState.vsWindowStateNormal;
             await Task.Delay(500); // let the windows that were brought forward paint
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            var handle = new IntPtr(main.HWnd);
+            var handle = (IntPtr)main.HWnd; // int or IntPtr, depending on the EnvDTE version
             if (!GetWindowRect(handle, out var rect)) throw new InvalidOperationException("could not read Visual Studio's window size");
             var width = rect.Right - rect.Left;
             var height = rect.Bottom - rect.Top;
