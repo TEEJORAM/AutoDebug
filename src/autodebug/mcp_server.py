@@ -37,7 +37,8 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
    start_session, step, continue, trace and pause move the program: call them one at a time, never in parallel.
    Breakpoints with source "editor" were set by the developer and stop the program too.
 5. At the stop that shows the bug, call capture with the variables that prove it (wrong: the ones with wrong
-   values) and a one-sentence note. The report shows that frame, call stack and variables, with a picture.
+   values) and a one-sentence note. The report shows that frame, call stack and variables, with a picture. In Visual
+   Studio it also saves a screenshot of the IDE (code on top, Locals or Autos and the Call Stack below).
 6. stop_session, then write_report. Write for a developer: short, plain sentences. No filler, no long dashes.
    what_went_wrong is what the code did; why is the reason. The solution is the smallest fix that follows how the
    project already solves the same thing (pattern: name that existing code). No rewrites, no extra layers.
@@ -127,6 +128,8 @@ TOOLS = {
             "function_breakpoints": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
             "args": _ARGS,
             "ticket": _TICKET,
+            "screenshots": {"type": "boolean", "description": "Visual Studio: save a picture of its window at each "
+                                                             "capture (default true; the dialog says so)"},
         }, ("launch_configuration", "breakpoints", "goal"))),
     "reproduce": (
         "Resumes the program (call alone). Before debugging a reported bug: ask the developer to approve one run "

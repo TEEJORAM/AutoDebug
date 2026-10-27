@@ -111,8 +111,13 @@ def render(report: Report, now: float | None = None, pictures: list[str] | None 
     if report.captures:
         for n, capture in enumerate(report.captures, 1):
             lines += [f"### Stop {n}: {_cell(capture.get('note'))}", ""]
+            if capture.get("screenshot"):
+                shown = capture.get("variables_window") or "variables"
+                lines += [f"What {ide} showed (code, {shown} and Call Stack):", "",
+                          f"![Stop {n}: {ide} at the stop]({capture['screenshot']})", ""]
             if pictures and n <= len(pictures):
-                lines += [f"![Stop {n}: frame, variables and call stack]({pictures[n - 1]})", ""]
+                lines += ["The values the agent captured:" if capture.get("screenshot") else "", "",
+                          f"![Stop {n}: frame, variables and call stack]({pictures[n - 1]})", ""]
             lines += [f"Paused at `{_code(capture.get('location'))}` in `{_code(capture.get('function'))}`.", ""]
             wrong = set(capture.get("wrong") or [])
             lines += ["| Variable | Value | Type |", "|---|---|---|"]

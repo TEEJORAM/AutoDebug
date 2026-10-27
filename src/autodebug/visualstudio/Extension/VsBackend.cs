@@ -9,6 +9,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -550,10 +552,93 @@ namespace AutoDebug.VisualStudio
         void Send(string name, Dictionary<string, object> body) =>
             session?.Debugger(Json.Make("type", "event", "event", name, "body", body));
 
+        // -- the debug windows and screenshots ---------------------------------------------------------
+
+        const string LocalsWindow = "{4A18F9D0-B838-11D0-93EB-00A0C90F2734}";   // EnvDTE.Constants.vsWindowKindLocals
+        const string AutosWindow = "{F2E84780-2AF1-11D1-A7FA-00A0C9110051}";    // vsWindowKindAutoLocals
+        const string CallStackWindow = "{0504FF91-9D61-11D0-A794-00A0C9110051}"; // vsWindowKindCallStack
+
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out Rect rect);
+        [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
+        const uint RenderFullContent = 2; // PW_RENDERFULLCONTENT: also WPF and DirectX content, even when covered
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct Rect { public int Left, Top, Right, Bottom; }
+
+        public string ShowDebugWindows() => OnMain(ShowDebugWindowsOnMain);
+
+        // Visual Studio's debug layout puts the code on top, Autos/Locals bottom left and Call Stack bottom right.
+        // At every stop of an AutoDebug session, bring the right tabs forward so that layout shows values:
+        // Locals when the frame has locals or arguments (never an empty window), else Autos. The code document
+        // stays in front. The developer's own window arrangement is not moved.
+        string ShowDebugWindowsOnMain()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var count = 0;
+            try
+            {
+                var frame = dte.Debugger.CurrentStackFrame;
+                count = (frame?.Locals?.Count ?? 0) + (frame?.Arguments?.Count ?? 0);
+            }
+            catch (COMException) { /* no frame: Autos below */ }
+            var variables = count > 0 ? "Locals" : "Autos";
+            var document = dte.ActiveDocument;
+            Show(CallStackWindow);
+            Show(count > 0 ? LocalsWindow : AutosWindow);
+            try { document?.Activate(); } catch (COMException) { /* the document closed */ }
+            return variables;
+        }
+
+        void Show(string kind)
+        {
+            try
+            {
+                var window = dte.Windows.Item(kind);
+                window.Visible = true;
+                window.Activate();
+            }
+            catch (Exception error) when (error is COMException || error is ArgumentException)
+            {
+                Log($"could not show a debug window: {error.Message}");
+            }
+        }
+
+        public Dictionary<string, object> Screenshot(string file) => ThreadHelper.JoinableTaskFactory.Run(async () =>
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            var variables = ShowDebugWindowsOnMain();
+            var main = dte.MainWindow;
+            if (main.WindowState == vsWindowState.vsWindowStateMinimize) main.WindowState = vsWindowState.vsWindowStateNormal;
+            await Task.Delay(500); // let the windows that were brought forward paint
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            var handle = new IntPtr(main.HWnd);
+            if (!GetWindowRect(handle, out var rect)) throw new InvalidOperationException("could not read Visual Studio's window size");
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            if (width <= 0 || height <= 0) throw new InvalidOperationException("Visual Studio's window has no size");
+            using (var picture = new Bitmap(width, height))
+            {
+                using (var graphics = Graphics.FromImage(picture))
+                {
+                    var dc = graphics.GetHdc();
+                    try
+                    {
+                        if (!PrintWindow(handle, dc, RenderFullContent)) throw new InvalidOperationException("Windows could not draw Visual Studio's window");
+                    }
+                    finally { graphics.ReleaseHdc(dc); }
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(file));
+                picture.Save(file, ImageFormat.Png);
+            }
+            Log($"saved a screenshot: {file}");
+            return Json.Make("file", file, "width", (long)width, "height", (long)height, "variables_window", variables);
+        });
+
         void OnBreak(dbgEventReason reason, ref dbgExecutionAction action)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (session == null) return;
+            ShowDebugWindowsOnMain();
             var why = reason switch
             {
                 dbgEventReason.dbgEventReasonBreakpoint => "breakpoint",

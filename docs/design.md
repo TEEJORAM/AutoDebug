@@ -265,12 +265,13 @@ token closes the connection. Then one JSON object per line:
 |---|---|---|
 | `info` | – | window, ide, versions, folders, `platform`, `debugger_types` (null if unknown) |
 | `workspace` | `folder` | `folder`, `launch` (configurations as written), `tasks` (definitions as written) |
-| `approve` | `folder`, `launch` (the prepared configuration), `task`, `notes`, `label`, `breakpoints` [{file (absolute), line, condition}], `functions`, `source_folders`, `max_steps`, `max_minutes`, `build_minutes` | `session`, `breakpoint_ids`, `function_ids`; the dialog opens |
+| `approve` | `folder`, `launch` (the prepared configuration), `task`, `notes`, `label`, `breakpoints` [{file (absolute), line, condition}], `functions`, `source_folders`, `max_steps`, `max_minutes`, `build_minutes`, `screenshots` (Visual Studio) | `session`, `breakpoint_ids`, `function_ids`; the dialog opens |
 | `events` | `since`, `wait_ms` (≤ 60000) | `events` (up to 500, oldest first), `next`, `latest`, `dropped` (long poll) |
 | `dap` | `command`, `arguments`, `timeout_ms` | `body` of the debugger's response |
 | `breakpoints` | `add`, `add_functions`, `remove` (ids) | `breakpoint_ids`, `function_ids` |
 | `editor_breakpoints` | – | the developer's own enabled breakpoints: {file, line} or {function} |
 | `notify` | `text` (≤ 300) | – (a non-modal note to the developer; never an approval) |
+| `screenshot` | `file` (absolute `.png` under `<folder>/autodebug-reports/screenshots`) | `file`, `width`, `height`, `variables_window`. Visual Studio only, and only when the session was approved with `screenshots` (`NOT_APPROVED` otherwise) |
 | `stop` | `reason` | – (ends the session; attach sessions detach first) |
 
 The server puts the agent's `args` into the prepared configuration and adds the
@@ -355,6 +356,22 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   debug engine's breakpoint-bound and binding-error events update which
   breakpoints are bound, and its output-string events become `output`
   (`OutputDebugString` only: a console program's own window is not captured).
+- **Debug windows.** At every stop of an AutoDebug session the relay brings the
+  Call Stack and a variables window forward and puts the code document back in
+  front, so Visual Studio's debug layout (code on top, Autos/Locals bottom left,
+  Call Stack bottom right) shows values from the first stop on. The variables
+  window is Locals when the frame has locals or arguments, so it is never empty,
+  else Autos. The developer's own window arrangement is not moved; after
+  **Window → Reset Window Layout** it is the layout above.
+- **Screenshots.** `start_session` asks for them by default in Visual Studio
+  (`screenshots: false` turns them off; VS Code and Cursor cannot take them), and
+  the Approve dialog says so, including that a screenshot shows whatever the window
+  shows, values that look secret too. At each `capture`, the relay brings the debug
+  windows forward, waits for them to paint, and saves Visual Studio's main window
+  with `PrintWindow` (`PW_RENDERFULLCONTENT`, so it works when the window is
+  covered) as a PNG under `autodebug-reports/screenshots`. Only that window is
+  saved, never the screen, and only into that folder. The report shows it above the
+  drawn picture of the captured values.
 - **Not yet:** exception filters (none are offered) and `launch.vs.json` ("Open
   Folder") projects.
 
@@ -384,6 +401,9 @@ overwriting, in the order a developer reads it:
 The text is the agent's, redacted and capped. Long dashes are turned into commas:
 developers asked for plain sentences, and the instructions ask the agent for short,
 plain ones.
+
+**Screenshots.** In Visual Studio each captured stop also has a real screenshot
+of the IDE window (see "Visual Studio"), shown first: "What Visual Studio showed".
 
 **Pictures.** Each captured stop is drawn as an SVG next to the report
 (`<report>-stop-<n>.svg`): the location and function, the agent's note, the

@@ -323,12 +323,13 @@ class Debugger:
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
                       function_breakpoints: list[str] | None = None, ide: str | None = None,
-                      args: list[str] | None = None, ticket: str | None = None) -> dict:
+                      args: list[str] | None = None, ticket: str | None = None,
+                      screenshots: bool | None = None) -> dict:
         return self._begin(launch_configuration, breakpoints, goal, workspace_folder=workspace_folder,
                            build_task=build_task, max_steps=max_steps, max_minutes=max_minutes,
                            wait_seconds=wait_seconds, build_minutes=build_minutes, process_id=process_id,
                            source_folders=source_folders, function_breakpoints=function_breakpoints, ide=ide,
-                           args=args, ticket=ticket, reproduce=False)
+                           args=args, ticket=ticket, reproduce=False, screenshots=screenshots)
 
     def reproduce(self, launch_configuration: str, symptom: str, args: list[str] | None = None,
                   ticket: str | None = None, workspace_folder: str | None = None, build_task: str | None = None,
@@ -343,16 +344,20 @@ class Debugger:
 
     def _begin(self, launch_configuration: str, breakpoints: list[dict], goal: str, *, workspace_folder, build_task,
                max_steps, max_minutes, wait_seconds, build_minutes, process_id, source_folders, function_breakpoints,
-               ide, args, ticket, reproduce: bool, symptom: str | None = None) -> dict:
+               ide, args, ticket, reproduce: bool, symptom: str | None = None,
+               screenshots: bool | None = None) -> dict:
         window = self._window_for(workspace_folder, ide, launch_configuration)
         if self.connection is not None:
             self.connection.close()
         self.connection = self._connect(window)
+        # Screenshots of the IDE window: Visual Studio only (VS Code and Cursor cannot take them), on unless the
+        # agent turns them off. The Approve dialog says so; the relay refuses them otherwise.
+        screenshots = window.ide == "visualstudio" and not reproduce and screenshots is not False
         request = {"folder": workspace_folder, "launch": launch_configuration, "task": build_task,
                    "breakpoints": breakpoints, "goal": goal, "max_steps": max_steps, "max_minutes": max_minutes,
                    "build_minutes": build_minutes, "process_id": process_id, "source_folders": source_folders or [],
                    "function_breakpoints": function_breakpoints or [], "args": args, "ticket": ticket,
-                   "reproduce": reproduce}
+                   "reproduce": reproduce, "screenshots": screenshots}
         try:
             answer = self._call("start", request)
         except DebugError:
@@ -373,7 +378,7 @@ class Debugger:
         self.plan = {"goal": goal, "launch": launch_configuration, "task": build_task,
                      "breakpoints": [f"{b.get('file')}:{b.get('line')}" for b in breakpoints], "ide": window.ide,
                      "args": None if args is None else [clean_text(a, 300) for a in args],
-                     "build": debugging["build"]}
+                     "build": debugging["build"], "screenshots": screenshots}
         self.reproducing = {"launch": launch_configuration, "args": self.plan["args"],
                             "symptom": clean_text(symptom or "", 500), "recorded": False} if reproduce else None
         shown = "" if args is None else f" with arguments {self.plan['args']}"
@@ -515,11 +520,21 @@ class Debugger:
         wrong = [n for n in (wrong or []) if n in names]
         item = {"location": frame["location"], "function": frame["function"], "note": clean_text(note, 300),
                 "variables": found, "wrong": wrong, "stack": stack[frame_index:], "session": self.sessions}
+        if self.plan.get("screenshots"):
+            name = f"{time.strftime('%Y%m%d-%H%M%S')}-stop-{len(self.evidence) + 1}"
+            try:
+                shot = self._call("screenshot", {"name": name}, timeout=45)
+                item["screenshot"] = f"screenshots/{name}.png"
+                item["variables_window"] = shot.get("variables_window")
+            except DebugError as exc:
+                item["screenshot_note"] = f"no screenshot: {exc.message}"
         self.evidence.append(item)
         self._log("captured", frame["location"], f"{clean_text(note, 200)}; "
                   + ", ".join(f"{v['name']}={v['value']}" for v in variables["variables"][:8]))
         result = {"captured": len(self.evidence), "location": frame["location"], "function": frame["function"],
                   "variables": variables["variables"],
+                  **({"screenshot": item["screenshot"]} if item.get("screenshot") else {}),
+                  **({"screenshot_note": item["screenshot_note"]} if item.get("screenshot_note") else {}),
                   "next": "Saved for the report's Debug sessions section, with a picture of the frame, call stack "
                           "and variables. Capture only the stops that show the bug (one or two)."}
         if variables.get("not_found"):

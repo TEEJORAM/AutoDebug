@@ -126,7 +126,8 @@ The IDE shows the **Approve** dialog with the goal, the build, the program, the
 breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
 report is written to `autodebug-reports/` in the project: ticket, problem, steps to
 reproduce, the stops that show the bug (frame, call stack and variables, with a
-picture), what went wrong and why, and the smallest fix that follows the project's
+picture; in Visual Studio also a screenshot of the IDE with the code, Locals or
+Autos and the Call Stack, which the Approve dialog asks you to allow), what went wrong and why, and the smallest fix that follows the project's
 own patterns. A chat message is
 never an approval, and the agent cannot evaluate expressions or change
 variables.

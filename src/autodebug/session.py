@@ -289,6 +289,7 @@ class Session:
             "targets": self.targets, "start": self.start, "state": self.state, "stack": self.stack,
             "variables": self.variables, "threads": self.threads, "exceptions": self.exceptions, "step": self.step,
             "continue": self.resume, "pause": self.pause, "breakpoints": self.breakpoints, "stop": self.stop,
+            "screenshot": self.screenshot,
         }.get(op)
         if handler is None:
             raise DebugError("BAD_REQUEST", f"unknown operation {op}")
@@ -383,6 +384,7 @@ class Session:
             "folder": folder, "launch": launch, "task": args.get("task"), "notes": notes, "label": label,
             "breakpoints": [{"file": b["full"], "line": b["line"], "condition": b["condition"]} for b in breakpoints],
             "functions": functions, "source_folders": extras, "max_steps": max_steps,
+            "screenshots": bool(args.get("screenshots")),
             "max_minutes": args.get("max_minutes"), "build_minutes": args.get("build_minutes"),
         })
         for b, ident in zip(breakpoints, answer.get("breakpoint_ids", [])):
@@ -871,6 +873,13 @@ class Session:
             {"name": n, "id": i} for n, i in zip(new_functions, answer.get("function_ids", []))]
         self._changed()
         return {"state": self.snapshot()}
+
+    def screenshot(self, args: dict) -> dict:
+        """A picture of the IDE window at this stop, saved under the workspace's autodebug-reports/screenshots."""
+        s = self.current("paused")
+        name = re.sub(r"[^A-Za-z0-9_.-]", "-", str(args.get("name") or "stop"))[:80]
+        file = os.path.join(s["folder"], "autodebug-reports", "screenshots", f"{name}.png")
+        return self._relay("screenshot", {"file": file}, timeout=40)
 
     def stop(self, args: dict) -> dict:
         s = self.s

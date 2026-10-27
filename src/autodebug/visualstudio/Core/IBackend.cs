@@ -77,5 +77,13 @@ namespace AutoDebug
 
         /// <summary>A non-modal note to the developer. Never an approval.</summary>
         void Notify(string text);
+
+        /// <summary>At a stop: bring the variables window that has values (Locals, or Autos when the frame has no
+        /// locals) and the Call Stack forward, with the code in front. Returns the variables window's name.</summary>
+        string ShowDebugWindows();
+
+        /// <summary>Save a PNG picture of the IDE window (after <see cref="ShowDebugWindows"/>) to
+        /// <paramref name="file"/>: {file, width, height, variables_window}.</summary>
+        Dictionary<string, object> Screenshot(string file);
     }
 }
