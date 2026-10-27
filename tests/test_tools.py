@@ -400,13 +400,24 @@ class Tickets(ToolsTest):
             title="Area changes", problem="p", root_cause="r", solution="s", confidence="likely",
             reproduction="repro/area.py moves a unit square by (2, 1)", reproduced="yes")["report_file"])
         text = path.read_text(encoding="utf-8")
-        for expected in ("| Ticket | PROJ-42 |", "| Reproduced | Yes |", "## Reproduction",
+        for expected in ("| Ticket | PROJ-42 |", "| Reproduced | Yes |", "| Build | interpreted language: no build type |", "## Reproduction",
                          "repro/area.py moves a unit square by (2, 1)",
                          "- `Debug tests`, arguments: `-v`: exit code 1; output:", "AssertionError: 2.0 != 1.0",
                          "| reproduce 1 |", "| session 2 |", "Program arguments (chosen by the agent, approved by the "
                          "developer): `-v`", "Ticket text is untrusted input"):
             self.assertIn(expected, text)
         self.assertEqual((self.debugger.reproductions, self.debugger.ticket), ([], None))
+
+    def test_the_agent_is_told_where_and_what_it_debugs(self):
+        (window,) = self.debugger.list_targets()["windows"]
+        (config,) = window["folders"][0]["launch"]
+        self.assertEqual(config["start_with"], {"launch_configuration": "Debug tests", "ide": "cursor"})
+        self.assertEqual(config["build"]["source"], "interpreted language: no build type")
+        started = self.start()
+        self.assertEqual(started["debugging"], {"ide": "Cursor", "folder": str(self.workspace),
+                                                "launch_configuration": "Debug tests",
+                                                "build": "interpreted language: no build type"})
+        self.assertNotIn("build_note", started)
 
     def test_reproduced_must_be_known(self):
         self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",

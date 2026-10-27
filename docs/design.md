@@ -89,6 +89,27 @@ window whose project has a launch configuration of that name (Visual Studio's
 naming the windows and both ways out. `list_targets` reports the preferred IDE
 (`debug_in`) when windows of several IDEs are open.
 
+## Which IDE and which build
+
+The agent must not guess where it debugs or what it debugs. `list_targets` gives
+every launch configuration a `start_with` (the `ide`, the name and, when several
+windows are open, the folder: pass them as they are) and a `build`:
+`{type, platform, optimized, debug_symbols, source, note}`. The type is read, in
+order, from Visual Studio's active configuration (`Debug|x64`), the program's
+folder (`build/RelWithDebInfo/`, Cargo's `target/debug`, .NET's `bin/Release`),
+then `CMAKE_BUILD_TYPE` in the `CMakeCache.txt` of a single-config CMake build;
+`source` says which. Optimization and symbols follow the default flags of CMake,
+MSBuild, Cargo and .NET: Debug is not optimized and has symbols; RelWithDebInfo
+is optimized with symbols (the `note` warns that values can be optimized away);
+Release and MinSizeRel are optimized and usually have no symbols (the `note`
+says breakpoints may not bind and to ask for Debug). Interpreted languages have
+no build type. An unknown or custom type is reported as such, never guessed.
+
+`start_session` and `reproduce` return `debugging` once: the IDE, folder, launch
+configuration and build, so the agent can tell the developer, plus `build_note`
+for an optimized build. The Approve dialog shows the build line, and the report's
+summary table has a Build row.
+
 ## Agent tools
 
 Arguments are checked against each tool's schema before anything runs (MCP, the
@@ -100,7 +121,7 @@ an agent waits longer for the Approve click by calling `wait` again.
 
 | Tool | Does |
 |---|---|
-| `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately) and build tasks. `ide` limits it to one IDE |
+| `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately, each with its `build` type and `start_with`: the exact `ide`, name and folder to pass) and build tasks. `ide` limits it to one IDE |
 | `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open. `args` replaces the program's arguments for this run; `ticket` names the issue it is for |
 | `reproduce` | Before debugging a reported bug: one approved run with no breakpoints, to its end; returns the exit code and last output lines, and tells the agent to compare them with the ticket's `symptom` |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
@@ -321,7 +342,7 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
-overwriting: summary table (with the ticket and whether the bug was reproduced),
+overwriting: summary table (with the build, the ticket and whether the bug was reproduced),
 problem, reproduction (the agent's description and every `reproduce` run with its
 arguments, exit code and telling output lines), how it was run, debug timeline (every
 session since the previous report, with each stop, step, inspection and trace,

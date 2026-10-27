@@ -56,6 +56,8 @@ def render(report: Report, now: float | None = None) -> str:
         f"| Root cause | **{_CONFIDENCE[report.confidence]}** |",
         f"| Debugged with | {ide}, launch configuration `{_cell(plan.get('launch'))}` |" if plan else "| Debugged with | — |",
     ]
+    if plan.get("build"):
+        lines.append(f"| Build | {_cell(plan['build'])} |")
     if report.ticket:
         lines.append(f"| Ticket | {_cell(report.ticket)} |")
     if report.reproduced or report.runs:

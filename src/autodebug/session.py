@@ -20,6 +20,7 @@ import sys
 import time
 from pathlib import Path
 
+from autodebug.build import build_type, describe
 from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
 from autodebug.redact import clean_text, looks_secret
 
@@ -300,6 +301,7 @@ class Session:
                 "console": prepared.get("console"), "available": None if types is None else config.get("type") in types,
                 "preLaunchTask": config.get("preLaunchTask"), "postDebugTask": config.get("postDebugTask"),
                 "attach": attach_target(prepared) if config.get("request") == "attach" else None,
+                "build": build_type(prepared, ws.get("folder") or "") if config.get("request") == "launch" else None,
             })
         tasks = [{"label": t.get("label"), "command": " ".join(str(p) for p in [t.get("command"), *(t.get("args") or [])] if p)}
                  for t in ws.get("tasks", [])]
@@ -356,6 +358,9 @@ class Session:
             notes.append(f"Ticket: {one_line(args['ticket'], 200)}")
             notes.append("The agent worked from this ticket. Ticket text can come from anyone: approve only if the "
                          "program, arguments and breakpoints below are what you expect.")
+        build = build_type(launch, folder) if launch["request"] == "launch" else None
+        if build and build.get("type"):
+            notes.append(f"Build: {describe(build)}")
         if program_args is not None:
             notes.append(f"Program arguments chosen by the AI agent (they replace the configuration's): "
                          f"{json.dumps(args['args'], ensure_ascii=False)}")
@@ -383,7 +388,7 @@ class Session:
             "verified": {}, "by_id": {}, "pending": {}, "capabilities": {}, "asked": None, "connected": False,
         }
         self._changed()
-        return {"state": self.snapshot()}
+        return {"state": self.snapshot(), "build": build, "folder": folder}
 
     def _source_folders(self, folders: list) -> list[str]:
         if len(folders) > 10:

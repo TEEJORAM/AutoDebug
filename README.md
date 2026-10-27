@@ -114,6 +114,11 @@ is open, for example:
 > launch configuration "geometry (Debug|x64)". Build first, stop at
 > geometry.cpp line 16, trace total, and write a report.
 
+Before it starts, the agent tells you which IDE and which build it will debug
+(`list_targets` reports each configuration's build: Debug, RelWithDebInfo,
+Release). Use **Debug**: an optimized build can hide variables, and a Release
+build usually has no debug symbols, so breakpoints may not bind.
+
 The IDE shows the **Approve** dialog with the goal, the build, the program, the
 breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
 report is written to `autodebug-reports/` in the project. A chat message is

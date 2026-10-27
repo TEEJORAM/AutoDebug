@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
+from autodebug.build import describe
 from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
@@ -264,8 +265,16 @@ class Debugger:
             finally:
                 connection.close()
             found.append({"ide": window.ide, "folders": targets})
+        several = len(windows) > 1
+        for entry, window in zip(found, windows):
+            for folder in entry["folders"]:
+                for config in folder.get("launch", []):
+                    config["start_with"] = {"launch_configuration": config.get("name"), "ide": window.ide,
+                                            **({"workspace_folder": folder.get("folder")} if several else {})}
         result = {"windows": found,
-                  "next": "Call start_session with a launch configuration name, the breakpoints and your goal."}
+                  "next": "Pick a launch configuration and pass its start_with values to start_session (with the "
+                          "breakpoints and your goal). Tell the developer which IDE and which build you will debug; "
+                          "each configuration's build says whether it is optimized and has debug symbols."}
         preferred = preferred_ide()
         if preferred and not ide and len({w["ide"] for w in found}) > 1:
             result["debug_in"] = preferred
@@ -310,7 +319,7 @@ class Debugger:
                    "function_breakpoints": function_breakpoints or [], "args": args, "ticket": ticket,
                    "reproduce": reproduce}
         try:
-            raw = self._call("start", request)["state"]
+            answer = self._call("start", request)
         except DebugError:
             self.connection.close()
             self.connection = None
@@ -318,12 +327,18 @@ class Debugger:
         # The timeline runs until the next report, so it covers every session behind it.
         self.version, self._last_status, self._last_build = 0, None, None
         self.sessions += 1
-        self.folder = workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
+        raw = answer["state"]
+        self.folder = answer.get("folder") or workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
+        build = answer.get("build")
+        debugging = {"ide": IDE_NAMES.get(window.ide, window.ide), "folder": self.folder,
+                     "launch_configuration": launch_configuration, "build": describe(build) if build else "attach: "
+                     "the running program's build"}
         if ticket:
             self.ticket = clean_text(" ".join(str(ticket).split()), 300)
         self.plan = {"goal": goal, "launch": launch_configuration, "task": build_task,
                      "breakpoints": [f"{b.get('file')}:{b.get('line')}" for b in breakpoints], "ide": window.ide,
-                     "args": None if args is None else [clean_text(a, 300) for a in args]}
+                     "args": None if args is None else [clean_text(a, 300) for a in args],
+                     "build": debugging["build"]}
         self.reproducing = {"launch": launch_configuration, "args": self.plan["args"],
                             "symptom": clean_text(symptom or "", 500), "recorded": False} if reproduce else None
         shown = "" if args is None else f" with arguments {self.plan['args']}"
@@ -332,7 +347,12 @@ class Debugger:
                   + (f" after building {build_task!r}" if build_task else "")
                   + (" with no breakpoints, to see whether the bug shows" if reproduce else ""))
         self._state(raw)
-        return self._state(self._wait(min(max(wait_seconds, 0), 55)))
+        result = self._state(self._wait(min(max(wait_seconds, 0), 55)))
+        # Say once, plainly, where and what is being debugged, so the agent can tell the developer.
+        result["debugging"] = debugging
+        if build and build.get("note"):
+            result["build_note"] = build["note"]
+        return result
 
     def wait(self, timeout_seconds: float = 30, ask_developer: str | None = None) -> dict:
         if ask_developer is not None and len(ask_developer) > 300:

@@ -107,6 +107,15 @@ class Session(VisualStudioTest):
                          "Program arguments chosen by the AI agent"):
             self.assertIn(expected, dialog["detail"])
 
+    def test_the_build_type_comes_from_the_active_configuration(self):
+        (listed,) = self.debugger.list_targets()["windows"]
+        config = listed["folders"][0]["launch"][0]
+        self.assertEqual((config["build"]["type"], config["build"]["optimized"]), ("Debug", False))
+        self.assertEqual(config["start_with"]["ide"], "visualstudio")
+        dialog = self.start()
+        self.assertIn("Build: Debug x64 build (not optimized, with debug symbols)", dialog["detail"])
+        self.assertEqual(self.debugger.wait(0)["status"], "awaiting_approval")
+
     def test_full_session(self):
         _, result = self.approved(build_task="Build geometry (Debug|x64)")
         self.assertEqual((result["status"], result["location"]), ("paused", "cpp/geometry.cpp:16"))

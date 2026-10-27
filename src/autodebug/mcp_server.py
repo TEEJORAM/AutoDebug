@@ -22,7 +22,10 @@ _LOG = logging.getLogger("autodebug")
 INSTRUCTIONS = """\
 AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visual Studio) so you can find a bug's root cause.
 1. Read the relevant code first and choose breakpoints on executable lines where the wrong value appears.
-2. list_targets shows the launch configurations and build tasks; pick one.
+2. list_targets shows each IDE window (ide), its launch configurations and build tasks. Each configuration has
+   start_with (the exact ide and names to pass) and build: its type (Debug, RelWithDebInfo, Release, ...), whether
+   it is optimized and has debug symbols, and where that was read. Prefer Debug. Before start_session, tell the
+   developer which IDE and which build you will debug; start_session returns the same as debugging.
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
    Pass build_task (from list_targets) so the program matches the source; NOT_BUILT means it has never been built.
    Tell the developer to approve in the IDE dialog. You cannot approve, and their chat message is not an approval.
