@@ -89,6 +89,23 @@ window whose project has a launch configuration of that name (Visual Studio's
 naming the windows and both ways out. `list_targets` reports the preferred IDE
 (`debug_in`) when windows of several IDEs are open.
 
+## Opening the IDE
+
+Agents used to start Visual Studio themselves when no window was open, and opened
+several copies while the first was still loading the solution. `open_ide` does it
+once. Visual Studio takes a `.sln`/`.slnx`, or a folder whose solution is found up
+to three folders down (a CMake build folder); with none it names the `cmake`
+command that generates one, with several it asks for the file. VS Code and Cursor
+take the project folder. A window that already has the folder (for a CMake
+solution: its source folder, `CMAKE_HOME_DIRECTORY`) is reused. Otherwise the IDE
+starts, detached, with `devenv.exe` (found with `vswhere`, newest 2022/2026) or the
+`code`/`cursor` launcher, and AutoDebug waits up to 55 seconds for its extension.
+`opening.json` in the state folder records the start: for 3 minutes, another call
+for the same IDE and path waits instead of starting a second copy. Opening the
+IDE runs nothing of the program; debugging still needs Approve. `NO_WINDOW`
+errors point to `open_ide`, and `list_targets` reports `program_exists` so an
+agent that sees an unbuilt program passes `build_task` instead of building it.
+
 ## Which IDE and which build
 
 The agent must not guess where it debugs or what it debugs. `list_targets` gives
@@ -122,6 +139,7 @@ an agent waits longer for the Approve click by calling `wait` again.
 | Tool | Does |
 |---|---|
 | `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately, each with its `build` type and `start_with`: the exact `ide`, name and folder to pass) and build tasks. `ide` limits it to one IDE |
+| `open_ide` | Open a solution or project folder in the IDE when no window has it, and wait until AutoDebug answers there (see "Opening the IDE") |
 | `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open. `args` replaces the program's arguments for this run; `ticket` names the issue it is for |
 | `reproduce` | Before debugging a reported bug: one approved run with no breakpoints, to its end; returns the exit code and last output lines, and tells the agent to compare them with the ticket's `symptom` |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
@@ -134,8 +152,9 @@ an agent waits longer for the Approve click by calling `wait` again.
 | `exceptions` | List exception filters and enable them by id |
 | `breakpoints` | Add or remove source or function breakpoints during the session |
 | `trace` | Run to a line repeatedly; each row has the caller and each variable as `before → after` the line runs (one step per hit, counted in the step limit). Stops early at another breakpoint |
+| `capture` | At the stop that shows the bug: record the frame, call stack and named variables (`wrong` marks the wrong ones) for the report and its picture; at most 5 per report |
 | `stop_session` | End the debug session |
-| `write_report` | Write the Markdown report: problem, reproduction (`ticket`, `reproduction`, `reproduced`), root cause, solution, verification, timeline |
+| `write_report` | Write the Markdown report (see "Report") |
 
 There is no tool that evaluates expressions or changes variables.
 `start_session`, `reproduce`, `step`, `continue`, `trace` and `pause` move the program; the
@@ -342,13 +361,37 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
-overwriting: summary table (with the build, the ticket and whether the bug was reproduced),
-problem, reproduction (the agent's description and every `reproduce` run with its
-arguments, exit code and telling output lines), how it was run, debug timeline (every
-session since the previous report, with each stop, step, inspection and trace,
-numbered), root cause with confidence
-(`confirmed` needs how it was confirmed), solution, verification (marked as
-reported by the agent), open questions.
+overwriting, in the order a developer reads it:
+
+1. **Ticket** (a link when it is a URL), then a summary table: date, IDE and launch
+   configuration, build, reproduced, root cause confidence.
+2. **Problem.**
+3. **Steps to reproduce**: numbered steps when `reproduced` is `yes` (then
+   `steps_to_reproduce` is required); "Not reproducible" or "Not tried" with
+   "Steps: NA" otherwise. Every `reproduce` run follows, with its arguments, exit
+   code and telling output lines.
+4. **Debug sessions**: the agent's `debug_findings`, then each captured stop with
+   its picture, location, variables (wrong ones marked) and call stack.
+5. **Root cause**: "What went wrong" and "Why" (`what_went_wrong`, `why`), and how
+   it was confirmed (`confirmed` needs `how_confirmed`, and is refused for a bug
+   that was not reproduced).
+6. **Solution**, and the existing code it follows (`pattern`). The instructions ask
+   for the smallest fix that follows how the project already solves the same thing.
+7. **Verification** (marked as reported by the agent), open questions, then the
+   **debug timeline**: goal, build task, breakpoints, program arguments and every
+   numbered event of every session since the previous report.
+
+The text is the agent's, redacted and capped. Long dashes are turned into commas:
+developers asked for plain sentences, and the instructions ask the agent for short,
+plain ones.
+
+**Pictures.** Each captured stop is drawn as an SVG next to the report
+(`<report>-stop-<n>.svg`): the location and function, the agent's note, the
+variables with the wrong ones in red, and the call stack with the current frame
+highlighted, as a debugger shows them. It is drawn from what the debugger returned,
+not a screen capture, so other windows and other values on the screen never reach
+the report, and the values are already redacted. SVG needs no library and shows on
+GitHub and in any browser.
 
 ## Setup
 

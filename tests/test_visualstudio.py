@@ -127,7 +127,7 @@ class Session(VisualStudioTest):
         self.assertEqual(self.debugger.stack()["frames"][1]["location"], "cpp/geometry.cpp:37")
         trace = self.debugger.trace("cpp/geometry.cpp", 16, ["i", "total"], hits=5)
         self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1 → 2"), ("2", "2 → 4")])
-        report = Path(self.debugger.write_report(title="Area bug", problem="p", root_cause="r", solution="s",
+        report = Path(self.debugger.write_report(title="Area bug", problem="p", what_went_wrong="w", why="r", solution="s",
                                                  confidence="likely")["report_file"]).read_text(encoding="utf-8")
         self.assertIn("| build | Build geometry (Debug\\|x64) | succeeded, exit code 0 |", report)
         self.assertLess(report.index("| approved |"), report.index("| build |"))

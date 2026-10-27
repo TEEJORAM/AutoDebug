@@ -151,7 +151,17 @@ def process_name(pid: int) -> str:
 def missing_program(launch: dict, folder: str, building: bool) -> str | None:
     """The launch configuration's program when it is not on disk and nothing will build it first, else None.
     Only paths that can be resolved here are checked: absolute, or under ${workspaceFolder}."""
-    if building or launch.get("request") != "launch" or launch.get("preLaunchTask"):
+    if building or launch.get("preLaunchTask") or program_exists(launch, folder) is not False:
+        return None
+    program = launch["program"]
+    for variable in ("${workspaceFolder}", "${workspaceRoot}"):
+        program = program.replace(variable, folder)
+    return program
+
+
+def program_exists(launch: dict, folder: str) -> bool | None:
+    """Whether the launch configuration's program is on disk; None when its path cannot be resolved here."""
+    if launch.get("request") != "launch":
         return None
     program = launch.get("program")
     if not isinstance(program, str) or not program.strip():
@@ -161,9 +171,7 @@ def missing_program(launch: dict, folder: str, building: bool) -> str | None:
     if "${" in program or not os.path.isabs(program):
         return None
     path = Path(program)
-    if path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists()):
-        return None
-    return program
+    return path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists())
 
 
 def prepare_launch(raw: dict, process_id, platform: str) -> dict:
@@ -302,6 +310,7 @@ class Session:
                 "preLaunchTask": config.get("preLaunchTask"), "postDebugTask": config.get("postDebugTask"),
                 "attach": attach_target(prepared) if config.get("request") == "attach" else None,
                 "build": build_type(prepared, ws.get("folder") or "") if config.get("request") == "launch" else None,
+                "program_exists": program_exists(prepared, ws.get("folder") or ""),
             })
         tasks = [{"label": t.get("label"), "command": " ".join(str(p) for p in [t.get("command"), *(t.get("args") or [])] if p)}
                  for t in ws.get("tasks", [])]

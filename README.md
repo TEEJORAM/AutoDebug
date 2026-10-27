@@ -119,9 +119,15 @@ Before it starts, the agent tells you which IDE and which build it will debug
 Release). Use **Debug**: an optimized build can hide variables, and a Release
 build usually has no debug symbols, so breakpoints may not bind.
 
+If the IDE is not open, the agent opens it with `open_ide`, once: it reuses an open
+window and waits while the IDE loads instead of starting more copies.
+
 The IDE shows the **Approve** dialog with the goal, the build, the program, the
 breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
-report is written to `autodebug-reports/` in the project. A chat message is
+report is written to `autodebug-reports/` in the project: ticket, problem, steps to
+reproduce, the stops that show the bug (frame, call stack and variables, with a
+picture), what went wrong and why, and the smallest fix that follows the project's
+own patterns. A chat message is
 never an approval, and the agent cannot evaluate expressions or change
 variables.
 

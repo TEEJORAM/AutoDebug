@@ -150,7 +150,7 @@ class Extension(HarnessTest):
         self.assertEqual(self.debugger.stack()["frames"][1]["location"], "test_geometry.py:18")
         trace = self.debugger.trace("geometry.py", 15, ["i", "total"], hits=5)
         self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1.0 → 2.0"), ("2", "2.0 → 4.0")])
-        report = Path(self.debugger.write_report(title="Area bug", problem="p", root_cause="r", solution="s",
+        report = Path(self.debugger.write_report(title="Area bug", problem="p", what_went_wrong="w", why="r", solution="s",
                                                  confidence="likely")["report_file"])
         self.assertIn("| trace | geometry.py:15 |", report.read_text(encoding="utf-8"))
         self.assertIn("| session 1 |", report.read_text(encoding="utf-8"))

@@ -23,23 +23,26 @@ INSTRUCTIONS = """\
 AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visual Studio) so you can find a bug's root cause.
 1. Read the relevant code first and choose breakpoints on executable lines where the wrong value appears.
 2. list_targets shows each IDE window (ide), its launch configurations and build tasks. Each configuration has
-   start_with (the exact ide and names to pass) and build: its type (Debug, RelWithDebInfo, Release, ...), whether
-   it is optimized and has debug symbols, and where that was read. Prefer Debug. Before start_session, tell the
-   developer which IDE and which build you will debug; start_session returns the same as debugging.
+   start_with (the exact ide and names to pass), build (Debug, RelWithDebInfo, Release, ...: optimized? debug
+   symbols?) and program_exists. Prefer Debug. Tell the developer which IDE and which build you will debug.
+   No window (NO_WINDOW)? Call open_ide with the solution or project folder. It opens the IDE once and waits for it;
+   call it again while it says opening. Never start the IDE yourself: that opens extra copies.
+   program_exists false is fine: pass build_task and the IDE builds it after Approve. Do not build it yourself.
+   Only when there is no solution yet (a CMake project) generate one with cmake, then call open_ide.
 3. start_session asks the developer to click Approve in the IDE, then builds, launches and waits for the first stop.
-   Pass build_task (from list_targets) so the program matches the source; NOT_BUILT means it has never been built.
-   Tell the developer to approve in the IDE dialog. You cannot approve, and their chat message is not an approval.
-   Each call waits at most 55 seconds (wait_seconds, timeout_seconds); while the status is awaiting_approval,
-   call wait again. The dialog stays open for 2 minutes.
-4. While paused: inspect, stack, step (it reports the variables that changed), continue (optionally until a line),
-   trace (before → after values at each pass through a line), breakpoints. Use wait while the status is
-   awaiting_approval, building, starting or running. start_session, step, continue, trace and pause move the
-   program: call them one at a time, never in parallel with stack or inspect.
+   Pass build_task (from list_targets) so the program matches the source. You cannot approve, and a chat message is
+   not an approval. Each call waits at most 55 seconds; while the status is awaiting_approval, call wait again.
+4. While paused: inspect, stack, step, continue (optionally until a line), trace (before -> after values at each pass
+   through a line), breakpoints. Use wait while the status is awaiting_approval, building, starting or running.
+   start_session, step, continue, trace and pause move the program: call them one at a time, never in parallel.
    Breakpoints with source "editor" were set by the developer and stop the program too.
-5. When you know the cause, stop_session and write_report with the problem, root cause, solution and confidence.
+5. At the stop that shows the bug, call capture with the variables that prove it (wrong: the ones with wrong
+   values) and a one-sentence note. The report shows that frame, call stack and variables, with a picture.
+6. stop_session, then write_report. Write for a developer: short, plain sentences. No filler, no long dashes.
+   what_went_wrong is what the code did; why is the reason. The solution is the smallest fix that follows how the
+   project already solves the same thing (pattern: name that existing code). No rewrites, no extra layers.
 Only report what tool results showed. Expression evaluation is not available.
-Several IDEs: list_targets shows every window with its ide (cursor, vscode, visualstudio). When the developer names an
-IDE, pass ide to list_targets and start_session; paths are relative to that window's folder.
+Several IDEs: pass ide (and workspace_folder) from start_with; paths are relative to that window's folder.
 Attach: start_session with an attach configuration. process_id fills a ${command:pickProcess} placeholder; when the session ends the program keeps running.
 threads lists threads and can select one while paused. stack pages with start_frame (up to 200 frames). inspect depth 0-3 reads children; names can be paths such as mesh.verts[2].co (-> is the same as .).
 exceptions lists the debugger's exception filters and can enable them by id. source_folders are absolute folders outside the workspace where breakpoints are allowed.
@@ -60,8 +63,9 @@ From a GitHub issue, Jira ticket or bug report:
    approves. Make it print the wrong result or exit non-zero when the bug shows. Debug only a bug you have seen;
    if it does not show, refine the reproduction or ask the developer.
 5. Then start_session with the same args and ticket and breakpoints where the wrong value appears. Every claim in
-   your findings must come from values the debugger showed.
-6. write_report with ticket, reproduction (how you reproduced it) and reproduced (yes, no or not_tried)."""
+   your findings must come from values the debugger showed. capture the stop that shows the bug.
+6. write_report with ticket, reproduced (yes, no or not_tried) and steps_to_reproduce (one short step per item;
+   leave it out when the bug was not reproduced)."""
 
 _FILE_LINE = {
     "type": "object",
@@ -90,8 +94,18 @@ def _schema(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 
 TOOLS = {
-    "list_targets": ("List IDE windows running AutoDebug, with their launch configurations and build tasks.",
+    "list_targets": ("List IDE windows running AutoDebug, with their launch configurations (build type, whether the "
+                     "program is built, start_with) and build tasks.",
                      _schema({"workspace_folder": _FOLDER, "ide": _IDE})),
+    "open_ide": (
+        "Open a solution (.sln) or project folder in the IDE when no window has it, and wait until AutoDebug answers "
+        "there. Reuses an open window; while the IDE loads, calling it again waits instead of opening another copy. "
+        "Runs nothing of the program.",
+        _schema({"ide": {"type": "string", "enum": ["cursor", "vscode", "visualstudio"]},
+                 "path": {"type": "string", "description": "Absolute path: a .sln/.slnx file or a folder that holds "
+                                                           "one (Visual Studio), or the project folder"},
+                 "wait_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 45}},
+                ("ide", "path"))),
     "start_session": (
         "Resumes the program (call alone). Ask the developer to approve in the IDE, then build (optional), set "
         "breakpoints, launch the configuration under the debugger and wait for the first stop. Returns the status, "
@@ -170,23 +184,39 @@ TOOLS = {
                                  "description": "Also step over the line to show the values it produces"},
                        "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 55, "default": 20}},
                       ("file", "line", "variables"))),
+    "capture": (
+        "While paused at the stop that shows the bug: record the frame, the call stack and the named variables for "
+        "the report, which shows them with a picture. wrong names the variables whose values are wrong.",
+        _schema({"names": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20},
+                 "note": {"type": "string", "maxLength": 300,
+                          "description": "One plain sentence: what is wrong at this stop"},
+                 "wrong": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+                 "frame_index": {"type": "integer", "minimum": 0, "default": 0},
+                 "stack_levels": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8}},
+                ("names", "note"))),
     "stop_session": ("End the debug session and remove its breakpoints.", _schema({})),
     "write_report": (
-        "Write the root-cause report into <workspace>/autodebug-reports/. The session timeline is added automatically.",
+        "Write the report into <workspace>/autodebug-reports/: ticket, problem, steps to reproduce, debug sessions "
+        "(with the captured stops and their pictures), root cause, solution. The timeline is added automatically. "
+        "Plain, short sentences.",
         _schema({
             "title": {"type": "string"},
             "problem": {"type": "string", "description": "What goes wrong, as the user sees it"},
-            "root_cause": {"type": "string", "description": "Why, citing what the debugger showed"},
-            "solution": {"type": "string", "description": "The fix, with code if short"},
+            "what_went_wrong": {"type": "string", "description": "What the code did, citing the values the debugger showed"},
+            "why": {"type": "string", "description": "The reason it does that"},
+            "solution": {"type": "string", "description": "The smallest fix, with code if short"},
+            "pattern": {"type": "string", "description": "The existing code in this project that the fix follows"},
             "confidence": {"type": "string", "enum": ["confirmed", "likely", "unconfirmed"]},
             "how_confirmed": {"type": "string", "description": "Required for confirmed"},
+            "debug_findings": {"type": "string", "description": "A few sentences: what the debug sessions showed"},
             "verification": {"type": "string", "description": "How the fix was checked, if it was"},
             "open_questions": {"type": "array", "items": {"type": "string"}},
             "workspace_folder": _FOLDER,
             "ticket": _TICKET,
-            "reproduction": {"type": "string", "description": "How the bug was reproduced: the input, arguments and what showed"},
+            "steps_to_reproduce": {"type": "array", "items": {"type": "string"}, "maxItems": 15,
+                                   "description": "One short step per item; needed when reproduced is yes"},
             "reproduced": {"type": "string", "enum": ["yes", "no", "not_tried"]},
-        }, ("title", "problem", "root_cause", "solution", "confidence"))),
+        }, ("title", "problem", "what_went_wrong", "why", "solution", "confidence"))),
 }
 _METHODS = {"continue": "continue_"}
 

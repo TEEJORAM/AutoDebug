@@ -13,11 +13,12 @@ from dataclasses import dataclass, field
 
 from autodebug import report
 from autodebug.build import describe
-from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide
+from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide, same_folder
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
 SHORT_VALUE = 200
+MAX_CAPTURES = 5
 _NO_ANSWER = ("Nobody answered the Approve dialog in {ide} within 2 minutes, so nothing ran; it was probably "
               "behind another window. This was not a Deny. Ask the developer whether to try again.")
 STOPPED = ("paused", "ended", "denied", "build_failed")
@@ -69,6 +70,7 @@ class Debugger:
         self.ticket: str | None = None
         self.reproducing: dict | None = None  # the current session, when it only reproduces the bug
         self.reproductions: list[dict] = []  # reproduction runs since the last report
+        self.evidence: list[dict] = []  # captured stops since the last report
 
     # -- helpers ------------------------------------------------------------
 
@@ -282,6 +284,39 @@ class Debugger:
                                f"(ide={preferred}).")
         return result
 
+    def open_ide(self, ide: str, path: str, wait_seconds: float = 45) -> dict:
+        """Open the solution or folder in the IDE once and wait until its AutoDebug extension answers."""
+        from autodebug import ide_launch
+
+        opened, folder = ide_launch.target(ide, path)
+        name = IDE_NAMES[ide]
+
+        def window():
+            return next((w for w in self._find_windows()
+                         if w.current and w.ide == ide and any(same_folder(f, str(folder)) for f in w.folders)), None)
+
+        found = window()
+        if found:
+            return {"status": "open", "ide": ide, "folder": str(folder), "started": False,
+                    "next": f"{name} already has {folder} open. Call list_targets with ide={ide}."}
+        age = ide_launch.recently_started(ide, opened)
+        if age is None:
+            ide_launch.start(ide_launch.command(ide, opened))
+            ide_launch.remember_start(ide, opened)
+            self._log("opened the IDE", str(opened), f"started {name}")
+        deadline = time.monotonic() + min(max(wait_seconds, 0), 55)
+        while time.monotonic() < deadline:
+            found = window()
+            if found:
+                return {"status": "open", "ide": ide, "folder": str(folder), "started": age is None,
+                        "next": f"{name} is open with {folder}. Tell the developer you opened {opened}. "
+                                f"Call list_targets with ide={ide}."}
+            time.sleep(1)
+        return {"status": "opening", "ide": ide, "folder": str(folder), "started": age is None,
+                "next": f"{name} is still loading {opened}. Call open_ide again with the same path to keep waiting; "
+                        f"it never starts a second copy while the first one loads. Do not start {name} yourself. "
+                        "If nothing appears after 3 minutes, ask the developer to check the IDE window."}
+
     def start_session(self, launch_configuration: str, breakpoints: list[dict], goal: str,
                       workspace_folder: str | None = None, build_task: str | None = None,
                       max_steps: int = 100, max_minutes: int = 30, wait_seconds: float = 30,
@@ -462,6 +497,35 @@ class Debugger:
             result["not_found"] = [n for n in names if n not in {v["name"] for v in variables}]
         return result
 
+    def capture(self, names: list[str], note: str, wrong: list[str] | None = None, frame_index: int = 0,
+                stack_levels: int = 8) -> dict:
+        """Record the stop that shows the bug (frame, call stack, variables) for the report and its picture."""
+        if len(self.evidence) >= MAX_CAPTURES:
+            raise DebugError("LIMIT", f"the report keeps at most {MAX_CAPTURES} captures; keep only the stops that "
+                                      "show the bug")
+        raw = self._call("stack", {"levels": max(frame_index + 1, min(int(stack_levels), 20))}).get("frames", [])
+        if frame_index >= len(raw):
+            raise DebugError("BAD_REQUEST", f"the stack has {len(raw)} frames")
+        stack = [{"function": clean_text(f.get("name"), 200),
+                  "location": "(no source)" if f.get("file") in (None, "(no source)")
+                  else clean_text(f"{f.get('file')}:{f.get('line')}", 300)} for f in raw]
+        frame = stack[frame_index]
+        found = [self._clean_variable(v, 500) for v in self._raw_variables(raw[frame_index].get("id"), names, 1)]
+        variables = {"variables": found, "not_found": [n for n in names if n not in {v["name"] for v in found}]}
+        wrong = [n for n in (wrong or []) if n in names]
+        item = {"location": frame["location"], "function": frame["function"], "note": clean_text(note, 300),
+                "variables": found, "wrong": wrong, "stack": stack[frame_index:], "session": self.sessions}
+        self.evidence.append(item)
+        self._log("captured", frame["location"], f"{clean_text(note, 200)}; "
+                  + ", ".join(f"{v['name']}={v['value']}" for v in variables["variables"][:8]))
+        result = {"captured": len(self.evidence), "location": frame["location"], "function": frame["function"],
+                  "variables": variables["variables"],
+                  "next": "Saved for the report's Debug sessions section, with a picture of the frame, call stack "
+                          "and variables. Capture only the stops that show the bug (one or two)."}
+        if variables.get("not_found"):
+            result["not_found"] = variables["not_found"]
+        return result
+
     def stack(self, levels: int = 20, start_frame: int = 0) -> dict:
         body = self._call("stack", {"levels": max(1, min(int(levels), 200)), "start_frame": max(0, int(start_frame))})
         frames = body.get("frames", [])
@@ -565,11 +629,12 @@ class Debugger:
         raw = self._call("stop")["state"]
         return self._state(raw)
 
-    def write_report(self, title: str, problem: str, root_cause: str, solution: str, confidence: str,
+    def write_report(self, title: str, problem: str, what_went_wrong: str, why: str, solution: str, confidence: str,
                      how_confirmed: str | None = None, verification: str | None = None,
                      open_questions: list[str] | None = None, workspace_folder: str | None = None,
-                     ticket: str | None = None, reproduction: str | None = None,
-                     reproduced: str | None = None) -> dict:
+                     ticket: str | None = None, steps_to_reproduce: list[str] | None = None,
+                     reproduced: str | None = None, debug_findings: str | None = None,
+                     pattern: str | None = None) -> dict:
         folder = workspace_folder or self.folder
         if not folder:
             raise DebugError("BAD_REQUEST", "pass workspace_folder: there is no session to take it from")
@@ -582,14 +647,19 @@ class Debugger:
         if confidence == "confirmed" and reproduced in ("no", "not_tried"):
             raise DebugError("BAD_REQUEST", "a root cause cannot be confirmed for a bug that was not reproduced; "
                                             "use likely or unconfirmed")
+        if reproduced == "yes" and not steps_to_reproduce:
+            raise DebugError("BAD_REQUEST", "reproduced=yes needs steps_to_reproduce (one short step per item)")
         path = report.write(folder, report.Report(
-            title=title, problem=problem, root_cause=root_cause, solution=solution, confidence=confidence,
-            how_confirmed=how_confirmed, verification=verification, open_questions=list(open_questions or []),
-            plan=self.plan, timeline=list(self.timeline), ticket=ticket or self.ticket, reproduction=reproduction,
-            reproduced=reproduced, runs=list(self.reproductions),
+            title=title, problem=problem, what_went_wrong=what_went_wrong, why=why, solution=solution,
+            confidence=confidence, how_confirmed=how_confirmed, verification=verification,
+            open_questions=list(open_questions or []), plan=self.plan, timeline=list(self.timeline),
+            ticket=ticket or self.ticket, steps_to_reproduce=list(steps_to_reproduce or []), reproduced=reproduced,
+            runs=list(self.reproductions), debug_findings=debug_findings, captures=list(self.evidence),
+            pattern=pattern,
         ))
-        self.timeline, self.sessions, self.reproductions, self.ticket = [], 0, [], None
-        return {"report_file": str(path), "next": "Tell the developer where the report is and summarize it."}
+        self.timeline, self.sessions, self.reproductions, self.ticket, self.evidence = [], 0, [], None, []
+        return {"report_file": str(path), "next": "Tell the developer where the report is and summarize it in two or "
+                                                  "three plain sentences."}
 
     def close(self) -> None:
         if self.connection is not None:
