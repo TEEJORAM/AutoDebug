@@ -58,6 +58,7 @@ namespace AutoDebug
             public List<string> Roots, Notes;
             public List<Mark> Marks = new List<Mark>();
             public int NextId = 1, StepsUsed, MaxSteps, Minutes, BuildMinutes;
+            public bool Screenshots;
             public Timer TimeLimit;
             public bool Attach => Json.Str(Launch, "request") == "attach";
         }
@@ -90,6 +91,7 @@ namespace AutoDebug
                     lock (sync) own = session == null ? new List<object>() : session.Marks.Select(m => m.Handle).Where(h => h != null).ToList();
                     return Json.Make("breakpoints", backend.EditorBreakpoints(own).Cast<object>().ToList());
                 case "notify": return Notify(args);
+                case "screenshot": return Screenshot(args);
                 case "stop": End(Json.Str(args, "reason") ?? "stopped by the agent"); return Json.Make();
                 default: throw Fail("BAD_REQUEST", $"unknown operation {op}");
             }
@@ -197,6 +199,7 @@ namespace AutoDebug
                     BuildMinutes = Clamp(Json.Get(args, "build_minutes"), 1, 30, 600),
                     Notes = Json.List(Json.Get(args, "notes")).Select(n => Cut(Convert.ToString(n), 500)).ToList(),
                     Label = Cut(Json.Str(args, "label") ?? Json.Str(launch, "name"), 200),
+                    Screenshots = Json.Get(args, "screenshots") is bool pictures && pictures,
                 };
                 ids = Register(s, Json.List(Json.Get(args, "breakpoints")), Json.List(Json.Get(args, "functions")));
                 session = s;
@@ -258,6 +261,9 @@ namespace AutoDebug
             lines.Add("");
             lines.Add("The AI agent can then read the stack and variables, step and continue.");
             lines.Add("It cannot evaluate code or change variables. Secret-looking values are hidden from it.");
+            if (s.Screenshots)
+                lines.Add("Screenshots: at the stops the agent captures, a picture of this window is saved in " +
+                          "autodebug-reports\\screenshots. It shows whatever the window shows, including values that look secret.");
             lines.Add("");
             lines.Add("Launch configuration, exactly as it will be used:");
             lines.Add(s.Shown);
@@ -503,6 +509,32 @@ namespace AutoDebug
             foreach (var mark in added) Place(mark);
             Report(s, added);
             return ids;
+        }
+
+        // A picture of the IDE window at a stop, only when the developer approved screenshots, and only into the
+        // approved folder's autodebug-reports\screenshots.
+        object Screenshot(Dictionary<string, object> args)
+        {
+            Session s;
+            lock (sync) s = Live();
+            if (!s.Screenshots) throw Fail("NOT_APPROVED", "the developer did not approve screenshots for this session");
+            var file = Json.Str(args, "file");
+            if (file == null || !Path.IsPathRooted(file) || !file.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                throw Fail("BAD_REQUEST", "file must be an absolute .png path");
+            var folder = Path.Combine(s.Folder, "autodebug-reports", "screenshots");
+            if (!Within(folder, file) || Same(folder, file)) throw Fail("OUTSIDE_WORKSPACE", $"screenshots are saved only in {folder}");
+            var call = Task.Run(() => backend.Screenshot(Norm(file)));
+            try
+            {
+                if (!call.Wait(30000)) throw Fail("IDE_ERROR", "the screenshot took too long");
+                return call.Result;
+            }
+            catch (AggregateException error)
+            {
+                var inner = error.InnerException ?? error;
+                if (inner is RelayException relay) throw relay;
+                throw Fail("IDE_ERROR", inner.Message);
+            }
         }
 
         object Notify(Dictionary<string, object> args)

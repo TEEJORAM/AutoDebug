@@ -11,7 +11,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>AutoDebug.VisualStudio</RootNamespace>
     <AssemblyName>AutoDebug.VisualStudio</AssemblyName>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <GeneratePkgDefFile>true</GeneratePkgDefFile>
     <UseCodebase>true</UseCodebase>
     <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
@@ -37,6 +37,7 @@
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.32112.339" ExcludeAssets="runtime" />

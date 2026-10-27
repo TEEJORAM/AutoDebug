@@ -116,6 +116,47 @@ class Session(VisualStudioTest):
         self.assertIn("Build: Debug x64 build (not optimized, with debug symbols)", dialog["detail"])
         self.assertEqual(self.debugger.wait(0)["status"], "awaiting_approval")
 
+    def test_a_capture_saves_a_screenshot_of_visual_studio(self):
+        dialog, result = self.approved()
+        self.assertIn("Screenshots: at the stops the agent captures, a picture of this window is saved", dialog["detail"])
+        self.assertEqual(result["status"], "paused")
+        captured = self.debugger.capture(names=["i", "total"], wrong=["total"], note="total skips the closing edge")
+        self.assertTrue(captured["screenshot"].startswith("screenshots/"))
+        picture = self.workspace / "autodebug-reports" / captured["screenshot"]
+        self.assertEqual(picture.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(self.expect("SCREENSHOT"), str(picture))
+        self.debugger.stop_session()
+        report = Path(self.debugger.write_report(title="Area", problem="p", what_went_wrong="w", why="r", solution="s",
+                                                 confidence="likely")["report_file"]).read_text(encoding="utf-8")
+        self.assertIn("What Visual Studio showed (code, Locals and Call Stack):", report)
+        self.assertIn(f"]({captured['screenshot']})", report)
+        self.assertIn("The values the agent captured:", report)
+
+    def test_the_relay_saves_screenshots_only_where_approved(self):
+        self.approved()
+        (window,) = discover(self.bridges)
+        connection = Connection(window)
+        self.addCleanup(connection.close)
+        for file, code in ((str(self.workspace / "elsewhere.png"), "OUTSIDE_WORKSPACE"),
+                           (str(self.workspace / "autodebug-reports" / "screenshots" / "x.txt"), "BAD_REQUEST"),
+                           ("relative.png", "BAD_REQUEST")):
+            with self.assertRaises(DebugError) as caught:
+                connection.call("screenshot", {"file": file})
+            self.assertEqual(caught.exception.code, code)
+        self.debugger.stop_session()
+        self.debugger.close()
+        self.approved(screenshots=False)
+        with self.assertRaises(DebugError) as caught:
+            connection.call("screenshot", {"file": str(self.workspace / "autodebug-reports" / "screenshots" / "x.png")})
+        self.assertEqual(caught.exception.code, "NOT_APPROVED")
+
+    def test_no_screenshots_when_the_agent_turns_them_off(self):
+        dialog, _ = self.approved(screenshots=False)
+        self.assertNotIn("Screenshots:", dialog["detail"])
+        captured = self.debugger.capture(names=["i"], note="x")
+        self.assertNotIn("screenshot", captured)
+        self.assertFalse((self.workspace / "autodebug-reports" / "screenshots").exists())
+
     def test_full_session(self):
         _, result = self.approved(build_task="Build geometry (Debug|x64)")
         self.assertEqual((result["status"], result["location"]), ("paused", "cpp/geometry.cpp:16"))
@@ -127,7 +168,7 @@ class Session(VisualStudioTest):
         self.assertEqual(self.debugger.stack()["frames"][1]["location"], "cpp/geometry.cpp:37")
         trace = self.debugger.trace("cpp/geometry.cpp", 16, ["i", "total"], hits=5)
         self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1 → 2"), ("2", "2 → 4")])
-        report = Path(self.debugger.write_report(title="Area bug", problem="p", root_cause="r", solution="s",
+        report = Path(self.debugger.write_report(title="Area bug", problem="p", what_went_wrong="w", why="r", solution="s",
                                                  confidence="likely")["report_file"]).read_text(encoding="utf-8")
         self.assertIn("| build | Build geometry (Debug\\|x64) | succeeded, exit code 0 |", report)
         self.assertLess(report.index("| approved |"), report.index("| build |"))

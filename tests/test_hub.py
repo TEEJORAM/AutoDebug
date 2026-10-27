@@ -100,7 +100,7 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
         server.stdout.close()
 
         # Back on the terminal: the report has the whole timeline, including the MCP part.
-        code, report = self.cli("write_report", "title=Area", "problem=p", "root_cause=r", "solution=s",
+        code, report = self.cli("write_report", "title=Area", "problem=p", "what_went_wrong=w", "why=r", "solution=s",
                                 "confidence=unconfirmed")
         self.assertEqual(code, 0)
         text = Path(report["report_file"]).read_text(encoding="utf-8")

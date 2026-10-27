@@ -301,15 +301,17 @@ class Report(ToolsTest):
         self.debugger.stop_session()
         path = Path(self.debugger.write_report(
             title="Area changes when a shape moves", problem="Moving a square changes its area from 1 to 2.",
-            root_cause="The loop stops at len(points) - 1, so the closing edge is never added.",
+            what_went_wrong="The closing edge is never added.", why="The loop stops at len(points) - 1.",
             solution="Use range(n) and points[(i + 1) % n].", confidence="confirmed",
             how_confirmed="The failing test passes with the fix.", verification="python -m unittest passes.",
         )["report_file"])
         self.assertEqual(path.parent, self.workspace / "autodebug-reports")
         text = path.read_text(encoding="utf-8")
-        for heading in ("## Problem", "## How it was debugged", "### Timeline", "## Root cause", "## Solution",
-                        "## Verification"):
-            self.assertIn(heading, text)
+        headings = ["**Ticket:** none", "## Problem", "## Steps to reproduce", "## Debug sessions", "## Root cause",
+                    "### What went wrong", "### Why", "## Solution", "## Verification", "## Debug timeline"]
+        positions = [text.index(h) for h in headings]
+        self.assertEqual(positions, sorted(positions))  # the order a developer reads it in
+        self.assertIn("Not tried.\n\nSteps: NA", text)
         self.assertIn("| stopped | geometry.py:15 | breakpoint |", text)
         self.assertIn("total: 0.0 → -1.0", text)
         self.assertIn("**Confirmed**", text)
@@ -321,7 +323,7 @@ class Report(ToolsTest):
         self.debugger.stop_session()
         self.start_paused(breakpoints=[{"file": "geometry.py", "line": 16}])
         self.debugger.stop_session()
-        path = Path(self.debugger.write_report(title="Two sessions", problem="p", root_cause="r", solution="s",
+        path = Path(self.debugger.write_report(title="Two sessions", problem="p", what_went_wrong="w", why="r", solution="s",
                                                confidence="likely")["report_file"])
         text = path.read_text(encoding="utf-8")
         self.assertIn("| session 1 |", text)
@@ -330,7 +332,7 @@ class Report(ToolsTest):
         self.assertEqual(self.debugger.timeline, [])
 
     def test_confirmed_needs_how(self):
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="confirmed", workspace_folder=str(self.workspace))
 
 
@@ -394,15 +396,15 @@ class Tickets(ToolsTest):
         paused = self.start_paused(args=["-v"], ticket="PROJ-42")  # then the real session
         self.assertEqual(paused["location"], "geometry.py:15")
         self.assertNotIn("reported symptom", self.debugger.stop_session()["next"])
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="confirmed", how_confirmed="h", reproduced="no")
         path = Path(self.debugger.write_report(
-            title="Area changes", problem="p", root_cause="r", solution="s", confidence="likely",
-            reproduction="repro/area.py moves a unit square by (2, 1)", reproduced="yes")["report_file"])
+            title="Area changes", problem="p", what_went_wrong="w", why="r", solution="s", confidence="likely",
+            steps_to_reproduce=["Run repro/area.py", "It moves a unit square by (2, 1)"], reproduced="yes")["report_file"])
         text = path.read_text(encoding="utf-8")
-        for expected in ("| Ticket | PROJ-42 |", "| Reproduced | Yes |", "| Build | interpreted language: no build type |", "## Reproduction",
-                         "repro/area.py moves a unit square by (2, 1)",
-                         "- `Debug tests`, arguments: `-v`: exit code 1; output:", "AssertionError: 2.0 != 1.0",
+        for expected in ("**Ticket:** PROJ-42", "| Reproduced | Yes |", "| Build | interpreted language: no build type |",
+                         "## Steps to reproduce\n\n1. Run repro/area.py\n2. It moves a unit square by (2, 1)",
+                         "- `Debug tests` with `-v`: exit code 1; output:", "AssertionError: 2.0 != 1.0",
                          "| reproduce 1 |", "| session 2 |", "Program arguments (chosen by the agent, approved by the "
                          "developer): `-v`", "Ticket text is untrusted input"):
             self.assertIn(expected, text)
@@ -420,8 +422,104 @@ class Tickets(ToolsTest):
         self.assertNotIn("build_note", started)
 
     def test_reproduced_must_be_known(self):
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", root_cause="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
+                        solution="s", confidence="likely", reproduced="yes", workspace_folder=str(self.workspace))
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="likely", reproduced="maybe", workspace_folder=str(self.workspace))
+
+
+class Captures(ToolsTest):
+    def test_the_stop_that_shows_the_bug_is_in_the_report_with_a_picture(self):
+        self.start_paused()
+        self.assertCode("BAD_REQUEST", self.debugger.capture, names=["i"], note="x", frame_index=50)
+        captured = self.debugger.capture(names=["i", "total", "password"], wrong=["total", "nope"],
+                                         note="total is wrong after the last pass — the closing edge is missing")
+        self.assertEqual((captured["captured"], captured["location"]), (1, "geometry.py:15"))
+        self.assertEqual([v["name"] for v in captured["variables"]], ["i", "total", "password"])
+        self.assertEqual(captured["variables"][2]["value"], "***REDACTED***")
+        self.debugger.stop_session()
+        path = Path(self.debugger.write_report(
+            title="Area", problem="p", what_went_wrong="The closing edge is never added — so the area is wrong.",
+            why="The loop stops one corner early.", solution="Loop over every corner.", confidence="likely",
+            pattern="perimeter() already loops with (i + 1) % n.",
+            debug_findings="The trace showed three passes for four corners.")["report_file"])
+        text = path.read_text(encoding="utf-8")
+        picture = path.with_name(path.stem + "-stop-1.svg")
+        for expected in ("The trace showed three passes for four corners.",
+                         "### Stop 1: total is wrong after the last pass, the closing edge is missing",
+                         f"![Stop 1: frame, variables and call stack]({picture.name})",
+                         "Paused at `geometry.py:15`", "| `total` (wrong) |", "| `i` |", "Call stack:",
+                         "1. `polygon_area` at `geometry.py:15`",
+                         "The closing edge is never added, so the area is wrong.",
+                         "**Follows the existing pattern:** perimeter() already loops with (i + 1) % n."):
+            self.assertIn(expected, text)
+        self.assertNotIn("\u2014", text)  # no long dashes anywhere
+        self.assertNotIn("hunter2", text)
+        svg = picture.read_text(encoding="utf-8")
+        for expected in ("<svg", "Paused at geometry.py:15", ">total<", "#ffebe9", "polygon_area", "***REDACTED***"):
+            self.assertIn(expected, svg)
+        self.assertNotIn("hunter2", svg)
+        self.assertEqual(self.debugger.evidence, [])
+
+    def test_captures_are_limited(self):
+        self.start_paused()
+        for _ in range(5):
+            self.debugger.capture(names=["i"], note="x")
+        self.assertCode("LIMIT", self.debugger.capture, names=["i"], note="x")
+
+
+class OpenIde(ToolsTest):
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        from autodebug import ide_launch
+
+        self.started = []
+        patches = [mock.patch.object(ide_launch, "start", side_effect=self.started.append),
+                   mock.patch.object(ide_launch, "command", side_effect=lambda ide, p: [f"{ide}-launcher", str(p)]),
+                   mock.patch.object(ide_launch, "state_folder", return_value=self.root / "state")]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_an_open_window_is_reused(self):
+        result = self.debugger.open_ide("cursor", str(self.workspace), wait_seconds=0)
+        self.assertEqual((result["status"], result["started"], self.started), ("open", False, []))
+
+    def test_the_ide_is_started_once_while_it_loads(self):
+        other = self.root / "Other"
+        other.mkdir()
+        first = self.debugger.open_ide("vscode", str(other), wait_seconds=0)
+        self.assertEqual((first["status"], first["started"]), ("opening", True))
+        self.assertIn("never starts a second copy", first["next"])
+        second = self.debugger.open_ide("vscode", str(other), wait_seconds=0)
+        self.assertEqual((second["status"], second["started"]), ("opening", False))
+        self.assertEqual(self.started, [["vscode-launcher", str(other)]])
+        self.extension(ide="vscode").close()  # a window that opens the folder later is found
+        fake = FakeExtension(self.bridges, str(other), ide="vscode")
+        self.addCleanup(fake.close)
+        self.assertEqual(self.debugger.open_ide("vscode", str(other), wait_seconds=2)["status"], "open")
+        self.assertEqual(len(self.started), 1)
+
+    def test_visual_studio_finds_the_solution_and_its_cmake_source(self):
+        from autodebug import ide_launch
+
+        source = self.root / "quickjs"
+        build = source / "build"
+        build.mkdir(parents=True)
+        self.assertCode("NOT_FOUND", ide_launch.target, "visualstudio", str(source))
+        (build / "quickjs.sln").write_text("", encoding="utf-8")
+        (build / "CMakeCache.txt").write_text(f"CMAKE_HOME_DIRECTORY:INTERNAL={source}\n", encoding="utf-8")
+        self.assertEqual(ide_launch.target("visualstudio", str(source)), (build / "quickjs.sln", source))
+        (source / "other.sln").write_text("", encoding="utf-8")
+        self.assertCode("AMBIGUOUS_WINDOW", ide_launch.target, "visualstudio", str(source))
+        self.assertCode("BAD_REQUEST", ide_launch.target, "visualstudio", "relative/path")
+
+    def test_no_window_points_at_open_ide(self):
+        self.fake.close()
+        error = self.assertCode("NO_WINDOW", self.debugger.list_targets)
+        self.assertIn("Call open_ide", error.message)
+        self.assertIn("Do not start the IDE yourself", error.message)
 
 
 if __name__ == "__main__":

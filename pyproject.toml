@@ -1,6 +1,6 @@
 [project]
 name = "autodebug"
-version = "0.6.0"
+version = "0.7.0"
 description = "Let an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio"
 requires-python = ">=3.11"
 readme = "README.md"

@@ -177,8 +177,10 @@ def choose(windows: list[Window], folder: str | None, ide: str | None = None) ->
             raise version_problem(stale[0])
         where = f" with {folder} open" if folder else ""
         which = IDE_NAMES.get(ide, ide) if ide else "VS Code, Cursor or Visual Studio"
-        raise DebugError("NO_WINDOW", f"no {which} window{where} is running the AutoDebug extension. Open the project "
-                                      "in the IDE; run `autodebug setup` if the extension is missing.")
+        raise DebugError("NO_WINDOW", f"no {which} window{where} is running the AutoDebug extension. Call open_ide "
+                                      "with the solution or project folder: it opens the IDE once and waits for it. "
+                                      "Do not start the IDE yourself. If the IDE is open, run `autodebug setup` "
+                                      "(the extension may be missing).")
     if len(matches) > 1:
         listed = "; ".join(f"{w.ide}: {', '.join(w.folders)}" for w in matches)
         raise DebugError("AMBIGUOUS_WINDOW", f"several windows match ({listed}); pass ide and/or workspace_folder")

@@ -151,7 +151,17 @@ def process_name(pid: int) -> str:
 def missing_program(launch: dict, folder: str, building: bool) -> str | None:
     """The launch configuration's program when it is not on disk and nothing will build it first, else None.
     Only paths that can be resolved here are checked: absolute, or under ${workspaceFolder}."""
-    if building or launch.get("request") != "launch" or launch.get("preLaunchTask"):
+    if building or launch.get("preLaunchTask") or program_exists(launch, folder) is not False:
+        return None
+    program = launch["program"]
+    for variable in ("${workspaceFolder}", "${workspaceRoot}"):
+        program = program.replace(variable, folder)
+    return program
+
+
+def program_exists(launch: dict, folder: str) -> bool | None:
+    """Whether the launch configuration's program is on disk; None when its path cannot be resolved here."""
+    if launch.get("request") != "launch":
         return None
     program = launch.get("program")
     if not isinstance(program, str) or not program.strip():
@@ -161,9 +171,7 @@ def missing_program(launch: dict, folder: str, building: bool) -> str | None:
     if "${" in program or not os.path.isabs(program):
         return None
     path = Path(program)
-    if path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists()):
-        return None
-    return program
+    return path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists())
 
 
 def prepare_launch(raw: dict, process_id, platform: str) -> dict:
@@ -281,6 +289,7 @@ class Session:
             "targets": self.targets, "start": self.start, "state": self.state, "stack": self.stack,
             "variables": self.variables, "threads": self.threads, "exceptions": self.exceptions, "step": self.step,
             "continue": self.resume, "pause": self.pause, "breakpoints": self.breakpoints, "stop": self.stop,
+            "screenshot": self.screenshot,
         }.get(op)
         if handler is None:
             raise DebugError("BAD_REQUEST", f"unknown operation {op}")
@@ -302,6 +311,7 @@ class Session:
                 "preLaunchTask": config.get("preLaunchTask"), "postDebugTask": config.get("postDebugTask"),
                 "attach": attach_target(prepared) if config.get("request") == "attach" else None,
                 "build": build_type(prepared, ws.get("folder") or "") if config.get("request") == "launch" else None,
+                "program_exists": program_exists(prepared, ws.get("folder") or ""),
             })
         tasks = [{"label": t.get("label"), "command": " ".join(str(p) for p in [t.get("command"), *(t.get("args") or [])] if p)}
                  for t in ws.get("tasks", [])]
@@ -374,6 +384,7 @@ class Session:
             "folder": folder, "launch": launch, "task": args.get("task"), "notes": notes, "label": label,
             "breakpoints": [{"file": b["full"], "line": b["line"], "condition": b["condition"]} for b in breakpoints],
             "functions": functions, "source_folders": extras, "max_steps": max_steps,
+            "screenshots": bool(args.get("screenshots")),
             "max_minutes": args.get("max_minutes"), "build_minutes": args.get("build_minutes"),
         })
         for b, ident in zip(breakpoints, answer.get("breakpoint_ids", [])):
@@ -862,6 +873,13 @@ class Session:
             {"name": n, "id": i} for n, i in zip(new_functions, answer.get("function_ids", []))]
         self._changed()
         return {"state": self.snapshot()}
+
+    def screenshot(self, args: dict) -> dict:
+        """A picture of the IDE window at this stop, saved under the workspace's autodebug-reports/screenshots."""
+        s = self.current("paused")
+        name = re.sub(r"[^A-Za-z0-9_.-]", "-", str(args.get("name") or "stop"))[:80]
+        file = os.path.join(s["folder"], "autodebug-reports", "screenshots", f"{name}.png")
+        return self._relay("screenshot", {"file": file}, timeout=40)
 
     def stop(self, args: dict) -> dict:
         s = self.s

@@ -317,7 +317,7 @@ def you_run() -> str:
 
 #: List arguments whose items may contain commas, so a comma does not split them: open_questions="A, b" is one item,
 #: and args=--size=1,2 is one program argument. Repeat the key for more items.
-SENTENCE_LISTS = {"open_questions", "args"}
+SENTENCE_LISTS = {"open_questions", "args", "steps_to_reproduce"}
 
 
 def _coerce(key: str, text: str, schema: dict):

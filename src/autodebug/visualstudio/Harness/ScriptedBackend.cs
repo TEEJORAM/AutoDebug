@@ -79,6 +79,20 @@ namespace AutoDebug.Harness
         public void Log(string line) => Say("LOG " + line);
         public void Notify(string text) => Say("INFO " + text);
 
+        public string ShowDebugWindows() => "Locals";
+
+        // A 1x1 PNG stands in for the picture of Visual Studio's window.
+        static readonly byte[] Pixel = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
+        public Dictionary<string, object> Screenshot(string file)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file));
+            File.WriteAllBytes(file, Pixel);
+            Say("SCREENSHOT " + file);
+            return Json.Make("file", file, "width", 1L, "height", 1L, "variables_window", ShowDebugWindows());
+        }
+
         public Dictionary<string, object> Workspace(string folder) => Json.Make(
             "folder", workspace,
             "launch", new List<object>
