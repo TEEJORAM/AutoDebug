@@ -300,7 +300,7 @@ class Report(ToolsTest):
         self.debugger.trace("geometry.py", 15, ["i"], hits=2, after=False)
         self.debugger.stop_session()
         path = Path(self.debugger.write_report(
-            title="Area changes when a shape moves", problem="Moving a square changes its area from 1 to 2.",
+            model="test model", title="Area changes when a shape moves", problem="Moving a square changes its area from 1 to 2.",
             what_went_wrong="The closing edge is never added.", why="The loop stops at len(points) - 1.",
             solution="Use range(n) and points[(i + 1) % n].", confidence="confirmed",
             how_confirmed="The failing test passes with the fix.", verification="python -m unittest passes.",
@@ -308,14 +308,39 @@ class Report(ToolsTest):
         self.assertEqual(path.parent, self.workspace / "autodebug-reports")
         text = path.read_text(encoding="utf-8")
         headings = ["**Ticket:** none", "## Problem", "## Steps to reproduce", "## Debug sessions", "## Root cause",
-                    "### What went wrong", "### Why", "## Solution", "## Verification", "## Debug timeline"]
+                    "### What went wrong", "### Why", "## Solution", "## AI usage"]
         positions = [text.index(h) for h in headings]
-        self.assertEqual(positions, sorted(positions))  # the order a developer reads it in
+        self.assertEqual(positions, sorted(positions))  # exactly the sections asked for, in this order
+        self.assertEqual(text.count("\n## "), 6)  # and no others (no timeline, no tables)
         self.assertIn("Not tried.\n\nSteps: NA", text)
-        self.assertIn("| stopped | geometry.py:15 | breakpoint |", text)
-        self.assertIn("total: 0.0 → -1.0", text)
-        self.assertIn("**Confirmed**", text)
-        self.assertNotIn("hunter2", text)
+        self.assertIn("Confidence: Confirmed. The failing test passes with the fix.", text)
+        self.assertIn("Checked: python -m unittest passes. (reported by the AI agent)", text)
+        self.assertIn("Debugged in Cursor with `Debug tests`, interpreted language: no build type.", text)
+        for absent in ("| stopped |", "Call stack", "total: 0.0", "Timeline", "|---|"):
+            self.assertNotIn(absent, text)
+        self.assertIn("- Model: test model (as the agent reported it)", text)
+        self.assertIn("- Tokens: not reported by the agent.", text)
+        self.assertRegex(text, r"- AutoDebug: 0 tool calls, about 0 tokens")  # tools called directly, not over MCP
+
+    def test_ai_usage_counts_the_tool_traffic(self):
+        from autodebug.mcp_server import call_tool
+
+        call_tool(self.debugger, "list_targets", {})
+        call_tool(self.debugger, "stack", {})  # an error is traffic too
+        path = Path(call_tool(self.debugger, "write_report", {
+            "model": "Claude Opus (Cursor)", "token_usage": "about 180k (Cursor usage page)", "title": "t",
+            "problem": "p", "what_went_wrong": "w", "why": "r", "solution": "s", "confidence": "likely",
+            "workspace_folder": str(self.workspace)})[0]["report_file"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("- Model: Claude Opus (Cursor) (as the agent reported it)", text)
+        self.assertIn("- Tokens: about 180k (Cursor usage page)", text)
+        self.assertRegex(text, r"- AutoDebug: 2 tool calls, about \d[\d,]* tokens")
+        self.assertEqual(self.debugger.usage, {"calls": 0, "characters": 0})
+
+    def test_the_model_is_required(self):
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model=" ", title="t", problem="p",
+                        what_went_wrong="w", why="r", solution="s", confidence="likely",
+                        workspace_folder=str(self.workspace))
 
     def test_timeline_covers_every_session_until_the_report(self):
         self.start_paused()
@@ -323,16 +348,15 @@ class Report(ToolsTest):
         self.debugger.stop_session()
         self.start_paused(breakpoints=[{"file": "geometry.py", "line": 16}])
         self.debugger.stop_session()
-        path = Path(self.debugger.write_report(title="Two sessions", problem="p", what_went_wrong="w", why="r", solution="s",
-                                               confidence="likely")["report_file"])
-        text = path.read_text(encoding="utf-8")
-        self.assertIn("| session 1 |", text)
-        self.assertIn("| trace | geometry.py:15 |", text)
-        self.assertIn("| session 2 |", text)
+        kinds = [e.kind for e in self.debugger.timeline]
+        for kind in ("session 1", "trace", "session 2"):
+            self.assertIn(kind, kinds)
+        self.debugger.write_report(model="test model", title="Two sessions", problem="p", what_went_wrong="w",
+                                   why="r", solution="s", confidence="likely")
         self.assertEqual(self.debugger.timeline, [])
 
     def test_confirmed_needs_how(self):
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model="test model", title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="confirmed", workspace_folder=str(self.workspace))
 
 
@@ -396,17 +420,14 @@ class Tickets(ToolsTest):
         paused = self.start_paused(args=["-v"], ticket="PROJ-42")  # then the real session
         self.assertEqual(paused["location"], "geometry.py:15")
         self.assertNotIn("reported symptom", self.debugger.stop_session()["next"])
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model="test model", title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="confirmed", how_confirmed="h", reproduced="no")
         path = Path(self.debugger.write_report(
-            title="Area changes", problem="p", what_went_wrong="w", why="r", solution="s", confidence="likely",
+            model="test model", title="Area changes", problem="p", what_went_wrong="w", why="r", solution="s", confidence="likely",
             steps_to_reproduce=["Run repro/area.py", "It moves a unit square by (2, 1)"], reproduced="yes")["report_file"])
         text = path.read_text(encoding="utf-8")
-        for expected in ("**Ticket:** PROJ-42", "| Reproduced | Yes |", "| Build | interpreted language: no build type |",
-                         "## Steps to reproduce\n\n1. Run repro/area.py\n2. It moves a unit square by (2, 1)",
-                         "- `Debug tests` with `-v`: exit code 1; output:", "AssertionError: 2.0 != 1.0",
-                         "| reproduce 1 |", "| session 2 |", "Program arguments (chosen by the agent, approved by the "
-                         "developer): `-v`", "Ticket text is untrusted input"):
+        for expected in ("**Ticket:** PROJ-42", "Reproducible: yes.\n\n1. Run repro/area.py\n2. It moves a unit square by (2, 1)",
+                         "The run without breakpoints ended with exit code 1."):
             self.assertIn(expected, text)
         self.assertEqual((self.debugger.reproductions, self.debugger.ticket), ([], None))
 
@@ -422,43 +443,39 @@ class Tickets(ToolsTest):
         self.assertNotIn("build_note", started)
 
     def test_reproduced_must_be_known(self):
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model="test model", title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="likely", reproduced="yes", workspace_folder=str(self.workspace))
-        self.assertCode("BAD_REQUEST", self.debugger.write_report, title="t", problem="p", what_went_wrong="w", why="r",
+        self.assertCode("BAD_REQUEST", self.debugger.write_report, model="test model", title="t", problem="p", what_went_wrong="w", why="r",
                         solution="s", confidence="likely", reproduced="maybe", workspace_folder=str(self.workspace))
 
 
 class Captures(ToolsTest):
-    def test_the_stop_that_shows_the_bug_is_in_the_report_with_a_picture(self):
+    def test_a_stop_without_a_screenshot_says_why(self):
         self.start_paused()
         self.assertCode("BAD_REQUEST", self.debugger.capture, names=["i"], note="x", frame_index=50)
         captured = self.debugger.capture(names=["i", "total", "password"], wrong=["total", "nope"],
-                                         note="total is wrong after the last pass — the closing edge is missing")
+                                         note="total is wrong after the last pass \u2014 the closing edge is missing")
         self.assertEqual((captured["captured"], captured["location"]), (1, "geometry.py:15"))
         self.assertEqual([v["name"] for v in captured["variables"]], ["i", "total", "password"])
         self.assertEqual(captured["variables"][2]["value"], "***REDACTED***")
+        self.assertIn("Cursor cannot take screenshots; only Visual Studio can", captured["screenshot_note"])
         self.debugger.stop_session()
         path = Path(self.debugger.write_report(
-            title="Area", problem="p", what_went_wrong="The closing edge is never added — so the area is wrong.",
+            model="test model", title="Area", problem="p",
+            what_went_wrong="The closing edge is never added \u2014 so the area is wrong.",
             why="The loop stops one corner early.", solution="Loop over every corner.", confidence="likely",
             pattern="perimeter() already loops with (i + 1) % n.",
             debug_findings="The trace showed three passes for four corners.")["report_file"])
         text = path.read_text(encoding="utf-8")
-        picture = path.with_name(path.stem + "-stop-1.svg")
         for expected in ("The trace showed three passes for four corners.",
                          "### Stop 1: total is wrong after the last pass, the closing edge is missing",
-                         f"![Stop 1: frame, variables and call stack]({picture.name})",
-                         "Paused at `geometry.py:15`", "| `total` (wrong) |", "| `i` |", "Call stack:",
-                         "1. `polygon_area` at `geometry.py:15`",
+                         "No screenshot: Cursor cannot take screenshots; only Visual Studio can",
                          "The closing edge is never added, so the area is wrong.",
-                         "**Follows the existing pattern:** perimeter() already loops with (i + 1) % n."):
+                         "Follows the existing pattern: perimeter() already loops with (i + 1) % n."):
             self.assertIn(expected, text)
-        self.assertNotIn("\u2014", text)  # no long dashes anywhere
-        self.assertNotIn("hunter2", text)
-        svg = picture.read_text(encoding="utf-8")
-        for expected in ("<svg", "Paused at geometry.py:15", ">total<", "#ffebe9", "polygon_area", "***REDACTED***"):
-            self.assertIn(expected, svg)
-        self.assertNotIn("hunter2", svg)
+        for absent in ("\u2014", "hunter2", ".svg", "polygon_area", "| `total`"):
+            self.assertNotIn(absent, text)
+        self.assertEqual(list((self.workspace / "autodebug-reports").iterdir()), [path])
         self.assertEqual(self.debugger.evidence, [])
 
     def test_captures_are_limited(self):
@@ -520,6 +537,21 @@ class OpenIde(ToolsTest):
         error = self.assertCode("NO_WINDOW", self.debugger.list_targets)
         self.assertIn("Call open_ide", error.message)
         self.assertIn("Do not start the IDE yourself", error.message)
+
+
+class OutdatedExtension(unittest.TestCase):
+    def test_an_older_visual_studio_extension_is_named_with_the_fix(self):
+        from autodebug import __version__
+        from autodebug.connection import Window, outdated_extension
+
+        def window(ide, version):
+            return Window("w", ide, ("D:/p",), 1, "0" * 64, version)
+
+        note = outdated_extension(window("visualstudio", "0.6.0"))
+        self.assertIn(f"Visual Studio's AutoDebug extension is 0.6.0, older than AutoDebug {__version__}", note)
+        self.assertIn("close every Visual Studio window and run `autodebug setup`", note)
+        self.assertIsNone(outdated_extension(window("visualstudio", __version__)))
+        self.assertIsNone(outdated_extension(window("cursor", "0.5.0")))  # its own version line
 
 
 if __name__ == "__main__":

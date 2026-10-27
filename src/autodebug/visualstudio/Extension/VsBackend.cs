@@ -48,6 +48,9 @@ namespace AutoDebug.VisualStudio
         volatile IBackendEvents session;
         ManualResetEventSlim buildDone;
         long? exitCode;
+        // The launched program, to read its exit code when the debug engine's destroy event comes after design mode
+        // (or not at all): the run then ended with "exit code None" although the program exited with 1.
+        System.Diagnostics.Process program;
         Dictionary<string, object> lastException;
         readonly Dictionary<string, (string UniqueName, string Configuration)> buildTargets = new Dictionary<string, (string, string)>();
         // Frames and values the server may ask about; cleared whenever the program runs again.
@@ -355,6 +358,8 @@ namespace AutoDebug.VisualStudio
         {
             exitCode = null;
             lastException = null;
+            program?.Dispose();
+            program = null;
             session = events;
             var attach = Json.Str(configuration, "request") == "attach";
             var info = new VsDebugTargetInfo4
@@ -383,11 +388,10 @@ namespace AutoDebug.VisualStudio
             {
                 Marshal.StructureToPtr(NativeEngine, engines, false);
                 info.pDebugEngines = engines;
-                return OnMain(() =>
-                {
-                    ((IVsDebugger4)debugger).LaunchDebugTargets4(1, new[] { info }, new VsDebugTargetProcessInfo[1]);
-                    return true;
-                });
+                var started = new VsDebugTargetProcessInfo[1];
+                OnMain(() => ((IVsDebugger4)debugger).LaunchDebugTargets4(1, new[] { info }, started));
+                if (!attach) Follow(started[0].dwProcessId);
+                return true;
             }
             catch (COMException error)
             {
@@ -659,12 +663,43 @@ namespace AutoDebug.VisualStudio
             Send("continued", Json.Make("allThreadsContinued", true));
         }
 
+        // Keep a handle to the launched process, so its exit code can be read after it ends.
+        void Follow(uint processId)
+        {
+            if (processId == 0) return;
+            try
+            {
+                var process = System.Diagnostics.Process.GetProcessById((int)processId);
+                _ = process.Handle; // opened now, while the process exists
+                program = process;
+            }
+            catch (Exception error) when (error is ArgumentException || error is InvalidOperationException
+                                          || error is System.ComponentModel.Win32Exception)
+            {
+                Log($"cannot follow process {processId} for its exit code: {error.Message}");
+            }
+        }
+
+        long? ExitCodeOfProgram()
+        {
+            try
+            {
+                if (program != null && program.WaitForExit(3000)) return program.ExitCode;
+            }
+            catch (Exception error) when (error is InvalidOperationException || error is System.ComponentModel.Win32Exception)
+            {
+                Log($"cannot read the exit code: {error.Message}");
+            }
+            return null;
+        }
+
         void OnDesign(dbgEventReason reason)
         {
             Forget();
             var events = session;
             if (events == null) return;
             session = null;
+            if (exitCode == null && reason != dbgEventReason.dbgEventReasonDetachProgram) exitCode = ExitCodeOfProgram();
             Send("exited", Json.Make("exitCode", exitCode));
             events.Debugger(Json.Make("type", "event", "event", "terminated", "body", Json.Make()));
             events.Ended(reason == dbgEventReason.dbgEventReasonDetachProgram ? "the debugger detached" : "the program exited", exitCode);

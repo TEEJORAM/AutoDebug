@@ -43,15 +43,16 @@ class RealDebugpy(HarnessTest):
         ended = self.debugger.continue_(30)
         self.assertEqual(ended["status"], "ended", ended)
         self.assertTrue(any("AssertionError: 2.0 != 1.0" in line for line in ended["output"]), ended.get("output"))
+        details = " ".join(e.detail for e in self.debugger.timeline)
+        self.assertIn("i=1, total=-1.0 → 2.0", details)
+        self.assertIn("AssertionError: 2.0 != 1.0", details)
         report = Path(self.debugger.write_report(
-            title="Moving a shape changes its area", problem="A moved unit square reports area 2.0 instead of 1.0.",
+            model="test model", title="Moving a shape changes its area", problem="A moved unit square reports area 2.0 instead of 1.0.",
             what_went_wrong="The closing edge is never added.", why="polygon_area loops i over range(len(points) - 1), so the edge from the last corner back to "
                        "the first is never added (the trace shows i stops at 2 for 4 corners).",
             solution="Loop over range(n) and use points[(i + 1) % n].", confidence="likely",
         )["report_file"])
-        text = report.read_text(encoding="utf-8")
-        self.assertIn("i=1, total=-1.0 → 2.0", text)
-        self.assertIn("AssertionError: 2.0 != 1.0", text)
+        self.assertIn("## Root cause", report.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
