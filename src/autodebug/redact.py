@@ -21,6 +21,11 @@ _SECRET_VALUE = re.compile(
 )
 
 
+def looks_secret(text: str) -> bool:
+    """True when the text contains a key- or token-shaped value."""
+    return bool(_SECRET_VALUE.search(text))
+
+
 def is_secret_name(name: str) -> bool:
     return bool(_SECRET_NAME.search(name))
 

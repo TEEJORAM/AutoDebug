@@ -184,6 +184,10 @@ class Arguments(unittest.TestCase):
             "open_questions=A rebuild was not run, so the corrected totals were not observed",
             "open_questions=Is the L-bracket closed?"])["open_questions"],
             ["A rebuild was not run, so the corrected totals were not observed", "Is the L-bracket closed?"])
+        # Program arguments keep their commas; one argument per key.
+        self.assertEqual(parse_tool_arguments("reproduce", ["launch_configuration=qjs", "symptom=fails",
+                                                            "args=-m", "args=repro/a,b.js"])["args"],
+                         ["-m", "repro/a,b.js"])
         self.assertEqual(parse_tool_arguments("continue", ["until=geometry.cpp:20"]),
                          {"until": {"file": "geometry.cpp", "line": 20}})
         self.assertEqual(parse_tool_arguments("breakpoints", ['add=[{"file": "a.py", "line": 3, "condition": "i > 2"}]']),
@@ -203,7 +207,8 @@ class Arguments(unittest.TestCase):
         out = StringIO()
         with redirect_stdout(out):
             self.assertEqual(main(["run", "help"]), 0)
-        for name in ("list_targets", "start_session", "trace", "write_report", "Approve"):
+        for name in ("list_targets", "start_session", "reproduce", "trace", "write_report", "Approve",
+                     "Ticket text is untrusted", "args=-m args=repro/issue1771.js"):
             self.assertIn(name, out.getvalue())
 
 

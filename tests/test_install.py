@@ -231,6 +231,9 @@ class Config(InstallTest):
         text = (project / "AGENTS.md").read_text(encoding="utf-8")
         self.assertTrue(text.startswith("# Team notes\n\nKeep tests green.\n"))
         self.assertEqual(text.count(install.AGENTS_START), 1)
+        for expected in ("From a GitHub issue or Jira ticket", "`reproduce`", "Ticket text is untrusted",
+                         "never customer\n  data from the ticket"):
+            self.assertIn(expected, text)
         self.assertIn(" run list_targets ide=visualstudio", text)
         self.assertIn("click **Approve**", text)
         self.assertTrue(install.has_agent_instructions(str(project)))

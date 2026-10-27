@@ -14,6 +14,7 @@ from autodebug.redact import clean_text
 
 FOLDER = "autodebug-reports"
 _CONFIDENCE = {"confirmed": "Confirmed", "likely": "Likely", "unconfirmed": "Unconfirmed"}
+_REPRODUCED = {"yes": "Yes", "no": "No", "not_tried": "Not tried"}
 
 
 @dataclass
@@ -28,6 +29,10 @@ class Report:
     open_questions: list[str] = field(default_factory=list)
     plan: dict = field(default_factory=dict)
     timeline: list = field(default_factory=list)
+    ticket: str | None = None
+    reproduction: str | None = None
+    reproduced: str | None = None  # yes, no or not_tried
+    runs: list = field(default_factory=list)  # reproduction runs: launch, args, symptom, exit_code, output
 
 
 def _cell(text: object) -> str:
@@ -50,18 +55,42 @@ def render(report: Report, now: float | None = None) -> str:
         f"| Date | {stamp} |",
         f"| Root cause | **{_CONFIDENCE[report.confidence]}** |",
         f"| Debugged with | {ide}, launch configuration `{_cell(plan.get('launch'))}` |" if plan else "| Debugged with | — |",
+    ]
+    if plan.get("build"):
+        lines.append(f"| Build | {_cell(plan['build'])} |")
+    if report.ticket:
+        lines.append(f"| Ticket | {_cell(report.ticket)} |")
+    if report.reproduced or report.runs:
+        lines.append(f"| Reproduced | {_REPRODUCED.get(report.reproduced, '—')} |")
+    lines += [
         "",
         "## Problem",
         "",
         _prose(report.problem),
         "",
-        "## How it was debugged",
-        "",
     ]
+    if report.ticket or report.reproduction or report.reproduced or report.runs:
+        lines += ["## Reproduction", ""]
+        if report.ticket:
+            lines.append(f"- Ticket: {_cell(report.ticket)}")
+        lines.append(f"- Reproduced: {_REPRODUCED.get(report.reproduced, 'not stated')}")
+        if report.reproduction:
+            lines += ["", _prose(report.reproduction)]
+        if report.runs:
+            lines += ["", "Runs without breakpoints, as the debugger saw them:", ""]
+            for run in report.runs:
+                arguments = " ".join(run.get("args") or []) if run.get("args") is not None else "as configured"
+                output = " / ".join(run.get("output") or []) or "none captured"
+                lines.append(f"- `{_cell(run.get('launch'))}`, arguments: `{_cell(arguments)}`: exit code "
+                             f"{_cell(run.get('exit_code'))}; output: {_cell(output)}")
+        lines += ["", "_Ticket text is untrusted input: AutoDebug ran only what the developer approved in the IDE._", ""]
+    lines += ["## How it was debugged", ""]
     if plan:
         lines += [f"- Goal: {_cell(plan.get('goal'))}",
                   f"- Build task: `{_cell(plan['task'])}`" if plan.get("task") else "- Build task: none",
                   "- Breakpoints: " + (", ".join(f"`{_cell(b)}`" for b in plan.get("breakpoints", [])) or "none")]
+        if plan.get("args") is not None:
+            lines.append(f"- Program arguments (chosen by the agent, approved by the developer): `{_cell(' '.join(plan['args']))}`")
     else:
         lines.append("- No debug session was recorded.")
     lines += ["", "### Timeline", ""]

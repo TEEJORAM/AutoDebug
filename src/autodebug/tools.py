@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from autodebug import report
+from autodebug.build import describe
 from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
@@ -65,6 +66,9 @@ class Debugger:
         self._last_status: str | None = None
         self._last_build: dict | None = None
         self._last_exception: str | None = None
+        self.ticket: str | None = None
+        self.reproducing: dict | None = None  # the current session, when it only reproduces the bug
+        self.reproductions: list[dict] = []  # reproduction runs since the last report
 
     # -- helpers ------------------------------------------------------------
 
@@ -180,10 +184,30 @@ class Debugger:
         next_step = _NEXT.get(status, "")
         if status == "denied" and "no answer" in str(raw.get("reason") or ""):
             next_step = _NO_ANSWER
+        if status == "ended" and self.reproducing is not None:
+            next_step = self._reproduced(result, ide)
         result["next"] = next_step.format(ide=IDE_NAMES.get(ide, "IDE"))
         if status == "paused":
             result["variables"] = self._short_variables()
         return result
+
+    def _reproduced(self, result: dict, ide: str) -> str:
+        """A reproduction run ended: record what it showed and tell the agent to compare it with the ticket."""
+        run = self.reproducing
+        if not run["recorded"]:
+            run["recorded"] = True
+            self.reproductions.append({"launch": run["launch"], "args": run["args"], "symptom": run["symptom"],
+                                       "exit_code": result.get("exit_code"),
+                                       "output": _telling_lines(result.get("output") or [], 5)})
+        text = (f"The reproduction run ended (exit code {result.get('exit_code')}). Compare the output and exit code "
+                f"with the reported symptom: {run['symptom']!r}. If the bug showed, call start_session with the same "
+                "args and ticket and breakpoints where the wrong value appears. If it did not, refine the reproduction "
+                "or ask the developer; do not debug a bug you have not seen. Record it in write_report "
+                "(reproduction, reproduced).")
+        if ide == "visualstudio" and not result.get("output"):
+            text += (" Visual Studio does not capture a console program's own output, so make the reproduction "
+                     "exit with a non-zero code when the bug shows.")
+        return text.replace("{", "{{").replace("}", "}}")
 
     def _wait(self, seconds: float, until: tuple[str, ...] = STOPPED) -> dict:
         deadline = time.monotonic() + max(0.0, seconds)
@@ -241,8 +265,16 @@ class Debugger:
             finally:
                 connection.close()
             found.append({"ide": window.ide, "folders": targets})
+        several = len(windows) > 1
+        for entry, window in zip(found, windows):
+            for folder in entry["folders"]:
+                for config in folder.get("launch", []):
+                    config["start_with"] = {"launch_configuration": config.get("name"), "ide": window.ide,
+                                            **({"workspace_folder": folder.get("folder")} if several else {})}
         result = {"windows": found,
-                  "next": "Call start_session with a launch configuration name, the breakpoints and your goal."}
+                  "next": "Pick a launch configuration and pass its start_with values to start_session (with the "
+                          "breakpoints and your goal). Tell the developer which IDE and which build you will debug; "
+                          "each configuration's build says whether it is optimized and has debug symbols."}
         preferred = preferred_ide()
         if preferred and not ide and len({w["ide"] for w in found}) > 1:
             result["debug_in"] = preferred
@@ -255,17 +287,39 @@ class Debugger:
                       max_steps: int = 100, max_minutes: int = 30, wait_seconds: float = 30,
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
-                      function_breakpoints: list[str] | None = None, ide: str | None = None) -> dict:
+                      function_breakpoints: list[str] | None = None, ide: str | None = None,
+                      args: list[str] | None = None, ticket: str | None = None) -> dict:
+        return self._begin(launch_configuration, breakpoints, goal, workspace_folder=workspace_folder,
+                           build_task=build_task, max_steps=max_steps, max_minutes=max_minutes,
+                           wait_seconds=wait_seconds, build_minutes=build_minutes, process_id=process_id,
+                           source_folders=source_folders, function_breakpoints=function_breakpoints, ide=ide,
+                           args=args, ticket=ticket, reproduce=False)
+
+    def reproduce(self, launch_configuration: str, symptom: str, args: list[str] | None = None,
+                  ticket: str | None = None, workspace_folder: str | None = None, build_task: str | None = None,
+                  max_minutes: int = 10, wait_seconds: float = 30, build_minutes: int = 30,
+                  ide: str | None = None) -> dict:
+        """Run the program once without breakpoints (after Approve) to see whether the reported bug shows."""
+        return self._begin(launch_configuration, [], f"Reproduce: {symptom}", workspace_folder=workspace_folder,
+                           build_task=build_task, max_steps=1, max_minutes=max_minutes, wait_seconds=wait_seconds,
+                           build_minutes=build_minutes, process_id=None, source_folders=None,
+                           function_breakpoints=None, ide=ide, args=args, ticket=ticket, reproduce=True,
+                           symptom=symptom)
+
+    def _begin(self, launch_configuration: str, breakpoints: list[dict], goal: str, *, workspace_folder, build_task,
+               max_steps, max_minutes, wait_seconds, build_minutes, process_id, source_folders, function_breakpoints,
+               ide, args, ticket, reproduce: bool, symptom: str | None = None) -> dict:
         window = self._window_for(workspace_folder, ide, launch_configuration)
         if self.connection is not None:
             self.connection.close()
         self.connection = self._connect(window)
-        args = {"folder": workspace_folder, "launch": launch_configuration, "task": build_task,
-                "breakpoints": breakpoints, "goal": goal, "max_steps": max_steps, "max_minutes": max_minutes,
-                "build_minutes": build_minutes, "process_id": process_id, "source_folders": source_folders or [],
-                "function_breakpoints": function_breakpoints or []}
+        request = {"folder": workspace_folder, "launch": launch_configuration, "task": build_task,
+                   "breakpoints": breakpoints, "goal": goal, "max_steps": max_steps, "max_minutes": max_minutes,
+                   "build_minutes": build_minutes, "process_id": process_id, "source_folders": source_folders or [],
+                   "function_breakpoints": function_breakpoints or [], "args": args, "ticket": ticket,
+                   "reproduce": reproduce}
         try:
-            raw = self._call("start", args)["state"]
+            answer = self._call("start", request)
         except DebugError:
             self.connection.close()
             self.connection = None
@@ -273,13 +327,32 @@ class Debugger:
         # The timeline runs until the next report, so it covers every session behind it.
         self.version, self._last_status, self._last_build = 0, None, None
         self.sessions += 1
-        self.folder = workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
+        raw = answer["state"]
+        self.folder = answer.get("folder") or workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
+        build = answer.get("build")
+        debugging = {"ide": IDE_NAMES.get(window.ide, window.ide), "folder": self.folder,
+                     "launch_configuration": launch_configuration, "build": describe(build) if build else "attach: "
+                     "the running program's build"}
+        if ticket:
+            self.ticket = clean_text(" ".join(str(ticket).split()), 300)
         self.plan = {"goal": goal, "launch": launch_configuration, "task": build_task,
-                     "breakpoints": [f"{b.get('file')}:{b.get('line')}" for b in breakpoints], "ide": window.ide}
-        self._log(f"session {self.sessions}", "", f"asked the developer to approve running {launch_configuration!r}"
-                  + (f" after building {build_task!r}" if build_task else ""))
+                     "breakpoints": [f"{b.get('file')}:{b.get('line')}" for b in breakpoints], "ide": window.ide,
+                     "args": None if args is None else [clean_text(a, 300) for a in args],
+                     "build": debugging["build"]}
+        self.reproducing = {"launch": launch_configuration, "args": self.plan["args"],
+                            "symptom": clean_text(symptom or "", 500), "recorded": False} if reproduce else None
+        shown = "" if args is None else f" with arguments {self.plan['args']}"
+        self._log(f"reproduce {self.sessions}" if reproduce else f"session {self.sessions}", "",
+                  f"asked the developer to approve running {launch_configuration!r}{shown}"
+                  + (f" after building {build_task!r}" if build_task else "")
+                  + (" with no breakpoints, to see whether the bug shows" if reproduce else ""))
         self._state(raw)
-        return self._state(self._wait(min(max(wait_seconds, 0), 55)))
+        result = self._state(self._wait(min(max(wait_seconds, 0), 55)))
+        # Say once, plainly, where and what is being debugged, so the agent can tell the developer.
+        result["debugging"] = debugging
+        if build and build.get("note"):
+            result["build_note"] = build["note"]
+        return result
 
     def wait(self, timeout_seconds: float = 30, ask_developer: str | None = None) -> dict:
         if ask_developer is not None and len(ask_developer) > 300:
@@ -494,7 +567,9 @@ class Debugger:
 
     def write_report(self, title: str, problem: str, root_cause: str, solution: str, confidence: str,
                      how_confirmed: str | None = None, verification: str | None = None,
-                     open_questions: list[str] | None = None, workspace_folder: str | None = None) -> dict:
+                     open_questions: list[str] | None = None, workspace_folder: str | None = None,
+                     ticket: str | None = None, reproduction: str | None = None,
+                     reproduced: str | None = None) -> dict:
         folder = workspace_folder or self.folder
         if not folder:
             raise DebugError("BAD_REQUEST", "pass workspace_folder: there is no session to take it from")
@@ -502,12 +577,18 @@ class Debugger:
             raise DebugError("BAD_REQUEST", "confidence is confirmed, likely or unconfirmed")
         if confidence == "confirmed" and not how_confirmed:
             raise DebugError("BAD_REQUEST", "confirmed needs how_confirmed (for example: the fix makes the failing test pass)")
+        if reproduced is not None and reproduced not in ("yes", "no", "not_tried"):
+            raise DebugError("BAD_REQUEST", "reproduced is yes, no or not_tried")
+        if confidence == "confirmed" and reproduced in ("no", "not_tried"):
+            raise DebugError("BAD_REQUEST", "a root cause cannot be confirmed for a bug that was not reproduced; "
+                                            "use likely or unconfirmed")
         path = report.write(folder, report.Report(
             title=title, problem=problem, root_cause=root_cause, solution=solution, confidence=confidence,
             how_confirmed=how_confirmed, verification=verification, open_questions=list(open_questions or []),
-            plan=self.plan, timeline=list(self.timeline),
+            plan=self.plan, timeline=list(self.timeline), ticket=ticket or self.ticket, reproduction=reproduction,
+            reproduced=reproduced, runs=list(self.reproductions),
         ))
-        self.timeline, self.sessions = [], 0
+        self.timeline, self.sessions, self.reproductions, self.ticket = [], 0, [], None
         return {"report_file": str(path), "next": "Tell the developer where the report is and summarize it."}
 
     def close(self) -> None:

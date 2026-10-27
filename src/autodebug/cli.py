@@ -315,8 +315,9 @@ def you_run() -> str:
     return run_command()
 
 
-#: List arguments whose items are sentences, so a comma does not split them: open_questions="A, b" is one item.
-SENTENCE_LISTS = {"open_questions"}
+#: List arguments whose items may contain commas, so a comma does not split them: open_questions="A, b" is one item,
+#: and args=--size=1,2 is one program argument. Repeat the key for more items.
+SENTENCE_LISTS = {"open_questions", "args"}
 
 
 def _coerce(key: str, text: str, schema: dict):
@@ -367,13 +368,14 @@ def parse_tool_arguments(name: str, pairs: list[str]) -> dict:
 
 
 def tool_guide() -> str:
-    from autodebug.mcp_server import INSTRUCTIONS, TOOLS
+    from autodebug.mcp_server import INSTRUCTIONS, TICKET_WORKFLOW, TOOLS
 
     command = run_command()
     lines = [f"Usage: {command} run <tool> key=value ...   (prints the tool's JSON result)", "",
              "The same tools as the AutoDebug MCP server, in the same session. Values need no JSON:",
              "  breakpoints=geometry.cpp:16,other.cpp:4   variables=total,i   after=false",
-             '  "open_questions=A sentence, with commas" (repeat the key for each sentence)', "",
+             '  "open_questions=A sentence, with commas" (repeat the key for each sentence)',
+             "  args=-m args=repro/issue1771.js (one program argument per key)", "",
              "Example:",
              f'  {command} run list_targets ide=visualstudio',
              f'  {command} run start_session ide=visualstudio "launch_configuration=geometry (Debug|x64)" '
@@ -383,7 +385,7 @@ def tool_guide() -> str:
         keys = " ".join(k if k in required else f"[{k}]" for k in schema["properties"])
         lines.append(f"  {name} {keys}".rstrip())
         lines.append(f"      {description}")
-    lines += ["", "How to debug:", INSTRUCTIONS]
+    lines += ["", "How to debug:", INSTRUCTIONS, "", TICKET_WORKFLOW]
     return "\n".join(lines)
 
 

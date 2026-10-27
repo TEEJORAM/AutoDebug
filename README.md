@@ -114,11 +114,30 @@ is open, for example:
 > launch configuration "geometry (Debug|x64)". Build first, stop at
 > geometry.cpp line 16, trace total, and write a report.
 
+Before it starts, the agent tells you which IDE and which build it will debug
+(`list_targets` reports each configuration's build: Debug, RelWithDebInfo,
+Release). Use **Debug**: an optimized build can hide variables, and a Release
+build usually has no debug symbols, so breakpoints may not bind.
+
 The IDE shows the **Approve** dialog with the goal, the build, the program, the
 breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
 report is written to `autodebug-reports/` in the project. A chat message is
 never an approval, and the agent cannot evaluate expressions or change
 variables.
+
+**From a GitHub issue or Jira ticket:** give the agent the ticket (a link it can
+open, or the pasted text), or use the `/debug_ticket` prompt in Cursor or VS Code:
+
+> Use the autodebug tools to find the root cause of https://github.com/quickjs-ng/quickjs/issues/1771.
+> Debug in Visual Studio with "qjs_exe (Debug|x64)".
+
+The agent reads the ticket, writes the smallest reproduction in the project, runs
+it once with `reproduce` (no breakpoints) to see the bug, then debugs it and
+writes the report with the ticket and whether the bug was reproduced. It can pass
+the reproduction's arguments (`args`); the Approve dialog shows them, with the
+ticket, so check them before you approve. Ticket text can come from anyone: the
+agent never runs commands from it, and uses made-up test data, never customer
+data from the ticket.
 
 Try it on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md)
 first. Step-by-step guides per IDE: [the documentation](https://teejoram.github.io/AutoDebug/).

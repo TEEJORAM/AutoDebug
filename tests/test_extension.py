@@ -130,6 +130,15 @@ class Extension(HarnessTest):
                          '"Debug tests" (debugpy) unittest -v', "Breakpoints: geometry.py:15", "Limits: 7 steps"):
             self.assertIn(expected, detail)
 
+    def test_agent_args_and_ticket_are_in_the_dialog(self):
+        dialog = self.start(args=["-k", "area"], ticket="PROJ-42")
+        detail = dialog["detail"]
+        for expected in ("Ticket: PROJ-42", "Ticket text can come from anyone",
+                         'Program arguments chosen by the AI agent (they replace the configuration\'s): ["-k", "area"]',
+                         '"Debug tests" (debugpy) unittest -k area', '"-k",'):
+            self.assertIn(expected, detail)
+        self.assertNotIn('"-v"', detail)
+
     def test_full_session(self):
         _, result = self.approved()
         self.assertEqual((result["status"], result["location"]), ("paused", "geometry.py:15"))
