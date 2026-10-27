@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import discover, preferred_ide, set_preferred_ide, state_folder, version_problem
+from autodebug.connection import discover, outdated_extension, preferred_ide, set_preferred_ide, state_folder, version_problem
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
@@ -315,9 +315,9 @@ def you_run() -> str:
     return run_command()
 
 
-#: List arguments whose items may contain commas, so a comma does not split them: open_questions="A, b" is one item,
-#: and args=--size=1,2 is one program argument. Repeat the key for more items.
-SENTENCE_LISTS = {"open_questions", "args", "steps_to_reproduce"}
+#: List arguments whose items may contain commas, so a comma does not split them: steps_to_reproduce="A, b" is one
+#: item, and args=--size=1,2 is one program argument. Repeat the key for more items.
+SENTENCE_LISTS = {"args", "steps_to_reproduce"}
 
 
 def _coerce(key: str, text: str, schema: dict):
@@ -374,7 +374,7 @@ def tool_guide() -> str:
     lines = [f"Usage: {command} run <tool> key=value ...   (prints the tool's JSON result)", "",
              "The same tools as the AutoDebug MCP server, in the same session. Values need no JSON:",
              "  breakpoints=geometry.cpp:16,other.cpp:4   variables=total,i   after=false",
-             '  "open_questions=A sentence, with commas" (repeat the key for each sentence)',
+             '  "steps_to_reproduce=A step, with commas" (repeat the key for each step)',
              "  args=-m args=repro/issue1771.js (one program argument per key)", "",
              "Example:",
              f'  {command} run list_targets ide=visualstudio',
@@ -465,7 +465,10 @@ def _doctor(args: argparse.Namespace) -> int:
                 _ok(f"{name}: {where}")
     windows = discover()
     for window in windows:
-        if window.current:
+        if window.current and outdated_extension(window):
+            _bad(outdated_extension(window).replace("Ask the developer to close", "Close"))
+            problems += 1
+        elif window.current:
             _ok(f"{IDES.get(window.ide, window.ide)} window open: {', '.join(window.folders)}")
         else:
             _bad(version_problem(window).message.replace("Ask the developer to run", "Run").replace(

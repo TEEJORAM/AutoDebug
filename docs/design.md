@@ -152,7 +152,7 @@ an agent waits longer for the Approve click by calling `wait` again.
 | `exceptions` | List exception filters and enable them by id |
 | `breakpoints` | Add or remove source or function breakpoints during the session |
 | `trace` | Run to a line repeatedly; each row has the caller and each variable as `before → after` the line runs (one step per hit, counted in the step limit). Stops early at another breakpoint |
-| `capture` | At the stop that shows the bug: record the frame, call stack and named variables (`wrong` marks the wrong ones) for the report and its picture; at most 5 per report |
+| `capture` | At the stop that shows the bug: a screenshot of the IDE (Visual Studio) with the agent's note for the report; returns the named variables to the agent; at most 5 per report |
 | `stop_session` | End the debug session |
 | `write_report` | Write the Markdown report (see "Report") |
 
@@ -363,6 +363,16 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   window is Locals when the frame has locals or arguments, so it is never empty,
   else Autos. The developer's own window arrangement is not moved; after
   **Window → Reset Window Layout** it is the layout above.
+- **Outdated extension.** Visual Studio's extension carries AutoDebug's version.
+  When it is older than the server (setup skips it while Visual Studio is open),
+  it still speaks the protocol but lacks newer features, so `list_targets` and
+  `start_session` return `extension_note`, `capture` explains a missing screenshot
+  with it, and `doctor` flags it, each naming the fix: close Visual Studio, run
+  setup, open the solution again.
+- **Exit code.** The exit code comes from the debug engine's program-destroy event;
+  when that arrives after design mode (or not at all), the relay reads it from the
+  launched process, whose handle it opened at launch (`dwProcessId` from
+  `LaunchDebugTargets4`).
 - **Screenshots.** `start_session` asks for them by default in Visual Studio
   (`screenshots: false` turns them off; VS Code and Cursor cannot take them), and
   the Approve dialog says so, including that a screenshot shows whatever the window
@@ -370,48 +380,38 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   windows forward, waits for them to paint, and saves Visual Studio's main window
   with `PrintWindow` (`PW_RENDERFULLCONTENT`, so it works when the window is
   covered) as a PNG under `autodebug-reports/screenshots`. Only that window is
-  saved, never the screen, and only into that folder. The report shows it above the
-  drawn picture of the captured values.
+  saved, never the screen, and only into that folder. The report shows it under the
+  stop's note.
 - **Not yet:** exception filters (none are offered) and `launch.vs.json` ("Open
   Folder") projects.
 
 ## Report
 
 `write_report` writes `<workspace>/autodebug-reports/<date>-<title>.md`, never
-overwriting, in the order a developer reads it:
+overwriting. It has exactly these sections, in this order, because developers asked
+for a report they can read rather than a dump:
 
-1. **Ticket** (a link when it is a URL), then a summary table: date, IDE and launch
-   configuration, build, reproduced, root cause confidence.
+1. **Ticket**: a link when it is a URL, else the key; "none" without one.
 2. **Problem.**
-3. **Steps to reproduce**: numbered steps when `reproduced` is `yes` (then
-   `steps_to_reproduce` is required); "Not reproducible" or "Not tried" with
-   "Steps: NA" otherwise. Every `reproduce` run follows, with its arguments, exit
-   code and telling output lines.
-4. **Debug sessions**: the agent's `debug_findings`, then each captured stop with
-   its picture, location, variables (wrong ones marked) and call stack.
-5. **Root cause**: "What went wrong" and "Why" (`what_went_wrong`, `why`), and how
-   it was confirmed (`confirmed` needs `how_confirmed`, and is refused for a bug
-   that was not reproduced).
-6. **Solution**, and the existing code it follows (`pattern`). The instructions ask
-   for the smallest fix that follows how the project already solves the same thing.
-7. **Verification** (marked as reported by the agent), open questions, then the
-   **debug timeline**: goal, build task, breakpoints, program arguments and every
-   numbered event of every session since the previous report.
+3. **Steps to reproduce**: "Reproducible: yes." and numbered steps
+   (`steps_to_reproduce` is required then), plus the exit code of the run without
+   breakpoints; or "Not reproducible." / "Not tried." with "Steps: NA".
+4. **Debug sessions**: one line naming the IDE, the launch configuration and the
+   build, the agent's `debug_findings`, then each captured stop: its one-sentence
+   note and the screenshot of the IDE at that stop (or why there is none).
+   Variables and call stacks are never written out as text: the screenshot shows
+   them as the IDE does.
+5. **Root cause**: "What went wrong" and "Why", then the confidence (`confirmed`
+   needs `how_confirmed` and a reproduced bug).
+6. **Solution**, the existing code it follows (`pattern`), and how it was checked.
+7. **AI usage**: the `model` the agent reports (required), `token_usage` only when
+   the agent's app shows it (otherwise "not reported", never a guess), and
+   AutoDebug's own share: its tool calls since the previous report and the size of
+   their arguments and results, at about 4 characters per token.
 
-The text is the agent's, redacted and capped. Long dashes are turned into commas:
-developers asked for plain sentences, and the instructions ask the agent for short,
-plain ones.
-
-**Screenshots.** In Visual Studio each captured stop also has a real screenshot
-of the IDE window (see "Visual Studio"), shown first: "What Visual Studio showed".
-
-**Pictures.** Each captured stop is drawn as an SVG next to the report
-(`<report>-stop-<n>.svg`): the location and function, the agent's note, the
-variables with the wrong ones in red, and the call stack with the current frame
-highlighted, as a debugger shows them. It is drawn from what the debugger returned,
-not a screen capture, so other windows and other values on the screen never reach
-the report, and the values are already redacted. SVG needs no library and shows on
-GitHub and in any browser.
+There is no timeline in the report; the service keeps it for the agent's tools.
+Long dashes in the agent's text become commas, and the instructions ask for short,
+plain sentences.
 
 ## Setup
 

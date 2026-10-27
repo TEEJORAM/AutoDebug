@@ -109,6 +109,26 @@ def same_folder(a: str, b: str) -> bool:
 IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
 
+def outdated_extension(window: Window) -> str | None:
+    """Visual Studio's extension ships with each AutoDebug version (its version is AutoDebug's). An older one
+    speaks the same protocol but lacks newer features (screenshots, the debug window layout), so say so."""
+    if window.ide != "visualstudio" or not window.version:
+        return None
+    from autodebug import __version__
+    from autodebug.install import is_newer
+
+    try:
+        older = is_newer(__version__, window.version)
+    except ValueError:
+        return None
+    if not older:
+        return None
+    return (f"Visual Studio's AutoDebug extension is {window.version}, older than AutoDebug {__version__}: "
+            "screenshots and the debug window layout (Locals or Autos, Call Stack) need the new one. Ask the "
+            "developer to close every Visual Studio window and run `autodebug setup` (Windows: "
+            "`py -m autodebug setup`), then open the solution again.")
+
+
 def version_problem(window: Window) -> DebugError:
     """Why a window whose extension speaks another protocol cannot be used, and how to fix it."""
     from autodebug import __version__

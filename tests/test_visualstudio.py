@@ -126,11 +126,11 @@ class Session(VisualStudioTest):
         self.assertEqual(picture.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(self.expect("SCREENSHOT"), str(picture))
         self.debugger.stop_session()
-        report = Path(self.debugger.write_report(title="Area", problem="p", what_went_wrong="w", why="r", solution="s",
+        report = Path(self.debugger.write_report(model="test model", title="Area", problem="p", what_went_wrong="w", why="r", solution="s",
                                                  confidence="likely")["report_file"]).read_text(encoding="utf-8")
-        self.assertIn("What Visual Studio showed (code, Locals and Call Stack):", report)
-        self.assertIn(f"]({captured['screenshot']})", report)
-        self.assertIn("The values the agent captured:", report)
+        self.assertIn(f"### Stop 1: total skips the closing edge\n\n![Stop 1: Visual Studio at cpp/geometry.cpp:16]"
+                      f"({captured['screenshot']})", report)
+        self.assertNotIn("Call stack", report)
 
     def test_the_relay_saves_screenshots_only_where_approved(self):
         self.approved()
@@ -168,11 +168,11 @@ class Session(VisualStudioTest):
         self.assertEqual(self.debugger.stack()["frames"][1]["location"], "cpp/geometry.cpp:37")
         trace = self.debugger.trace("cpp/geometry.cpp", 16, ["i", "total"], hits=5)
         self.assertEqual([(r["i"], r["total"]) for r in trace["rows"]], [("1", "-1 → 2"), ("2", "2 → 4")])
-        report = Path(self.debugger.write_report(title="Area bug", problem="p", what_went_wrong="w", why="r", solution="s",
-                                                 confidence="likely")["report_file"]).read_text(encoding="utf-8")
-        self.assertIn("| build | Build geometry (Debug\\|x64) | succeeded, exit code 0 |", report)
-        self.assertLess(report.index("| approved |"), report.index("| build |"))
-        self.assertIn("| trace | cpp/geometry.cpp:16 |", report)
+        events = [(e.kind, e.where, e.detail) for e in self.debugger.timeline]
+        self.assertIn(("build", "Build geometry (Debug|x64)", "succeeded, exit code 0"), events)
+        kinds = [e[0] for e in events]
+        self.assertLess(kinds.index("approved"), kinds.index("build"))
+        self.assertIn(("trace", "cpp/geometry.cpp:16"), [e[:2] for e in events])
 
     def test_nested_values_threads_and_redaction(self):
         self.approved()

@@ -36,12 +36,13 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
    through a line), breakpoints. Use wait while the status is awaiting_approval, building, starting or running.
    start_session, step, continue, trace and pause move the program: call them one at a time, never in parallel.
    Breakpoints with source "editor" were set by the developer and stop the program too.
-5. At the stop that shows the bug, call capture with the variables that prove it (wrong: the ones with wrong
-   values) and a one-sentence note. The report shows that frame, call stack and variables, with a picture. In Visual
-   Studio it also saves a screenshot of the IDE (code on top, Locals or Autos and the Call Stack below).
+5. At the stop that shows the bug, call capture with the variables that prove it and a one-sentence note. In Visual
+   Studio it saves a screenshot of the IDE (code on top, Locals or Autos and the Call Stack below) for the report.
+   If the result has extension_note or screenshot_note, tell the developer.
 6. stop_session, then write_report. Write for a developer: short, plain sentences. No filler, no long dashes.
    what_went_wrong is what the code did; why is the reason. The solution is the smallest fix that follows how the
    project already solves the same thing (pattern: name that existing code). No rewrites, no extra layers.
+   Pass model (the AI model you are) and token_usage only if your app shows it; never guess.
 Only report what tool results showed. Expression evaluation is not available.
 Several IDEs: pass ide (and workspace_folder) from start_with; paths are relative to that window's folder.
 Attach: start_session with an attach configuration. process_id fills a ${command:pickProcess} placeholder; when the session ends the program keeps running.
@@ -188,8 +189,8 @@ TOOLS = {
                        "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 55, "default": 20}},
                       ("file", "line", "variables"))),
     "capture": (
-        "While paused at the stop that shows the bug: record the frame, the call stack and the named variables for "
-        "the report, which shows them with a picture. wrong names the variables whose values are wrong.",
+        "While paused at the stop that shows the bug: save a screenshot of the IDE there (Visual Studio: code, Locals "
+        "or Autos, Call Stack) for the report, with your one-sentence note. Returns the named variables to you.",
         _schema({"names": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20},
                  "note": {"type": "string", "maxLength": 300,
                           "description": "One plain sentence: what is wrong at this stop"},
@@ -200,8 +201,7 @@ TOOLS = {
     "stop_session": ("End the debug session and remove its breakpoints.", _schema({})),
     "write_report": (
         "Write the report into <workspace>/autodebug-reports/: ticket, problem, steps to reproduce, debug sessions "
-        "(with the captured stops and their pictures), root cause, solution. The timeline is added automatically. "
-        "Plain, short sentences.",
+        "(the screenshots from capture), root cause, solution and AI usage. Plain, short sentences.",
         _schema({
             "title": {"type": "string"},
             "problem": {"type": "string", "description": "What goes wrong, as the user sees it"},
@@ -213,13 +213,16 @@ TOOLS = {
             "how_confirmed": {"type": "string", "description": "Required for confirmed"},
             "debug_findings": {"type": "string", "description": "A few sentences: what the debug sessions showed"},
             "verification": {"type": "string", "description": "How the fix was checked, if it was"},
-            "open_questions": {"type": "array", "items": {"type": "string"}},
+            "model": {"type": "string", "maxLength": 200,
+                      "description": "The AI model you are, as your app shows it (e.g. the model picker); unknown if unsure"},
+            "token_usage": {"type": "string", "maxLength": 300,
+                            "description": "Tokens used, only if your app shows them; never guess"},
             "workspace_folder": _FOLDER,
             "ticket": _TICKET,
             "steps_to_reproduce": {"type": "array", "items": {"type": "string"}, "maxItems": 15,
                                    "description": "One short step per item; needed when reproduced is yes"},
             "reproduced": {"type": "string", "enum": ["yes", "no", "not_tried"]},
-        }, ("title", "problem", "what_went_wrong", "why", "solution", "confidence"))),
+        }, ("title", "problem", "what_went_wrong", "why", "solution", "confidence", "model"))),
 }
 _METHODS = {"continue": "continue_"}
 
@@ -315,14 +318,17 @@ def _terminal_note() -> str:
 def call_tool(debugger: Debugger, name: str, arguments: dict) -> tuple[dict, bool]:
     """Run one tool on `debugger`: (result, is_error). Arguments must already be valid for TOOLS[name]."""
     try:
-        return getattr(debugger, _METHODS.get(name, name))(**arguments), False
+        result, failed = getattr(debugger, _METHODS.get(name, name))(**arguments), False
     except DebugError as exc:
-        return {"error": exc.code, "message": exc.message}, True
+        result, failed = {"error": exc.code, "message": exc.message}, True
     except (OSError, ValueError) as exc:
-        return {"error": "IDE_ERROR", "message": str(exc)}, True
+        result, failed = {"error": "IDE_ERROR", "message": str(exc)}, True
     except Exception:  # noqa: BLE001 — never crash on one tool
         _LOG.exception("tool %s failed", name)
-        return {"error": "IDE_ERROR", "message": "internal error; see the server log"}, True
+        result, failed = {"error": "IDE_ERROR", "message": "internal error; see the server log"}, True
+    if name != "write_report" and hasattr(debugger, "count"):
+        debugger.count(arguments, result)
+    return result, failed
 
 
 Runner = Callable[[str, dict], "tuple[dict, bool]"]

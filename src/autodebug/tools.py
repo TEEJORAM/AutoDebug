@@ -6,6 +6,7 @@ timeline for the report, and applies redaction to everything it returns.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable
@@ -13,7 +14,8 @@ from dataclasses import dataclass, field
 
 from autodebug import report
 from autodebug.build import describe
-from autodebug.connection import IDE_NAMES, DebugError, Window, choose, discover, matching, preferred_ide, same_folder
+from autodebug.connection import (IDE_NAMES, DebugError, Window, choose, discover, matching, outdated_extension,
+                                  preferred_ide, same_folder)
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
@@ -71,6 +73,7 @@ class Debugger:
         self.reproducing: dict | None = None  # the current session, when it only reproduces the bug
         self.reproductions: list[dict] = []  # reproduction runs since the last report
         self.evidence: list[dict] = []  # captured stops since the last report
+        self.usage = {"calls": 0, "characters": 0}  # tool traffic since the last report
 
     # -- helpers ------------------------------------------------------------
 
@@ -266,7 +269,10 @@ class Debugger:
                 targets = [connection.call("targets", {"folder": f}) for f in folders]
             finally:
                 connection.close()
-            found.append({"ide": window.ide, "folders": targets})
+            entry = {"ide": window.ide, "folders": targets}
+            if outdated_extension(window):
+                entry["extension_note"] = outdated_extension(window)
+            found.append(entry)
         several = len(windows) > 1
         for entry, window in zip(found, windows):
             for folder in entry["folders"]:
@@ -390,6 +396,8 @@ class Debugger:
         result = self._state(self._wait(min(max(wait_seconds, 0), 55)))
         # Say once, plainly, where and what is being debugged, so the agent can tell the developer.
         result["debugging"] = debugging
+        if outdated_extension(window):
+            result["extension_note"] = outdated_extension(window)
         if build and build.get("note"):
             result["build_note"] = build["note"]
         return result
@@ -504,22 +512,20 @@ class Debugger:
 
     def capture(self, names: list[str], note: str, wrong: list[str] | None = None, frame_index: int = 0,
                 stack_levels: int = 8) -> dict:
-        """Record the stop that shows the bug (frame, call stack, variables) for the report and its picture."""
+        """At the stop that shows the bug: a screenshot of the IDE (code, Locals or Autos, Call Stack) for the report,
+        with the agent's one-sentence note. The values are returned to the agent, not written into the report."""
         if len(self.evidence) >= MAX_CAPTURES:
             raise DebugError("LIMIT", f"the report keeps at most {MAX_CAPTURES} captures; keep only the stops that "
                                       "show the bug")
         raw = self._call("stack", {"levels": max(frame_index + 1, min(int(stack_levels), 20))}).get("frames", [])
         if frame_index >= len(raw):
             raise DebugError("BAD_REQUEST", f"the stack has {len(raw)} frames")
-        stack = [{"function": clean_text(f.get("name"), 200),
-                  "location": "(no source)" if f.get("file") in (None, "(no source)")
-                  else clean_text(f"{f.get('file')}:{f.get('line')}", 300)} for f in raw]
-        frame = stack[frame_index]
-        found = [self._clean_variable(v, 500) for v in self._raw_variables(raw[frame_index].get("id"), names, 1)]
-        variables = {"variables": found, "not_found": [n for n in names if n not in {v["name"] for v in found}]}
-        wrong = [n for n in (wrong or []) if n in names]
-        item = {"location": frame["location"], "function": frame["function"], "note": clean_text(note, 300),
-                "variables": found, "wrong": wrong, "stack": stack[frame_index:], "session": self.sessions}
+        top = raw[frame_index]
+        location = "(no source)" if top.get("file") in (None, "(no source)") else clean_text(f"{top.get('file')}:{top.get('line')}", 300)
+        found = [self._clean_variable(v, 500) for v in self._raw_variables(top.get("id"), names, 1)]
+        item = {"location": location, "function": clean_text(top.get("name"), 200), "note": clean_text(note, 300),
+                "wrong": [n for n in (wrong or []) if n in names], "session": self.sessions}
+        window = self.connection.window if self.connection else None
         if self.plan.get("screenshots"):
             name = f"{time.strftime('%Y%m%d-%H%M%S')}-stop-{len(self.evidence) + 1}"
             try:
@@ -527,18 +533,27 @@ class Debugger:
                 item["screenshot"] = f"screenshots/{name}.png"
                 item["variables_window"] = shot.get("variables_window")
             except DebugError as exc:
-                item["screenshot_note"] = f"no screenshot: {exc.message}"
+                item["screenshot_note"] = (outdated_extension(window) if window and outdated_extension(window)
+                                           else f"the screenshot failed: {exc.message}")
+        else:
+            item["screenshot_note"] = ("screenshots were turned off for this session" if window and window.ide ==
+                                       "visualstudio" else f"{IDE_NAMES.get(window.ide if window else '', 'this IDE')} "
+                                       "cannot take screenshots; only Visual Studio can")
         self.evidence.append(item)
-        self._log("captured", frame["location"], f"{clean_text(note, 200)}; "
-                  + ", ".join(f"{v['name']}={v['value']}" for v in variables["variables"][:8]))
-        result = {"captured": len(self.evidence), "location": frame["location"], "function": frame["function"],
-                  "variables": variables["variables"],
-                  **({"screenshot": item["screenshot"]} if item.get("screenshot") else {}),
-                  **({"screenshot_note": item["screenshot_note"]} if item.get("screenshot_note") else {}),
-                  "next": "Saved for the report's Debug sessions section, with a picture of the frame, call stack "
-                          "and variables. Capture only the stops that show the bug (one or two)."}
-        if variables.get("not_found"):
-            result["not_found"] = variables["not_found"]
+        self._log("captured", location, f"{clean_text(note, 200)}; "
+                  + ", ".join(f"{v['name']}={v['value']}" for v in found[:8]))
+        result = {"captured": len(self.evidence), "location": location, "function": item["function"],
+                  "variables": found}
+        if item.get("screenshot"):
+            result["screenshot"] = item["screenshot"]
+            result["next"] = (f"Saved a screenshot of {IDE_NAMES.get(window.ide, 'the IDE')} at this stop for the "
+                              "report. Capture only the stops that show the bug (one or two).")
+        else:
+            result["screenshot_note"] = item["screenshot_note"]
+            result["next"] = f"No screenshot: {item['screenshot_note']} Tell the developer."
+        missing = [n for n in names if n not in {v["name"] for v in found}]
+        if missing:
+            result["not_found"] = missing
         return result
 
     def stack(self, levels: int = 20, start_frame: int = 0) -> dict:
@@ -645,11 +660,11 @@ class Debugger:
         return self._state(raw)
 
     def write_report(self, title: str, problem: str, what_went_wrong: str, why: str, solution: str, confidence: str,
-                     how_confirmed: str | None = None, verification: str | None = None,
-                     open_questions: list[str] | None = None, workspace_folder: str | None = None,
-                     ticket: str | None = None, steps_to_reproduce: list[str] | None = None,
-                     reproduced: str | None = None, debug_findings: str | None = None,
-                     pattern: str | None = None) -> dict:
+                     model: str, how_confirmed: str | None = None, verification: str | None = None,
+                     workspace_folder: str | None = None, ticket: str | None = None,
+                     steps_to_reproduce: list[str] | None = None, reproduced: str | None = None,
+                     debug_findings: str | None = None, pattern: str | None = None,
+                     token_usage: str | None = None) -> dict:
         folder = workspace_folder or self.folder
         if not folder:
             raise DebugError("BAD_REQUEST", "pass workspace_folder: there is no session to take it from")
@@ -664,17 +679,26 @@ class Debugger:
                                             "use likely or unconfirmed")
         if reproduced == "yes" and not steps_to_reproduce:
             raise DebugError("BAD_REQUEST", "reproduced=yes needs steps_to_reproduce (one short step per item)")
+        if not str(model).strip():
+            raise DebugError("BAD_REQUEST", "model names the AI model you are (as your app shows it); write unknown "
+                                            "if you do not know")
         path = report.write(folder, report.Report(
             title=title, problem=problem, what_went_wrong=what_went_wrong, why=why, solution=solution,
-            confidence=confidence, how_confirmed=how_confirmed, verification=verification,
-            open_questions=list(open_questions or []), plan=self.plan, timeline=list(self.timeline),
-            ticket=ticket or self.ticket, steps_to_reproduce=list(steps_to_reproduce or []), reproduced=reproduced,
-            runs=list(self.reproductions), debug_findings=debug_findings, captures=list(self.evidence),
-            pattern=pattern,
+            confidence=confidence, model=model, how_confirmed=how_confirmed, verification=verification,
+            plan=self.plan, ticket=ticket or self.ticket, steps_to_reproduce=list(steps_to_reproduce or []),
+            reproduced=reproduced, runs=list(self.reproductions), debug_findings=debug_findings,
+            captures=list(self.evidence), pattern=pattern, token_usage=token_usage,
+            tool_calls=self.usage["calls"], tool_characters=self.usage["characters"],
         ))
         self.timeline, self.sessions, self.reproductions, self.ticket, self.evidence = [], 0, [], None, []
+        self.usage = {"calls": 0, "characters": 0}
         return {"report_file": str(path), "next": "Tell the developer where the report is and summarize it in two or "
                                                   "three plain sentences."}
+
+    def count(self, arguments: dict, result: dict) -> None:
+        """Tool traffic since the last report, for the report's AI usage section."""
+        self.usage["calls"] += 1
+        self.usage["characters"] += len(json.dumps(arguments, ensure_ascii=False)) + len(json.dumps(result, ensure_ascii=False))
 
     def close(self) -> None:
         if self.connection is not None:

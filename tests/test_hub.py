@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -99,13 +100,13 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
         server.wait(10)
         server.stdout.close()
 
-        # Back on the terminal: the report has the whole timeline, including the MCP part.
-        code, report = self.cli("write_report", "title=Area", "problem=p", "what_went_wrong=w", "why=r", "solution=s",
+        # Back on the terminal: the report counts the tool calls of both, so it is the same session.
+        code, report = self.cli("write_report", "model=test model", "title=Area", "problem=p", "what_went_wrong=w", "why=r", "solution=s",
                                 "confidence=unconfirmed")
         self.assertEqual(code, 0)
         text = Path(report["report_file"]).read_text(encoding="utf-8")
-        self.assertIn("| approved |", text)
-        self.assertIn("| stopped | geometry.py:15 |", text)
+        calls = int(re.search(r"- AutoDebug: (\d+) tool calls", text).group(1))
+        self.assertGreaterEqual(calls, 4)  # list_targets and start_session here, wait and stop_session over MCP
 
     def test_tool_errors_and_bad_arguments(self):
         code, result = self.cli("stack")
@@ -181,9 +182,9 @@ class Arguments(unittest.TestCase):
                          {"file": "geometry.cpp", "line": 16, "variables": ["total", "i", "points"], "after": False})
         # A sentence stays whole; repeating the key adds another (the report's open question was split at a comma).
         self.assertEqual(parse_tool_arguments("write_report", [
-            "open_questions=A rebuild was not run, so the corrected totals were not observed",
-            "open_questions=Is the L-bracket closed?"])["open_questions"],
-            ["A rebuild was not run, so the corrected totals were not observed", "Is the L-bracket closed?"])
+            "steps_to_reproduce=Run repro/area.js, then read the output",
+            "steps_to_reproduce=It prints 2"])["steps_to_reproduce"],
+            ["Run repro/area.js, then read the output", "It prints 2"])
         # Program arguments keep their commas; one argument per key.
         self.assertEqual(parse_tool_arguments("reproduce", ["launch_configuration=qjs", "symptom=fails",
                                                             "args=-m", "args=repro/a,b.js"])["args"],
