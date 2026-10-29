@@ -57,7 +57,7 @@
   .sidebar .repo { display: block; margin-top: 2rem; font-size: 0.9rem; color: var(--side-text); }
 
   /* Reading column: cement */
-  main { margin-left: var(--sidebar); }
+  main { margin-left: var(--sidebar); position: relative; }
   .page { max-width: 48rem; padding: 3rem 3rem 4rem; }
   h1, h2, h3, h4 { font-family: var(--sans); color: var(--ink); line-height: 1.25; }
   h1 { font-size: 2.4rem; font-weight: 600; margin: 0 0 0.75rem; }
@@ -218,6 +218,39 @@
   .button.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
   .button:hover { text-decoration: none; border-color: var(--ink-soft); }
   @media (max-width: 900px) { .case-area { display: none; } .case-title { flex-basis: 100%; order: 5; } }
+  /* The creed (in the site's own type): beside the hero on wide screens, after it on narrow ones */
+  .creed { margin: 0 0 2.5rem; padding: 1.4rem 0 0; border-top: 2px solid var(--ink); max-width: 30rem; }
+  .creed-eq { margin: 0 0 1.6rem; font: 600 1.5rem/1.25 var(--sans); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; }
+  .eq-b { font-weight: 400; font-size: 1.15rem; line-height: 1.4; color: var(--ink-soft); }
+  .eq-ne { display: block; width: 3.6rem; height: 2.4rem; margin: 0.6rem 0 0.45rem; }
+  .eq-ne svg { width: 100%; height: 100%; overflow: visible; }
+  .eq-ne path { fill: none; stroke-linecap: round; }
+  .ne-bar { stroke: var(--ink); stroke-width: 3.2; }
+  .ne-slash { stroke: var(--breakpoint); stroke-width: 3.8; }
+  .eq-c { font-size: 1.7rem; background: linear-gradient(var(--paused), var(--paused)) no-repeat 0 90% / 100% 0.45em; padding: 0 0.12em; margin-left: -0.12em; }
+  .creed-head { margin: 1.4rem 0 0.3rem; font: 600 0.9rem/1.4 var(--sans); color: var(--ink-soft); }
+  .creed-list { list-style: none; margin: 0; padding: 0; }
+  .creed-list li { display: grid; grid-template-columns: 2.4rem 1fr; padding: 0.6rem 0; margin: 0; border-top: 1px solid var(--rule); font-size: 0.92rem; line-height: 1.5; }
+  .creed-list li:last-child { border-bottom: 1px solid var(--rule); }
+  .creed-list .rn { font: 600 0.95rem/1.5 var(--sans); color: var(--breakpoint); }
+  .creed-list.miss .rn { color: var(--ink-soft); }
+  .creed-list.miss strong { color: var(--breakpoint); }
+  .creed-list strong { font-weight: 600; color: var(--ink); }
+  @media (min-width: 1440px) {
+    .creed { position: absolute; top: 3.6rem; left: 48rem; width: min(27rem, calc(100vw - var(--sidebar) - 51rem)); margin: 0; }
+  }
+  /* One entrance: the claim is written, the sign is struck through, then the two lists follow; each part carries its delay in --d */
+  .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-head, .js .creed-list li { opacity: 0; transform: translateY(6px); transition: opacity 600ms ease var(--d, 0ms), transform 600ms ease var(--d, 0ms); }
+  .js .creed .ne-bar, .js .creed .ne-slash { stroke-dasharray: 60; stroke-dashoffset: 60; transition: stroke-dashoffset 650ms cubic-bezier(.6,0,.2,1) var(--d, 0ms); }
+  .js .creed .eq-c { background-size: 0% 0.45em; transition: opacity 600ms ease var(--d), transform 600ms ease var(--d), background-size 800ms cubic-bezier(.6,0,.2,1) calc(var(--d) + 400ms); }
+  .js .creed.on .eq-a, .js .creed.on .eq-b, .js .creed.on .eq-c, .js .creed.on .creed-head, .js .creed.on .creed-list li { opacity: 1; transform: none; }
+  .js .creed.on .ne-bar, .js .creed.on .ne-slash { stroke-dashoffset: 0; }
+  .js .creed.on .eq-c { background-size: 100% 0.45em; }
+  @media (prefers-reduced-motion: reduce) {
+    .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-head, .js .creed-list li { opacity: 1; transform: none; transition: none; }
+    .js .creed .ne-bar, .js .creed .ne-slash { stroke-dashoffset: 0; transition: none; }
+    .js .creed .eq-c { background-size: 100% 0.45em; }
+  }
 </style>
 </head>
 <body>
@@ -289,6 +322,31 @@
     </div>
   </figure>
   <p class="caption">Replayed from a real session: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
+
+  <aside class="creed" aria-label="Why AutoDebug exists">
+    <p class="creed-eq">
+      <span class="eq-a" style="--d:0ms">The root cause an AI agent decides</span>
+      <span class="eq-b" style="--d:400ms">from reading the code</span>
+      <span class="eq-ne" role="img" aria-label="is not"><svg viewBox="0 0 60 40" aria-hidden="true"><path class="ne-bar" style="--d:900ms" d="M6 14 H54"/><path class="ne-bar" style="--d:1100ms" d="M6 26 H54"/><path class="ne-slash" style="--d:1500ms" d="M40 3 L20 37"/></svg></span>
+      <span class="eq-c" style="--d:1900ms">the actual root cause.</span>
+    </p>
+    <p class="creed-head" style="--d:2600ms">What a fix from reading alone leads to</p>
+    <ul class="creed-list miss">
+      <li style="--d:2800ms"><span class="rn" aria-hidden="true">✕</span><div><strong>Overkill.</strong> A strong assumption from reading makes the agent rewrite a part of the code that never needed it, when the real fix is small and somewhere else.</div></li>
+      <li style="--d:3000ms"><span class="rn" aria-hidden="true">✕</span><div><strong>Half fixes.</strong> It patches the symptom, so the bug comes back in another form.</div></li>
+      <li style="--d:3200ms"><span class="rn" aria-hidden="true">✕</span><div><strong>New bugs.</strong> Changes to code that was working break other paths.</div></li>
+      <li style="--d:3400ms"><span class="rn" aria-hidden="true">✕</span><div><strong>The wrong suspect.</strong> The code that looks wrong is not always what runs. Input, state and timing decide that, and none of them are in the source.</div></li>
+      <li style="--d:3600ms"><span class="rn" aria-hidden="true">✕</span><div><strong>No proof.</strong> You are left to trust a story you cannot check.</div></li>
+    </ul>
+    <p class="creed-head" style="--d:4100ms">What AutoDebug does instead</p>
+    <ol class="creed-list">
+      <li style="--d:4300ms"><span class="rn">I</span><div><strong>Reproduce first.</strong> The agent runs the bug and watches it fail.</div></li>
+      <li style="--d:4500ms"><span class="rn">II</span><div><strong>Stop where it breaks.</strong> Breakpoints on the real code path, in your IDE's own debugger.</div></li>
+      <li style="--d:4700ms"><span class="rn">III</span><div><strong>Read real values.</strong> Locals and the call stack, not a guess.</div></li>
+      <li style="--d:4900ms"><span class="rn">IV</span><div><strong>Prove the cause.</strong> A report with the steps, the stops and why it happens.</div></li>
+      <li style="--d:5100ms"><span class="rn">V</span><div><strong>Fix only what is broken.</strong> The smallest fix, in your project's style.</div></li>
+    </ol>
+  </aside>
 
   <h2 id="what">What it is <a class="anchor" href="#what" aria-label="Link to this section">#</a></h2>
   <p>AI agents often guess why a bug happens. A wrong guess gives a fix that is too big, misses the bug, or adds a new one. With AutoDebug, the agent first proves the cause in the debugger, then suggests the smallest fix.</p>
@@ -757,6 +815,9 @@ autodebug setup</pre></div>
     at(8600, () => { show(5); status.textContent = "Report written"; replay.hidden = false; });
   }
   replay.addEventListener("click", play);
+  // The creed beside the hero writes itself in once, as the page opens.
+  const creed = document.querySelector(".creed");
+  if (creed) requestAnimationFrame(() => requestAnimationFrame(() => creed.classList.add("on")));
   if (reduced) finalState(); else play();
 </script>
 </body>
