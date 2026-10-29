@@ -75,6 +75,9 @@ class DapSession {
     const env = launcher ? { ...process.env, HARNESS_LAUNCHER: '1' } : process.env;
     this.adapter = childProcess.spawn(program, args, { stdio: ['pipe', 'pipe', 'inherit'], env });
     this.adapter.stdout.on('data', (chunk) => this.receive(chunk));
+    // Writing to an adapter that has just exited (a disconnect after the attach's own disconnect) fails with EPIPE;
+    // like VS Code, the stand-in ignores it instead of crashing.
+    this.adapter.stdin.on('error', () => {});
     this.adapter.on('exit', (code) => {
       for (const { reject } of this.pending.values()) reject(new Error('the debug adapter exited'));
       this.pending.clear();
