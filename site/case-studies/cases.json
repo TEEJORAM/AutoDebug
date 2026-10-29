@@ -10,7 +10,7 @@
       "length": "1:12",
       "where": "core/variant/variant_parser.cpp",
       "cause": "parse_tag_assign_eof returns OK as soon as the value parses and never reads the rest of the line, so a trailing comma becomes the start of the next key.",
-      "fix": "After the value, finish the line: skip spaces and comments; anything else is a parse error."
+      "fix": "After the value, finish the line: skip spaces and comments. Anything else is a parse error."
     },
     {
       "slug": "godot-116141",
