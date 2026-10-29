@@ -122,7 +122,7 @@ def render(report: Report) -> str:
               f"- Tokens: {_line(report.token_usage, 300)}" if report.token_usage
               else "- Tokens: not reported by the agent. Your AI app's usage page shows the exact count.",
               f"- AutoDebug: {report.tool_calls} tool calls, about {estimate:,} tokens of tool input and output "
-              f"(estimated at {CHARS_PER_TOKEN} characters per token; part of the total above).",
+              f"(estimated at {CHARS_PER_TOKEN} characters per token, part of the total above).",
               ""]
     return "\n".join(lines)
 

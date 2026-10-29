@@ -132,7 +132,7 @@
 <p>At gdscript_analyzer.cpp:5428 the constant dictionary slot for key 0 held type ARRAY (28), the array [red, green]. operator[] had initialized that slot as an empty PackedStringArray (type 34) and the assignment replaced it. At gdscript_vm.cpp:1157, _init line 16 called VariantIndexedSetGet_PackedStringArray::get on that same Array. Vector&lt;String&gt;::size() returned 0 and oob became true.</p>
 <h3>Stop 1: Assigning the array [red, green] into the typed dictionary stored type ARRAY, not PackedStringArray.</h3>
 <figure class="shot"><a href="screenshots/20261029-003535-stop-1.png"><img src="screenshots/20261029-003535-stop-1.png" alt="Stop 1: Visual Studio at modules/gdscript/gdscript_analyzer.cpp:5428" loading="lazy"></a><figcaption>Stop 1: Visual Studio at modules/gdscript/gdscript_analyzer.cpp:5428</figcaption></figure>
-<h3>Stop 2: PackedStringArray::get indexed an Array holding red and green; size() returned 0, so index 0 was out of bounds.</h3>
+<h3>Stop 2: PackedStringArray::get indexed an Array holding red and green, but size() returned 0, so index 0 was out of bounds.</h3>
 <figure class="shot"><a href="screenshots/20261029-003712-stop-2.png"><img src="screenshots/20261029-003712-stop-2.png" alt="Stop 2: Visual Studio at modules/gdscript/gdscript_vm.cpp:1157" loading="lazy"></a><figcaption>Stop 2: Visual Studio at modules/gdscript/gdscript_vm.cpp:1157</figcaption></figure>
 <h2 id="root-cause">Root cause</h2>
 <h3>What went wrong</h3>
@@ -145,7 +145,7 @@
 <p>Follows the existing pattern: Dictionary::set in core/variant/dictionary.cpp. It calls typed_value.validate, which converts an Array into a PackedStringArray. The comment on Dictionary::operator[] already says to use set() when the value may not match the typed dictionary.</p>
 <p>Checked: The fix was not applied or run. (reported by the AI agent)</p>
 <h2 id="ai-usage">AI usage</h2>
-<ul><li>Model: Grok 4.7 (as the agent reported it)</li><li>Tokens: not reported by the agent. Your AI app's usage page shows the exact count.</li><li>AutoDebug: 33 tool calls, about 10,964 tokens of tool input and output (estimated at 4 characters per token; part of the total above).</li></ul>
+<ul><li>Model: Grok 4.7 (as the agent reported it)</li><li>Tokens: not reported by the agent. Your AI app's usage page shows the exact count.</li><li>AutoDebug: 33 tool calls, about 10,964 tokens of tool input and output (estimated at 4 characters per token, part of the total above).</li></ul>
     <nav class="next" aria-label="More case studies">
       <a href="../index.html#cases">All case studies</a>
       <a href="godot-123766.html">Next: #123766 Inner-class lambda default is resolved from the outer class</a>

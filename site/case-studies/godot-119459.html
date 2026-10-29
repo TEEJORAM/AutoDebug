@@ -144,7 +144,7 @@
 <p>After parse_value returns OK, finish the line before returning. Read p_stream-&gt;saved first, then the stream, because a number leaves the next character in saved. Skip characters at or below 32. On ';', skip to the newline the same way the top of parse_tag_assign_eof already skips a comment. A newline or end of file ends the assignment. Any other character, including the comma, sets r_err_str and returns ERR_PARSE_ERROR. ConfigFile::_parse already prints that error and returns it, so set_value is not called for the damaged key.</p>
 <p>Follows the existing pattern: The ';' comment skip at the top of VariantParser::parse_tag_assign_eof, and the existing non-OK return in ConfigFile::_parse.</p>
 <h2 id="ai-usage">AI usage</h2>
-<ul><li>Model: Grok 4.7 (as the agent reported it)</li><li>Tokens: not reported by the agent. Your AI app's usage page shows the exact count.</li><li>AutoDebug: 16 tool calls, about 7,118 tokens of tool input and output (estimated at 4 characters per token; part of the total above).</li></ul>
+<ul><li>Model: Grok 4.7 (as the agent reported it)</li><li>Tokens: not reported by the agent. Your AI app's usage page shows the exact count.</li><li>AutoDebug: 16 tool calls, about 7,118 tokens of tool input and output (estimated at 4 characters per token, part of the total above).</li></ul>
     <nav class="next" aria-label="More case studies">
       <a href="../index.html#cases">All case studies</a>
       <a href="godot-116141.html">Next: #116141 Signal connect treats two different arrays as the same callable</a>
