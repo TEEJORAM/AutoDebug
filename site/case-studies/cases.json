@@ -1,0 +1,56 @@
+{
+  "_about": "The case studies on the site. Each report .md is exactly what AutoDebug wrote; the short texts here summarise it for the table and player. After editing, run: python tools/case_studies.py",
+  "recorded": "Recorded on Godot 4.8 (dev build, commit cafc17a), Windows 11 and Visual Studio 2026. The agent was Grok 4.7. The videos have no sound.",
+  "cases": [
+    {
+      "slug": "godot-119459",
+      "issue": "119459",
+      "title": "ConfigFile glues trailing text onto the next key",
+      "area": "Core, variant parser",
+      "length": "1:12",
+      "where": "core/variant/variant_parser.cpp",
+      "cause": "parse_tag_assign_eof returns OK as soon as the value parses and never reads the rest of the line, so a trailing comma becomes the start of the next key.",
+      "fix": "After the value, finish the line: skip spaces and comments; anything else is a parse error."
+    },
+    {
+      "slug": "godot-116141",
+      "issue": "116141",
+      "title": "Signal connect treats two different arrays as the same callable",
+      "area": "Core, callables",
+      "length": "1:10",
+      "where": "core/variant/variant_callable.cpp",
+      "cause": "VariantCallable::compare_equal compares only hashes. Two different arrays with the same values hash the same, so connect thinks the signal is already connected.",
+      "fix": "Compare the method and identity_compare of the bound value, not the hash."
+    },
+    {
+      "slug": "godot-123848",
+      "issue": "123848",
+      "title": "Callable.is_valid() is false for native static methods",
+      "area": "GDScript, native classes",
+      "length": "1:15",
+      "where": "core/object/object.cpp",
+      "cause": "is_valid asks has_method on GDScriptNativeClass, which only knows its own method new, so a static method like FileAccess.file_exists looks invalid.",
+      "fix": "Let GDScriptNativeClass answer has_method for static ClassDB methods."
+    },
+    {
+      "slug": "godot-124061",
+      "issue": "124061",
+      "title": "Constant Dictionary stores an Array where a PackedStringArray belongs",
+      "area": "GDScript analyzer",
+      "length": "1:13",
+      "where": "modules/gdscript/gdscript_analyzer.cpp",
+      "cause": "The typed slot is filled with operator[], which keeps the plain Array. Indexing it later as a PackedStringArray reads size 0 and fails.",
+      "fix": "Store entries with Dictionary::set() and reject the constant if it fails."
+    },
+    {
+      "slug": "godot-123766",
+      "issue": "123766",
+      "title": "Inner-class lambda default is resolved from the outer class",
+      "area": "GDScript analyzer",
+      "length": "1:05",
+      "where": "modules/gdscript/gdscript_analyzer.cpp",
+      "cause": "The outer class checks for pending lambdas before its inner class body is resolved, so the inner lambda is still pending and GDScript reports a bug.",
+      "fix": "Resolve inner class bodies before the pending-lambda check."
+    }
+  ]
+}

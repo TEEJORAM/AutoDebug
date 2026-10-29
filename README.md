@@ -10,6 +10,9 @@ Studio), and any other agent that supports MCP or has a terminal.
 
 **Documentation:** [teejoram.github.io/AutoDebug](https://teejoram.github.io/AutoDebug/)
 
+**Case studies:** [five real Godot bugs](https://teejoram.github.io/AutoDebug/#cases), each with the video of the
+session and the report AutoDebug wrote.
+
 ## Where to get it
 
 | Store | What | Status |
