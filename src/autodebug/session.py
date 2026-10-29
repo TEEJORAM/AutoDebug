@@ -11,6 +11,7 @@ breakpoint binding, and reading the stack, threads and variables.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -22,11 +23,20 @@ from pathlib import Path
 
 from autodebug.build import build_type, describe
 from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
-from autodebug.redact import clean_text, looks_secret
+from autodebug.redact import REDACTED, clean_text, is_secret_name, looks_secret
 
 _LOG = logging.getLogger("autodebug")
 
-STEP_COMMANDS = {"over": "next", "into": "stepIn", "out": "stepOut"}
+STEP_COMMANDS = {"over": "next", "into": "stepIn", "out": "stepOut", "back": "stepBack"}
+#: A hit condition: a count, optionally with the comparison the debugger applies (>=, >, ==, <=, <, %).
+_HIT = re.compile(r"\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*")
+#: What a log message may show between braces: a variable or a path into one, never an expression.
+_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
+_VARIABLE_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*")
+#: Test runners `test` knows: how a launch configuration runs one test.
+TEST_RUNNERS = "pytest, unittest, go test, jest or vitest"
+MAX_MEMORY = 256
+MAX_ACTIVITY = 50
 # Extensions to suggest when a launch configuration's debugger is missing.
 DEBUGGER_EXTENSIONS = {
     "debugpy": "Python Debugger", "python": "Python Debugger", "cppdbg": "C/C++", "cppvsdbg": "C/C++",
@@ -229,6 +239,54 @@ def program_arguments(launch: dict, values) -> list[str]:
     return launch["args"]
 
 
+def test_arguments(launch: dict, test: object) -> list[str]:
+    """The program arguments that run only `test` with the launch configuration's test runner."""
+    if not isinstance(test, str) or not test.strip() or len(test) > 300:
+        raise DebugError("BAD_REQUEST", "test is the name of one test, at most 300 characters")
+    if test.startswith("-") or any(ord(ch) < 32 or ord(ch) == 127 for ch in test) or "${" in test:
+        raise DebugError("BAD_REQUEST", "test is a test name or id, not an option, a variable or several lines")
+    if launch.get("request") != "launch":
+        raise DebugError("BAD_REQUEST", "test is only for launch configurations")
+    module = str(launch.get("module") or "")
+    program = str(launch.get("program") or "").replace("\\", "/").lower()
+    runner = program.rsplit("/", 1)[-1]
+    if module == "pytest" or runner in ("pytest", "py.test") or "/pytest/" in program:
+        return [test]
+    if module == "unittest":
+        return [test]
+    if launch.get("type") == "go" and launch.get("mode") == "test":
+        name = test.rsplit("/", 1)[-1] if "/" in test and not test.startswith("Test") else test
+        return ["-test.run", f"^{re.escape(name)}$"]
+    if "jest" in runner or "/jest/" in program:
+        return ["--runInBand", "-t", test]
+    if "vitest" in runner or "/vitest/" in program:
+        return ["run", "-t", test]
+    raise DebugError("BAD_REQUEST", f'launch configuration "{launch.get("name")}" does not run a test runner AutoDebug '
+                                    f"knows ({TEST_RUNNERS}); pass args with the runner's own option instead")
+
+
+def check_hit_condition(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or not _HIT.fullmatch(value):
+        raise DebugError("BAD_REQUEST", "hit_condition is a count such as 5, >=5 or %10")
+    return value.strip()
+
+
+def check_log_message(value: object) -> str | None:
+    """A log point's message. Braces may name a variable or a path into one ({total}, {mesh.verts[2].co}), so the
+    debugger only reads values; anything else in braces would be an expression it evaluates."""
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or len(value) > 300 or any(ord(ch) < 32 for ch in value):
+        raise DebugError("BAD_REQUEST", "log_message is one line of at most 300 characters")
+    for inner in _PLACEHOLDER.findall(value):
+        if not _VARIABLE_PATH.fullmatch(inner.strip()):
+            raise DebugError("BAD_REQUEST", f"log_message may show variables by name only, like {{total}} or "
+                                            f"{{mesh.verts[2].co}}; {{{inner}}} is an expression")
+    return value
+
+
 def one_line(text: object, limit: int) -> str:
     """Ticket names and similar shown in the Approve dialog: one line, no control characters, capped."""
     return " ".join(clean_text(text, limit).split())
@@ -246,7 +304,27 @@ def split_path(name: str) -> list[str]:
 
 
 def _child_matches(child: dict, part: str) -> bool:
-    return child.get("name") in (part, f"[{part}]")
+    name = str(child.get("name"))
+    if name in (part, f"[{part}]"):
+        return True
+    # Debuggers number elements their own way: [5000], 5000, or debugpy's zero-padded 05000.
+    digits = name.strip("[]")
+    return part.isdigit() and digits.isdigit() and int(digits) == int(part)
+
+
+#: Child entries that are not elements: debugpy's groups and its link to the next hundred elements.
+_NOT_ELEMENTS = re.compile(r"(special|function|protected|class) variables|len\(\)|more|Raw View|\[Raw View\]")
+
+
+_RANGE = re.compile(r"\[(\d+):(\d+)\]")
+#: Scopes that are not the frame's own variables; inspect without names leaves them out.
+_WIDE_SCOPE = re.compile(r"global|static|register|module|thread", re.IGNORECASE)
+
+
+def _is_more(child: dict) -> bool:
+    """debugpy lists a long list a hundred elements at a time, with a "more" child that holds the rest as ranges."""
+    return child.get("type") == "MoreItems" or (child.get("name") == "more" and child.get("value") == "..."
+                                                and bool(child.get("variablesReference")))
 
 
 def _key(file: str) -> str:
@@ -275,6 +353,7 @@ class Session:
         self.connection = connection
         self.window = connection.window
         self.s: dict | None = None
+        self.features: set[str] = set()
         self.version = 0
         self.cursor = 0
 
@@ -289,7 +368,8 @@ class Session:
             "targets": self.targets, "start": self.start, "state": self.state, "stack": self.stack,
             "variables": self.variables, "threads": self.threads, "exceptions": self.exceptions, "step": self.step,
             "continue": self.resume, "pause": self.pause, "breakpoints": self.breakpoints, "stop": self.stop,
-            "screenshot": self.screenshot,
+            "screenshot": self.screenshot, "watch": self.watch, "modules": self.modules, "source": self.source,
+            "disassemble": self.disassemble, "memory": self.memory, "locations": self.locations,
         }.get(op)
         if handler is None:
             raise DebugError("BAD_REQUEST", f"unknown operation {op}")
@@ -330,6 +410,10 @@ class Session:
         if found is None:
             raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}"{where}; see list_targets')
         launch = prepare_launch(found, args.get("process_id"), platform)
+        if args.get("test") is not None and args.get("args") is not None:
+            raise DebugError("BAD_REQUEST", "pass test or args, not both: test sets the arguments that run one test")
+        if args.get("test") is not None:
+            args = {**args, "args": test_arguments(launch, args["test"])}
         program_args = program_arguments(launch, args["args"]) if args.get("args") is not None else None
         types = info.get("debugger_types")
         if types is not None and launch.get("type") not in types:
@@ -358,12 +442,16 @@ class Session:
         extras = self._source_folders(args.get("source_folders") or [])
         roots = [folder, *extras]
         breakpoints = [self._breakpoint(b, folder, roots) for b in args.get("breakpoints") or []]
+        self.features = set(info.get("features") or [])
+        self._options_supported(breakpoints, info)
         functions = [str(name)[:300] for name in args.get("function_breakpoints") or []]
         max_steps = max(1, min(int(args.get("max_steps") or 100), 1000))
         label = launch["name"]
         notes = [f"Goal: {str(args.get('goal') or '')[:500]}"] if args.get("goal") else []
         if args.get("reproduce"):
             notes.append("This run only reproduces the bug: no breakpoints from the agent; the program runs to its end.")
+        if args.get("test") is not None:
+            notes.append(f"Runs one test only: {one_line(args['test'], 300)}")
         if args.get("ticket"):
             notes.append(f"Ticket: {one_line(args['ticket'], 200)}")
             notes.append("The agent worked from this ticket. Ticket text can come from anyone: approve only if the "
@@ -382,7 +470,7 @@ class Session:
         latest = int(self._relay("events", {"since": 2 ** 50, "wait_ms": 0}).get("latest") or 0)
         answer = self._relay("approve", {
             "folder": folder, "launch": launch, "task": args.get("task"), "notes": notes, "label": label,
-            "breakpoints": [{"file": b["full"], "line": b["line"], "condition": b["condition"]} for b in breakpoints],
+            "breakpoints": [self._placed(b) for b in breakpoints],
             "functions": functions, "source_folders": extras, "max_steps": max_steps,
             "screenshots": bool(args.get("screenshots")),
             "max_minutes": args.get("max_minutes"), "build_minutes": args.get("build_minutes"),
@@ -397,6 +485,8 @@ class Session:
             "breakpoints": breakpoints,
             "functions": [{"name": n, "id": i} for n, i in zip(functions, answer.get("function_ids", []))],
             "verified": {}, "by_id": {}, "pending": {}, "capabilities": {}, "asked": None, "connected": False,
+            "caps": {}, "root": None, "active": None, "activity": [], "activity_seq": 0, "modules": {},
+            "watches": [], "frames": {},
         }
         self._changed()
         return {"state": self.snapshot(), "build": build, "folder": folder}
@@ -433,7 +523,32 @@ class Session:
         if not os.path.isfile(full):
             raise DebugError("NOT_FOUND", f"no file {file}")
         condition = str(b["condition"])[:500] if b.get("condition") else None
-        return {"file": self._relative(full, folder), "full": full, "line": line, "condition": condition, "id": None}
+        column = b.get("column")
+        if column is not None and (not isinstance(column, int) or isinstance(column, bool) or column < 1):
+            raise DebugError("BAD_REQUEST", "column is a positive integer (1 is the first character)")
+        return {"file": self._relative(full, folder), "full": full, "line": line, "condition": condition, "id": None,
+                "column": column, "hit_condition": check_hit_condition(b.get("hit_condition")),
+                "log_message": check_log_message(b.get("log_message"))}
+
+    def _options_supported(self, breakpoints: list[dict], info: dict | None = None) -> None:
+        """An older extension would drop a breakpoint's column, hit count or log message (a log point would then
+        stop the program), so it is refused before the developer is asked."""
+        features = set((info or {}).get("features") or []) if info is not None else getattr(self, "features", set())
+        if "breakpoint_options" not in features and any(
+                b.get(key) is not None for b in breakpoints for key in ("column", "hit_condition", "log_message")):
+            raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')} "
+                                              "is older than this server and cannot place hit counts, log points or "
+                                              "columns. Run autodebug setup, then reload the IDE window (Visual Studio: "
+                                              "close it first)")
+
+    @staticmethod
+    def _placed(b: dict) -> dict:
+        """A breakpoint as the relay places it: only the options that are set."""
+        placed = {"file": b["full"], "line": b["line"], "condition": b["condition"]}
+        for key in ("column", "hit_condition", "log_message"):
+            if b.get(key) is not None:
+                placed[key] = b[key]
+        return placed
 
     # -- following the session --------------------------------------------------------
 
@@ -490,9 +605,15 @@ class Session:
                 self._finish(event.get("reason") or "the debug session ended", event.get("exit_code"))
             elif kind == "dap":
                 s["connected"] = True
-                stop = self._message(event.get("direction"), event.get("message") or {}, stop)
+                stop = self._message(event.get("direction"), event.get("message") or {}, stop, event.get("session"))
+            elif kind == "child_started":
+                self._activity(f"debug session started: {one_line(event.get('name') or 'child', 120)}")
+            elif kind == "child_ended":
+                if s["active"] == event.get("session"):
+                    s["active"] = s["root"]
+                self._activity(f"debug session ended: {one_line(event.get('name') or 'child', 120)}")
         if stop is not None and s["status"] not in FINISHED:
-            self._locate(stop["threadId"], stop.get("reason"))
+            self._locate(stop["threadId"], stop.get("reason"), stop.get("description"))
 
     def _build(self, event: dict) -> None:
         task, status = event.get("task"), event.get("status")
@@ -507,22 +628,29 @@ class Session:
             self._changed(status="build_failed", exit_code=event.get("exit_code"), message=message,
                           build={"task": task, "status": "failed", "exit_code": event.get("exit_code")})
 
-    def _message(self, direction: str, m: dict, stop: dict | None) -> dict | None:
-        """Apply one Debug Adapter Protocol message; returns the stop still to locate, if any."""
+    def _message(self, direction: str, m: dict, stop: dict | None, session: str | None = None) -> dict | None:
+        """Apply one Debug Adapter Protocol message; returns the stop still to locate, if any.
+        `session` names the debug session it belongs to: a program can run in child sessions (Node.js, browsers,
+        Python subprocesses), and each has its own sequence numbers, threads and capabilities."""
         s = self.s
         kind, body = m.get("type"), m.get("body") or {}
+        if s["root"] is None and session is not None:
+            s["root"] = session
         if direction == "to_adapter" and kind == "request":
             arguments = m.get("arguments") or {}
+            pending = f"{session}:{m.get('seq')}"
             if m.get("command") == "setBreakpoints" and isinstance(arguments.get("source"), dict):
-                s["pending"][m.get("seq")] = ("lines", arguments["source"].get("path"),
-                                              [b.get("line") for b in arguments.get("breakpoints") or []])
+                s["pending"][pending] = ("lines", arguments["source"].get("path"),
+                                         [b.get("line") for b in arguments.get("breakpoints") or []])
             elif m.get("command") == "setFunctionBreakpoints":
-                s["pending"][m.get("seq")] = ("functions", None, [b.get("name") for b in arguments.get("breakpoints") or []])
+                s["pending"][pending] = ("functions", None, [b.get("name") for b in arguments.get("breakpoints") or []])
             return stop
         if kind == "response":
             if m.get("command") == "initialize":
-                s["capabilities"] = body
-            sent = s["pending"].pop(m.get("request_seq"), None)
+                s["caps"][session] = body
+                if session in (None, s["root"]) or not s["capabilities"]:
+                    s["capabilities"] = body
+            sent = s["pending"].pop(f"{session}:{m.get('request_seq')}", None)
             if sent:
                 what, file, items = sent
                 for bp, item in zip(body.get("breakpoints") or [], items):
@@ -545,7 +673,12 @@ class Session:
             self._capture(body)
         elif event == "stopped":
             s["thread_id"] = body.get("threadId")
-            return {"threadId": body.get("threadId"), "reason": body.get("reason")}
+            s["active"] = session if session is not None else s["root"]
+            return {"threadId": body.get("threadId"), "reason": body.get("reason"), "description": body.get("description")}
+        elif event == "capabilities" and isinstance(body.get("capabilities"), dict):
+            s["caps"][session] = {**s["caps"].get(session, {}), **body["capabilities"]}
+        elif event in ("thread", "process", "module", "loadedSource", "progressStart", "progressEnd"):
+            self._event_activity(event, body)
         elif event == "continued":
             if s["status"] not in FINISHED:
                 self._changed(status="running", location=None, reason=None, exception=None)
@@ -554,8 +687,9 @@ class Session:
             if s["status"] != "ended":
                 s["exit_code"] = body.get("exitCode")
         elif event == "terminated":
-            self._finish("the program exited")
-            return None
+            if session in (None, s["root"]):  # a child session ending (a subprocess) does not end the program
+                self._finish("the program exited")
+                return None
         return stop
 
     def _capture(self, body: dict) -> None:
@@ -567,10 +701,54 @@ class Session:
         s["output"] += [line[:500] for line in lines if line.strip()]
         del s["output"][:-60]
 
-    def _locate(self, thread_id, reason) -> None:
+    def _activity(self, text: str) -> None:
+        s = self.s
+        s["activity_seq"] += 1
+        s["activity"].append({"seq": s["activity_seq"], "text": text})
+        del s["activity"][:-MAX_ACTIVITY]
+
+    def _event_activity(self, event: str, body: dict) -> None:
+        """Threads, processes and modules that start and end, and long debugger work, for the agent to see."""
+        s = self.s
+        if event == "thread":
+            self._activity(f"thread {body.get('threadId')} {body.get('reason') or 'changed'}")
+        elif event == "process":
+            pid = body.get("systemProcessId")
+            self._activity(f"process {one_line(body.get('name') or '', 200)}" + (f" ({pid})" if pid else "")
+                           + f" {body.get('startMethod') or 'started'}")
+        elif event == "module":
+            module = body.get("module") if isinstance(body.get("module"), dict) else {}
+            key, reason = str(module.get("id")), body.get("reason") or "new"
+            if reason == "removed":
+                s["modules"].pop(key, None)
+            else:
+                s["modules"][key] = {**s["modules"].get(key, {}), **module}
+            if len(s["modules"]) <= 30 or reason != "new":
+                status = f" ({module['symbolStatus']})" if module.get("symbolStatus") else ""
+                self._activity(f"module {one_line(module.get('name') or key, 200)} {'loaded' if reason == 'new' else reason}"
+                               f"{status}")
+        elif event == "loadedSource":
+            source = body.get("source") if isinstance(body.get("source"), dict) else {}
+            if source.get("sourceReference") and not source.get("path"):
+                self._activity(f"source without a file loaded: {one_line(source.get('name') or '', 200)}")
+        elif event == "progressStart":
+            self._activity(f"debugger: {one_line(body.get('title') or '', 200)}"
+                           + (f" ({one_line(body.get('message'), 200)})" if body.get("message") else ""))
+
+    def _caps(self) -> dict:
+        """The capabilities of the debug session the program stopped in (a child session, if any)."""
+        s = self.s
+        return s["caps"].get(s["active"]) or s["caps"].get(s["root"]) or s["capabilities"]
+
+    def _need(self, capability: str, what: str) -> None:
+        if not self._caps().get(capability):
+            kind = self.s["launch"].get("type")
+            raise DebugError("NOT_SUPPORTED", f"this debugger ({kind}) cannot {what}")
+
+    def _locate(self, thread_id, reason, description: str | None = None) -> None:
         s = self.s
         exception = None
-        if reason == "exception" and s["capabilities"].get("supportsExceptionInfoRequest"):
+        if reason == "exception" and self._caps().get("supportsExceptionInfoRequest"):
             try:
                 body = self._dap("exceptionInfo", {"threadId": thread_id})
                 exception = {"id": body.get("exceptionId"), "description": body.get("description") or ""}
@@ -580,9 +758,14 @@ class Session:
         try:
             frames = self._dap("stackTrace", {"threadId": thread_id, "startFrame": 0, "levels": 1}).get("stackFrames") or []
             if frames:
-                location = {"file": self._relative((frames[0].get("source") or {}).get("path")), "line": frames[0].get("line")}
+                source = frames[0].get("source") or {}
+                file = self._relative(source.get("path")) or f"(no file) {source.get('name') or frames[0].get('name') or ''}".strip()
+                location = {"file": file, "line": frames[0].get("line")}
         except DebugError as exc:
             _LOG.warning("error handling stopped: %s", exc.message)
+        if reason == "data breakpoint" and description:
+            reason = f"data breakpoint: {one_line(description, 200)}"
+        s["frames"] = {}
         self._changed(status="paused", reason=reason, location=location, exception=exception)
 
     def _finish(self, reason: str, exit_code=..., message: str | None = None) -> None:
@@ -600,8 +783,17 @@ class Session:
         self._changed(**changes)
 
     def _dap(self, command: str, arguments: dict, timeout_ms: int = 10000) -> dict:
-        return self._relay("dap", {"command": command, "arguments": arguments, "timeout_ms": timeout_ms},
-                           timeout=timeout_ms / 1000 + 5).get("body") or {}
+        request = {"command": command, "arguments": arguments, "timeout_ms": timeout_ms}
+        if self.s is not None and self.s.get("active") is not None:
+            request["session"] = self.s["active"]
+        try:
+            return self._relay("dap", request, timeout=timeout_ms / 1000 + 5).get("body") or {}
+        except DebugError as exc:
+            if exc.code == "BAD_REQUEST" and "is not allowed" in exc.message:
+                raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')}"
+                                                  f" is older than this server and cannot send {command}. Run autodebug "
+                                                  "setup, then reload the IDE window (Visual Studio: close it first)") from None
+            raise
 
     def current(self, *statuses: str) -> dict:
         if self.s is None:
@@ -652,7 +844,9 @@ class Session:
             return {"version": 0, "status": "none"}
         session = [{"file": b["file"], "line": b["line"], "source": "session",
                     "verified": self._verified(f"{_key(b['full'])}:{b['line']}"),
-                    "message": self._note(f"{_key(b['full'])}:{b['line']}", b["line"])} for b in s["breakpoints"]]
+                    "message": self._note(f"{_key(b['full'])}:{b['line']}", b["line"]),
+                    **{k: b[k] for k in ("column", "condition", "hit_condition", "log_message") if b.get(k) is not None}}
+                   for b in s["breakpoints"]]
         functions = [{"function": f["name"], "source": "session", "verified": self._verified(f"fn:{f['name']}"),
                       "message": ""} for f in s["functions"]]
         ended = s["status"] == "ended"
@@ -665,6 +859,9 @@ class Session:
             "output": s["output"][-20:] if s["status"] in ("ended", "paused") else [],
             "output_note": OUTPUT_NOTE if ended and not s["output"] and str(s["launch"].get("console") or "").endswith("Terminal")
             else None,
+            "activity": s["activity"][-10:],
+            "watches": [{"name": w["name"], "access": w["access"], "verified": w.get("verified", False),
+                         "message": w.get("message") or ""} for w in s["watches"]],
         }
 
     def state(self, args: dict) -> dict:
@@ -695,9 +892,20 @@ class Session:
         levels = max(1, min(int(args.get("levels") or 20), 200))
         start = max(0, int(args.get("start_frame") or 0))
         body = self._dap("stackTrace", {"threadId": s["thread_id"], "startFrame": start, "levels": levels})
-        frames = [{"id": f.get("id"), "name": f.get("name"),
-                   "file": self._relative((f.get("source") or {}).get("path")) or "(no source)", "line": f.get("line")}
-                  for f in (body.get("stackFrames") or [])[:levels]]
+        frames = []
+        for f in (body.get("stackFrames") or [])[:levels]:
+            source = f.get("source") or {}
+            frame = {"id": f.get("id"), "name": f.get("name"), "file": self._relative(source.get("path")) or "(no source)",
+                     "line": f.get("line")}
+            if not source.get("path") and source.get("sourceReference"):
+                frame["source_reference"] = source["sourceReference"]
+                frame["source_name"] = source.get("name") or ""
+            if f.get("instructionPointerReference"):
+                frame["instruction"] = f["instructionPointerReference"]
+            if f.get("moduleId") is not None:
+                frame["module"] = s["modules"].get(str(f["moduleId"]), {}).get("name") or str(f["moduleId"])
+            s["frames"][f.get("id")] = frame
+            frames.append(frame)
         total = body.get("totalFrames")
         return {"frames": frames, "total": start + len(frames) if total is None else total}
 
@@ -720,54 +928,165 @@ class Session:
         return {"threads": threads, "current": s["thread_id"], "state": self.snapshot()}
 
     def exceptions(self, args: dict) -> dict:
+        """List the debugger's exception filters; enable some (each with a condition where the debugger takes one),
+        and with `types` stop only for those exception types."""
         s = self.current()
         if not s["connected"] or s["status"] in FINISHED or s["status"] in ("awaiting_approval", "building"):
             raise DebugError("NOT_FOUND", "the debugger is not connected yet")
-        filters = s["capabilities"].get("exceptionBreakpointFilters") or []
-        offered = [{"id": f.get("filter"), "label": f.get("label"), "default": bool(f.get("default"))} for f in filters]
-        enable = args.get("enable")
-        if isinstance(enable, list):
-            known = [f["id"] for f in offered]
-            unknown = [i for i in enable if i not in known]
+        caps = self._caps()
+        filters = caps.get("exceptionBreakpointFilters") or []
+        offered = [{"id": f.get("filter"), "label": f.get("label"), "default": bool(f.get("default")),
+                    "condition": bool(f.get("supportsCondition"))} for f in filters]
+        enable, types = args.get("enable"), args.get("types")
+        if isinstance(enable, list) or types:
+            known = {f["id"]: f for f in offered}
+            chosen = [e if isinstance(e, dict) else {"id": e} for e in enable or []]
+            unknown = [str(c.get("id")) for c in chosen if c.get("id") not in known]
             if unknown:
                 raise DebugError("BAD_REQUEST", f"unknown exception filters: {', '.join(unknown)}; offered: "
                                                 f"{', '.join(known) or 'none'}")
-            self._dap("setExceptionBreakpoints", {"filters": enable})
-        return {"filters": offered}
+            request: dict = {"filters": [c["id"] for c in chosen if not c.get("condition")]}
+            conditioned = [c for c in chosen if c.get("condition")]
+            if conditioned:
+                if not caps.get("supportsExceptionFilterOptions"):
+                    raise DebugError("NOT_SUPPORTED", "this debugger takes no conditions on exception filters")
+                missing = [c["id"] for c in conditioned if not known[c["id"]]["condition"]]
+                if missing:
+                    raise DebugError("NOT_SUPPORTED", f"filter {', '.join(missing)} takes no condition")
+                request["filterOptions"] = [{"filterId": c["id"], "condition": str(c["condition"])[:300]}
+                                            for c in conditioned]
+            if types:
+                if not caps.get("supportsExceptionOptions"):
+                    raise DebugError("NOT_SUPPORTED", "this debugger cannot stop for chosen exception types; enable a "
+                                                      "filter and check the exception at the stop")
+                mode = {"unhandled": "unhandled", "always": "always"}.get(args.get("mode") or "always")
+                if mode is None:
+                    raise DebugError("BAD_REQUEST", "mode is always or unhandled")
+                names = [str(t)[:200] for t in types]
+                path = [{"names": names}]
+                if s["launch"].get("type") in ("debugpy", "python"):
+                    path.insert(0, {"names": ["Python Exceptions"]})
+                request["exceptionOptions"] = [{"path": path, "breakMode": mode}]
+            self._dap("setExceptionBreakpoints", request)
+        return {"filters": offered, "types_supported": bool(caps.get("supportsExceptionOptions"))}
+
+    # -- variables -----------------------------------------------------------------------
+
+    def _frame_id(self, args: dict) -> int:
+        s = self.s
+        frame = args.get("frame")
+        if isinstance(frame, int):
+            return frame
+        frames = self._dap("stackTrace", {"threadId": s["thread_id"], "startFrame": 0, "levels": 1}).get("stackFrames") or []
+        if not frames:
+            raise DebugError("NOT_FOUND", "the debugger shows no stack frame")
+        return frames[0]["id"]
+
+    def _format(self, args: dict) -> dict | None:
+        if not args.get("hex"):
+            return None
+        self._need("supportsValueFormattingOptions", "show values in hex")
+        return {"hex": True}
 
     def variables(self, args: dict) -> dict:
-        s = self.current("paused")
-        frame = args.get("frame")
-        if not isinstance(frame, int):
-            frames = self._dap("stackTrace", {"threadId": s["thread_id"], "startFrame": 0, "levels": 1}).get("stackFrames") or []
-            if not frames:
-                raise DebugError("NOT_FOUND", "the debugger shows no stack frame")
-            frame = frames[0]["id"]
+        """Variables of a frame. `scope` reads one scope by name (also the slow ones: globals, registers); `start`
+        and `count` page through a large array or list; `hex` asks the debugger for hexadecimal values."""
+        self.current("paused")
+        frame = self._frame_id(args)
+        fmt = self._format(args)
         depth = max(0, min(int(args.get("depth") or 0), 3))
         scopes = self._dap("scopes", {"frameId": frame}).get("scopes") or []
+        listed = [{"name": sc.get("name"), "expensive": bool(sc.get("expensive"))} for sc in scopes]
         wanted = [str(n) for n in args["names"]] if isinstance(args.get("names"), list) else None
-        searched = [sc for sc in scopes if not sc.get("expensive") and sc.get("variablesReference")]
+        scope_name = args.get("scope")
+        if scope_name:
+            searched = [sc for sc in scopes if str(sc.get("name", "")).lower() == str(scope_name).lower()]
+            if not searched:
+                raise DebugError("NOT_FOUND", f"no scope {scope_name}; this frame has: "
+                                              f"{', '.join(str(sc.get('name')) for sc in scopes) or 'none'}")
+        else:
+            searched = [sc for sc in scopes if not sc.get("expensive") and sc.get("variablesReference")]
+            if not wanted:
+                # The frame's own variables (gdb lists Arguments and Locals apart), not globals or registers.
+                own = [sc for sc in searched if not _WIDE_SCOPE.search(str(sc.get("name")))]
+                searched = own or searched[:1]
         found: dict[str, dict] = {}
-        for scope in searched if wanted else searched[:1]:
-            for variable in (self._children(scope["variablesReference"]))[:200]:
+        for scope in searched:
+            for variable in (self._children(scope["variablesReference"], fmt))[:500 if scope_name else 200]:
                 name = variable.get("name")
                 if name not in found and not re.fullmatch(r"(special|function) variables", str(name)):
                     found[name] = variable
         budget = {"nodes": 0}
+        page = None
+        if args.get("start") is not None or args.get("count") is not None:
+            if not wanted or len(wanted) != 1:
+                raise DebugError("BAD_REQUEST", "start and count page through one variable: pass exactly one name")
+            page = (max(0, int(args.get("start") or 0)), max(1, min(int(args.get("count") or 50), 200)))
         if wanted is None:
             chosen = list(found.values())
         else:
             chosen = []
             for name in wanted:
-                variable = self._lookup(found, name)
+                variable = self._lookup(found, name, fmt)
                 if variable is not None:
                     chosen.append({**variable, "name": name})
-        return {"frame": frame, "variables": [self._expand(v, depth, wanted is not None, budget) for v in chosen]}
+        if page is not None:
+            return {"frame": frame, "scopes": listed,
+                    "variables": [self._page(v, page[0], page[1], fmt) for v in chosen]}
+        return {"frame": frame, "scopes": listed,
+                "variables": [self._expand(v, depth, wanted is not None, budget, fmt) for v in chosen]}
 
-    def _children(self, reference: int) -> list[dict]:
-        return self._dap("variables", {"variablesReference": reference}).get("variables") or []
+    def _children(self, reference: int, fmt: dict | None = None, start: int | None = None,
+                  count: int | None = None, indexed: bool = False) -> list[dict]:
+        request: dict = {"variablesReference": reference}
+        if fmt:
+            request["format"] = fmt
+        if start is not None:
+            request.update({"start": start, "count": count or 1})
+            if indexed:
+                request["filter"] = "indexed"
+        return self._dap("variables", request).get("variables") or []
 
-    def _lookup(self, roots: dict[str, dict], name: str) -> dict | None:
+    def _child(self, parent: dict, part: str, fmt: dict | None) -> dict | None:
+        """One child by name. An index into a large array is read on its own when the debugger pages, and found
+        by following debugpy's "more" links otherwise."""
+        if part.isdigit() and parent.get("indexedVariables"):
+            for child in self._children(parent["variablesReference"], fmt, int(part), 1, indexed=True):
+                if _child_matches(child, part):
+                    return child
+        if part.isdigit():
+            found, _ = self._slice(parent["variablesReference"], int(part), int(part) + 1, fmt, [200])
+            return found[0] if found else None
+        return next((c for c in self._children(parent["variablesReference"], fmt) if _child_matches(c, part)), None)
+
+    def _slice(self, reference: int, start: int, end: int, fmt: dict | None, budget: list[int]) -> tuple[list[dict], int | None]:
+        """The elements with index start..end-1 of a list or array, and its length when the debugger says it.
+        Follows debugpy's "more" child and its [a:b] ranges, reading only the ranges that hold those elements."""
+        elements, total, position = [], None, 0
+        for child in self._children(reference, fmt):
+            name = str(child.get("name"))
+            bounds = _RANGE.fullmatch(name)
+            if _is_more(child) or (bounds and child.get("variablesReference")):
+                if bounds and (int(bounds.group(2)) <= start or int(bounds.group(1)) >= end):
+                    continue
+                if budget[0] <= 0:
+                    break
+                budget[0] -= 1
+                elements += self._slice(child["variablesReference"], start, end, fmt, budget)[0]
+                continue
+            if name == "len()" and str(child.get("value")).isdigit():
+                total = int(child["value"])
+                continue
+            if _NOT_ELEMENTS.fullmatch(name):
+                continue
+            digits = name.strip("[]")
+            index = int(digits) if digits.isdigit() else position
+            position += 1
+            if start <= index < end:
+                elements.append(child)
+        return elements, total
+
+    def _lookup(self, roots: dict[str, dict], name: str, fmt: dict | None = None) -> dict | None:
         parts = split_path(name)
         if not parts:
             return None
@@ -779,49 +1098,275 @@ class Session:
         for part in parts[1:]:
             if not current.get("variablesReference"):
                 return None
-            current = next((c for c in self._children(current["variablesReference"]) if _child_matches(c, part)), None)
+            current = self._child(current, part, fmt)
             if current is None:
                 return None
         return current
 
-    def _expand(self, variable: dict, depth: int, named: bool, budget: dict) -> dict:
+    def _page(self, variable: dict, start: int, count: int, fmt: dict | None) -> dict:
+        node = {"name": variable.get("name"), "type": variable.get("type") or "", "value": str(variable.get("value"))}
+        if not variable.get("variablesReference"):
+            return node
+        total = variable.get("indexedVariables")
+        if total:
+            children = self._children(variable["variablesReference"], fmt, start, min(count, max(0, total - start)), True)
+        else:
+            children, known = self._slice(variable["variablesReference"], start, start + count, fmt, [200])
+            total = known if known is not None else (len(children) + start if len(children) < count else None)
+        node["children"] = [{"name": c.get("name"), "type": c.get("type") or "", "value": str(c.get("value")),
+                             **({"expandable": True} if c.get("variablesReference") else {})} for c in children]
+        node["page"] = {"start": start, "count": len(children), "total": total}
+        return node
+
+    def _expand(self, variable: dict, depth: int, named: bool, budget: dict, fmt: dict | None = None) -> dict:
         node = {"name": variable.get("name"), "type": variable.get("type") or "", "value": str(variable.get("value"))}
         if budget["nodes"] >= 1000:
             return {**node, "expandable": True}
         budget["nodes"] += 1
         if not variable.get("variablesReference"):
             return node
+        if variable.get("indexedVariables"):
+            node["size"] = variable["indexedVariables"]
         if depth <= 0:
             return {**node, "expandable": True}
-        children = self._children(variable["variablesReference"])
+        limit = 50 if named else 20
+        if variable.get("indexedVariables"):
+            children = self._children(variable["variablesReference"], fmt, 0, min(limit, variable["indexedVariables"]), True)
+            total = variable["indexedVariables"] + (variable.get("namedVariables") or 0)
+        else:
+            children = self._children(variable["variablesReference"], fmt)
+            total = len(children)
         node["children"] = []
-        for child in children[:50 if named else 20]:
+        for child in children[:limit]:
             if budget["nodes"] >= 1000:
                 break
-            node["children"].append(self._expand(child, depth - 1, named, budget))
-        if len(children) > len(node["children"]):
-            node["more"] = len(children) - len(node["children"])
+            node["children"].append(self._expand(child, depth - 1, named, budget, fmt))
+        if total > len(node["children"]):
+            node["more"] = total - len(node["children"])
             node["expandable"] = True
         return node
 
+    # -- watchpoints, modules, code without a file, machine code and memory --------------------
+
+    def _variable(self, name: str, frame: int) -> tuple[dict | None, int, str]:
+        """A variable by path in `frame`: (it, the reference of the container that holds it, its name there)."""
+        scopes = [sc for sc in self._dap("scopes", {"frameId": frame}).get("scopes") or [] if sc.get("variablesReference")]
+        parts = split_path(name)
+        if not parts:
+            raise DebugError("BAD_REQUEST", f"{name!r} is not a variable name or path")
+        for scope in scopes:
+            if scope.get("expensive") and len(scopes) > 1:
+                continue
+            container = scope["variablesReference"]
+            current = next((v for v in self._children(container) if v.get("name") == parts[0]), None)
+            if current is None:
+                continue
+            for part in parts[1:]:
+                if not current.get("variablesReference"):
+                    return None, 0, ""
+                container = current["variablesReference"]
+                current = self._child(current, part, None)
+                if current is None:
+                    return None, 0, ""
+            return current, container, current.get("name") or parts[-1]
+        return None, 0, ""
+
+    def watch(self, args: dict) -> dict:
+        """Data breakpoints: stop when a variable's value changes (or is read). The debugger watches the memory
+        itself; nothing is evaluated."""
+        s = self.current("paused")
+        add, remove = args.get("add") or [], {str(n) for n in args.get("remove") or []}
+        if add:
+            self._need("supportsDataBreakpoints", "stop when a value changes (data breakpoints)")
+        frame = self._frame_id(args)
+        watches = [w for w in s["watches"] if w["name"] not in remove]
+        for item in add:
+            name = str(item.get("name") or "")
+            access = item.get("access") or "write"
+            if access not in ("write", "read", "readWrite"):
+                raise DebugError("BAD_REQUEST", "access is write, read or readWrite")
+            variable, container, child = self._variable(name, frame)
+            if variable is None:
+                raise DebugError("NOT_FOUND", f"no variable {name} in this frame")
+            info = self._dap("dataBreakpointInfo", {"variablesReference": container, "name": child, "frameId": frame})
+            if not info.get("dataId"):
+                raise DebugError("NOT_SUPPORTED", f"the debugger cannot watch {name}: "
+                                                  f"{one_line(info.get('description') or 'no reason given', 200)}")
+            types = info.get("accessTypes")
+            if types and access not in types:
+                raise DebugError("NOT_SUPPORTED", f"the debugger can watch {name} only for: {', '.join(types)}")
+            watches = [w for w in watches if w["name"] != name]
+            watches.append({"name": name, "access": access, "data_id": info["dataId"],
+                            "description": one_line(info.get("description") or name, 200)})
+        if len(watches) > 8:
+            raise DebugError("LIMIT", "at most 8 watched values at a time (processors have few hardware watchpoints)")
+        answer = self._dap("setDataBreakpoints", {"breakpoints": [{"dataId": w["data_id"], "accessType": w["access"]}
+                                                                  for w in watches]}) if (add or remove) else {}
+        for w, bp in zip(watches, answer.get("breakpoints") or []):
+            w["verified"], w["message"] = bool(bp.get("verified")), str(bp.get("message") or "")
+        s["watches"] = watches
+        self._changed()
+        return {"watches": [{"name": w["name"], "access": w["access"], "verified": w.get("verified", False),
+                             "what": w["description"], **({"note": w["message"]} if w.get("message") else {})}
+                            for w in watches]}
+
+    def modules(self, args: dict) -> dict:
+        """Loaded modules (libraries, DLLs, packages) with path, version and whether symbols loaded; with
+        `sources`, the source files the debugger loaded, including code that has no file."""
+        s = self.current("paused", "running")
+        listed = None
+        if self._caps().get("supportsModulesRequest"):
+            try:
+                listed = self._dap("modules", {"startModule": 0, "moduleCount": 0}).get("modules")
+            except DebugError:
+                listed = None
+        if listed is None:
+            listed = list(s["modules"].values())
+        wanted = str(args.get("filter") or "").lower()
+        modules = [{"name": m.get("name"), "path": m.get("path"), "version": m.get("version"),
+                    "symbols": m.get("symbolStatus"), "optimized": m.get("isOptimized"),
+                    "user_code": m.get("isUserCode")}
+                   for m in listed if not wanted or wanted in f"{m.get('name')} {m.get('path')}".lower()]
+        result = {"modules": [{k: v for k, v in m.items() if v is not None} for m in modules[:300]],
+                  "total": len(modules)}
+        if args.get("sources"):
+            self._need("supportsLoadedSourcesRequest", "list loaded sources")
+            sources = self._dap("loadedSources", {}).get("sources") or []
+            result["sources"] = [{"name": src.get("name"), "path": self._relative(src.get("path")),
+                                  "source_reference": src.get("sourceReference")}
+                                 for src in sources[:500] if not wanted or wanted in str(src.get("name")).lower()]
+        return result
+
+    def source(self, args: dict) -> dict:
+        """The code of a frame that has no file (generated, decompiled or evaluated code), as the debugger shows it."""
+        s = self.current("paused")
+        reference = args.get("source_reference")
+        line = None
+        if reference is None:
+            frame_id = args.get("frame")
+            frame = s["frames"].get(frame_id) if frame_id is not None else None
+            if frame is None:
+                frames = self.stack({"levels": max(1, int(args.get("frame_index") or 0) + 1)})["frames"]
+                index = int(args.get("frame_index") or 0)
+                if index >= len(frames):
+                    raise DebugError("BAD_REQUEST", f"the stack has {len(frames)} frames")
+                frame = frames[index]
+            if frame["file"] != "(no source)":
+                return {"file": frame["file"], "line": frame["line"],
+                        "note": "this frame's code is in a file; read the file itself"}
+            reference, line = frame.get("source_reference"), frame.get("line")
+            if not reference:
+                raise DebugError("NOT_FOUND", "the debugger has no code for this frame; try disassemble")
+        body = self._dap("source", {"sourceReference": int(reference), "source": {"sourceReference": int(reference)}})
+        lines = clean_text(body.get("content") or "", 400000).splitlines()
+        first = max(1, (line or 1) - 40)
+        shown = lines[first - 1:first + 119]
+        return {"source_reference": reference, "line": line, "total_lines": len(lines),
+                "code": [f"{n:>5}{'>' if n == line else ' '} {text[:300]}" for n, text in enumerate(shown, start=first)]}
+
+    def _instruction(self, args: dict) -> tuple[str, int]:
+        """The memory reference of a frame's current instruction."""
+        s = self.s
+        index = int(args.get("frame_index") or 0)
+        frames = self.stack({"levels": index + 1})["frames"]
+        if index >= len(frames):
+            raise DebugError("BAD_REQUEST", f"the stack has {len(frames)} frames")
+        reference = frames[index].get("instruction")
+        if not reference:
+            raise DebugError("NOT_SUPPORTED", f"this debugger ({s['launch'].get('type')}) gives no instruction address")
+        return reference, index
+
+    def disassemble(self, args: dict) -> dict:
+        """Machine code around a frame's current instruction, for crashes in code without source or in
+        optimized builds."""
+        self.current("paused")
+        self._need("supportsDisassembleRequest", "disassemble")
+        reference, _ = self._instruction(args)
+        before = max(0, min(int(args.get("before") if args.get("before") is not None else 8), 50))
+        after = max(1, min(int(args.get("after") if args.get("after") is not None else 16), 100))
+        def address(value) -> int | None:
+            try:
+                return int(str(value), 16)
+            except ValueError:
+                return None
+
+        here = address(reference)
+        items = self._dap("disassemble", {"memoryReference": reference, "instructionOffset": -before,
+                                          "instructionCount": before + after, "resolveSymbols": True}).get("instructions") or []
+        if before and not any(address(i.get("address")) == here for i in items):
+            # Some debuggers (gdb 15) cannot go backwards from an address: start at the current instruction instead.
+            items = self._dap("disassemble", {"memoryReference": reference, "instructionOffset": 0,
+                                              "instructionCount": after, "resolveSymbols": True}).get("instructions") or []
+        rows = []
+        for item in items:
+            row = {"address": item.get("address"), "instruction": clean_text(item.get("instruction"), 200)}
+            if item.get("symbol"):
+                row["symbol"] = clean_text(item["symbol"], 200)
+            location = item.get("location") if isinstance(item.get("location"), dict) else {}
+            if location.get("path") and item.get("line"):
+                row["source"] = f"{self._relative(location['path'])}:{item['line']}"
+            if here is not None and address(item.get("address")) == here:
+                row["current"] = True
+            rows.append(row)
+        return {"instructions": rows}
+
+    def memory(self, args: dict) -> dict:
+        """Raw bytes of a variable (or at a frame's instruction), as hex. At most 256 bytes; bytes whose text looks
+        like a key or token, and variables with secret names, are hidden."""
+        s = self.current("paused")
+        self._need("supportsReadMemoryRequest", "read memory")
+        count = max(1, min(int(args.get("count") or 64), MAX_MEMORY))
+        offset = int(args.get("offset") or 0)
+        name = args.get("name")
+        if name:
+            variable, _, _ = self._variable(str(name), self._frame_id(args))
+            if variable is None:
+                raise DebugError("NOT_FOUND", f"no variable {name} in this frame")
+            if is_secret_name(str(name)) or any(is_secret_name(part) for part in split_path(str(name))):
+                return {"name": name, "bytes": REDACTED}
+            reference = variable.get("memoryReference")
+            if not reference:
+                raise DebugError("NOT_SUPPORTED", f"the debugger gives no memory address for {name}")
+        else:
+            reference, _ = self._instruction(args)
+        body = self._dap("readMemory", {"memoryReference": reference, "offset": offset, "count": count})
+        data = base64.b64decode(body.get("data") or "")[:count]
+        text = "".join(chr(b) if 32 <= b < 127 else "." for b in data)
+        if looks_secret(text) or looks_secret(data.decode("utf-8", "ignore")):
+            return {"address": body.get("address") or reference, "bytes": REDACTED}
+        rows = [f"{(offset + i):+06x}  {' '.join(f'{b:02x}' for b in data[i:i + 16]):<47}  {text[i:i + 16]}"
+                for i in range(0, len(data), 16)]
+        result = {"address": body.get("address") or reference, "count": len(data), "rows": rows}
+        if body.get("unreadableBytes"):
+            result["unreadable"] = body["unreadableBytes"]
+        return result
+
+    def locations(self, args: dict) -> dict:
+        """The lines in a range where a breakpoint can bind."""
+        s = self.current("starting", "running", "paused")
+        self._need("supportsBreakpointLocationsRequest", "list the lines where breakpoints bind")
+        b = self._breakpoint({"file": args.get("file"), "line": args.get("line")}, s["folder"], s["roots"])
+        end = max(b["line"], int(args.get("end_line") or b["line"] + 20))
+        body = self._dap("breakpointLocations", {"source": {"path": b["full"]}, "line": b["line"], "endLine": end})
+        lines = sorted({loc.get("line") for loc in body.get("breakpoints") or [] if loc.get("line")})
+        return {"file": b["file"], "lines": lines}
+
     # -- control ---------------------------------------------------------------------
 
-    def step(self, args: dict) -> dict:
-        s = self.current("paused")
-        command = STEP_COMMANDS.get(args.get("kind"))
-        if command is None:
-            raise DebugError("BAD_REQUEST", "kind is over, into or out")
-        if s["steps_used"] >= s["max_steps"]:
-            raise DebugError("LIMIT", f"the approved limit of {s['max_steps']} steps is used up")
-        wait_ms = max(0, min(int(args.get("wait_ms") or 15000), 60000))
+    def _move(self, command: str, request: dict, wait_ms: int, step: bool) -> dict:
+        s = self.s
         paused_at = (s["location"], s["reason"])
-        s["steps_used"] += 1
-        self._changed(status="running", location=None, reason=None)
+        if step:
+            if s["steps_used"] >= s["max_steps"]:
+                raise DebugError("LIMIT", f"the approved limit of {s['max_steps']} steps is used up")
+            s["steps_used"] += 1
+        self._changed(status="running", location=None, reason=None, exception=None)
         before = self.version
         try:
-            self._dap(command, {"threadId": s["thread_id"]})
+            self._dap(command, request)
         except DebugError:
-            s["steps_used"] -= 1
+            if step:
+                s["steps_used"] -= 1
             self._changed(status="paused", location=paused_at[0], reason=paused_at[1])
             raise
         deadline = time.monotonic() + wait_ms / 1000
@@ -832,10 +1377,50 @@ class Session:
             self._pump(int(min(remaining, 25) * 1000))
         return {"state": self.snapshot()}
 
+    def step(self, args: dict) -> dict:
+        s = self.current("paused")
+        command = STEP_COMMANDS.get(args.get("kind"))
+        if command is None:
+            raise DebugError("BAD_REQUEST", "kind is over, into, out or back")
+        if s["steps_used"] >= s["max_steps"]:
+            raise DebugError("LIMIT", f"the approved limit of {s['max_steps']} steps is used up")
+        request: dict = {"threadId": s["thread_id"]}
+        if command == "stepBack":
+            self._need("supportsStepBack", "step backwards (it needs a recording debugger such as rr)")
+        if args.get("single_thread"):
+            self._need("supportsSingleThreadExecutionRequests", "step one thread while the others stay paused")
+            request["singleThread"] = True
+        if args.get("instruction"):
+            self._need("supportsSteppingGranularity", "step one machine instruction")
+            request["granularity"] = "instruction"
+        target = args.get("target")
+        if target:
+            if command != "stepIn":
+                raise DebugError("BAD_REQUEST", "target is for kind into: the call to step into")
+            self._need("supportsStepInTargetsRequest", "step into a chosen call")
+            frame = self._frame_id({})
+            targets = self._dap("stepInTargets", {"frameId": frame}).get("targets") or []
+            labels = [str(t.get("label")) for t in targets]
+            chosen = next((t for t in targets if str(t.get("label")) == target), None) or next(
+                (t for t in targets if str(target).lower() in str(t.get("label")).lower()), None)
+            if chosen is None:
+                raise DebugError("NOT_FOUND", f"no call {target!r} on this line; calls here: {', '.join(labels) or 'none'}")
+            request["targetId"] = chosen.get("id")
+        wait_ms = max(0, min(int(args.get("wait_ms") or 15000), 60000))
+        return self._move(command, request, wait_ms, step=True)
+
     def resume(self, args: dict) -> dict:
         s = self.current("paused")
+        request: dict = {"threadId": s["thread_id"]}
+        command = "continue"
+        if args.get("reverse"):
+            self._need("supportsStepBack", "run backwards (it needs a recording debugger such as rr)")
+            command = "reverseContinue"
+        if args.get("single_thread"):
+            self._need("supportsSingleThreadExecutionRequests", "run one thread while the others stay paused")
+            request["singleThread"] = True
         self._changed(status="running", location=None, reason=None, exception=None)
-        self._dap("continue", {"threadId": s["thread_id"]})
+        self._dap(command, request)
         return {"state": self.snapshot()}
 
     def pause(self, args: dict) -> dict:
@@ -859,11 +1444,12 @@ class Session:
         gone_functions = [f for f in s["functions"] if f["name"] in set(args.get("remove_functions") or [])]
         added = [b for b in (self._breakpoint(b, s["folder"], s["roots"]) for b in args.get("add") or [])
                  if not any(x["full"] == b["full"] and x["line"] == b["line"] for x in s["breakpoints"])]
+        self._options_supported(added)
         new_functions = list(dict.fromkeys(str(n) for n in args.get("add_functions") or []
                                            if n not in {f["name"] for f in s["functions"]}))
         answer = self._relay("breakpoints", {
             "remove": [b["id"] for b in gone + gone_functions if b.get("id")],
-            "add": [{"file": b["full"], "line": b["line"], "condition": b["condition"]} for b in added],
+            "add": [self._placed(b) for b in added],
             "add_functions": new_functions,
         })
         for b, ident in zip(added, answer.get("breakpoint_ids", [])):

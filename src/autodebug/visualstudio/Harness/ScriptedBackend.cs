@@ -34,7 +34,7 @@ namespace AutoDebug.Harness
             [32] = new object[] { Var("co", "(1, 2, 3)", "Vector") },
         };
 
-        sealed class Mark { public string File, Function, Condition; public int Line; }
+        sealed class Mark { public string File, Function, Condition, Hit, Log; public int Line, Column, Hits; }
 
         readonly string workspace;
         readonly object sync = new object();
@@ -44,6 +44,7 @@ namespace AutoDebug.Harness
         IBackendEvents events;
         int pos = -1;
         bool done, exceptionSent, late;
+        readonly List<string> watched = new List<string>();
         volatile bool buildCancelled;
 
         public ScriptedBackend(string workspace)
@@ -148,10 +149,12 @@ namespace AutoDebug.Harness
             Say("LOG build terminated");
         }
 
-        public object AddBreakpoint(string file, int line, string condition)
+        public object AddBreakpoint(string file, int line, BreakpointOptions options)
         {
-            var mark = new Mark { File = file, Line = line, Condition = condition };
+            var mark = new Mark { File = file, Line = line, Column = options.Column, Condition = options.Condition, Hit = options.HitCondition, Log = options.LogMessage };
             lock (sync) marks.Add(mark);
+            if (options.Column > 0 || options.HitCondition != null || options.LogMessage != null)
+                Say($"PLACED {Path.GetFileName(file)}:{line} column={options.Column} hit={options.HitCondition} log={options.LogMessage}");
             return mark;
         }
 
@@ -185,7 +188,10 @@ namespace AutoDebug.Harness
             editor.Select(m => Json.Make("file", m.File, "line", (long)m.Line)).ToList();
 
         public Dictionary<string, object> Capabilities() => Json.Make(
-            "supportsExceptionInfoRequest", true,
+            "supportsExceptionInfoRequest", true, "supportsHitConditionalBreakpoints", true, "supportsLogPoints", true,
+            "supportsDataBreakpoints", true, "supportsValueFormattingOptions", true, "supportsModulesRequest", true,
+            "supportsSingleThreadExecutionRequests", true, "supportsSteppingGranularity", true, "supportsDisassembleRequest", true,
+            "supportsReadMemoryRequest", true, "supportsExceptionOptions", true,
             "exceptionBreakpointFilters", new List<object>
             {
                 Json.Make("filter", "cpp", "label", "C++ exceptions when thrown", "default", false),
@@ -202,6 +208,10 @@ namespace AutoDebug.Harness
                     late = false;
                     events.BindingChanged();
                 }
+                Event("process", Json.Make("name", "geometry.exe", "systemProcessId", 5150L));
+                Event("module", Json.Make("reason", "new", "module", Json.Make("id", "geometry.exe", "name", "geometry.exe",
+                    "path", Path.Combine(workspace, "build", "Debug", "geometry.exe"), "symbolStatus", "Symbols loaded.")));
+                Event("thread", Json.Make("reason", "started", "threadId", 2L));
                 for (var n = 0; n < (int.TryParse(Flag("HARNESS_FLOOD"), out var flood) ? flood : 0); n++)
                     Event("output", Json.Make("category", "stdout", "output", $"loading part {n}\n"));
                 Run();
@@ -216,19 +226,65 @@ namespace AutoDebug.Harness
         void Event(string name, Dictionary<string, object> body) =>
             events.Debugger(Json.Make("type", "event", "event", name, "body", body));
 
-        List<int> Stops()
+        // Whether a breakpoint stops the program here, as Visual Studio counts hits; a tracepoint only prints.
+        bool Stops(int line)
         {
+            List<Mark> here;
             lock (sync)
-                return marks.Concat(editor).Where(m => m.File != null && string.Equals(m.File, Source, StringComparison.OrdinalIgnoreCase))
-                    .Select(m => m.Line).ToList();
+                here = marks.Concat(editor).Where(m => m.File != null && m.Line == line
+                    && string.Equals(m.File, Source, StringComparison.OrdinalIgnoreCase)).ToList();
+            var stop = false;
+            foreach (var mark in here)
+            {
+                mark.Hits++;
+                if (mark.Hit != null)
+                {
+                    var count = int.Parse(new string(mark.Hit.Where(char.IsDigit).ToArray()));
+                    var at = mark.Hit.TrimStart().StartsWith(">=") ? mark.Hits >= count : mark.Hit.TrimStart().StartsWith("%") ? mark.Hits % count == 0 : mark.Hits == count;
+                    if (!at) continue;
+                }
+                if (mark.Log != null)
+                {
+                    var values = Vars();
+                    var text = System.Text.RegularExpressions.Regex.Replace(mark.Log, @"\{([^{}]*)\}", m => values.TryGetValue(m.Groups[1].Value.Trim(), out var v) ? v : m.Value);
+                    Event("output", Json.Make("category", "console", "output", text + "\n"));
+                    continue;
+                }
+                stop = true;
+            }
+            return stop;
+        }
+
+        Dictionary<string, string> Vars()
+        {
+            var values = new Dictionary<string, string>();
+            for (var i = 0; i + 1 < Here.Vars.Length; i += 2) values[Here.Vars[i]] = Here.Vars[i + 1];
+            return values;
+        }
+
+        string ChangedWatch()
+        {
+            if (pos <= 0 || watched.Count == 0) return null;
+            string Value(int at, string name)
+            {
+                var vars = Trace[at].Vars;
+                for (var i = 0; i + 1 < vars.Length; i += 2) if (vars[i] == name) return vars[i + 1];
+                return null;
+            }
+            return watched.FirstOrDefault(n => Value(pos, n) != null && Value(pos, n) != Value(pos - 1, n));
         }
 
         void Run()
         {
-            var stops = Stops();
             for (pos++; pos < Trace.Length; pos++)
             {
-                if (!stops.Contains(Trace[pos].Line)) continue;
+                var changed = ChangedWatch();
+                if (changed != null)
+                {
+                    Event("stopped", Json.Make("reason", "data breakpoint", "description", $"{changed} changed", "threadId", 1L));
+                    return;
+                }
+                if (!Stops(Trace[pos].Line)) continue;
                 var exception = Flag("HARNESS_EXCEPTION") == "1" && !exceptionSent;
                 exceptionSent = true;
                 Event("stopped", Json.Make("reason", exception ? "exception" : "breakpoint", "threadId", 1L));
@@ -259,20 +315,41 @@ namespace AutoDebug.Harness
                     if (Flag("HARNESS_STACK_THROW") == "1") throw new InvalidOperationException("stack trace failed");
                     var frames = new List<object>
                     {
-                        Json.Make("id", 1L, "name", "polygon_area", "source", Json.Make("path", Source), "line", (long)Here.Line),
+                        Json.Make("id", 1L, "name", "polygon_area", "source", Json.Make("path", Source), "line", (long)Here.Line,
+                            "instructionPointerReference", "0x00007FF6A1B21010"),
                         Json.Make("id", 2L, "name", "main", "source", Json.Make("path", Source), "line", 37L),
                     };
                     var levels = (int)(Json.Long(arguments, "levels") ?? 20);
                     return Json.Make("stackFrames", frames.Take(levels).ToList(), "totalFrames", 2L);
                 case "scopes":
                     return Json.Make("scopes", new List<object> {
-                        Json.Make("name", "Locals", "variablesReference", Json.Long(arguments, "frameId") == 1 ? 7L : 8L, "expensive", false) });
+                        Json.Make("name", "Locals", "variablesReference", Json.Long(arguments, "frameId") == 1 ? 7L : 8L, "expensive", false),
+                        Json.Make("name", "Registers", "variablesReference", 50L, "expensive", true) });
                 case "variables":
                     var reference = Json.Long(arguments, "variablesReference") ?? 0;
+                    var hex = Json.Get(Json.Obj(Json.Get(arguments, "format")), "hex") is bool h && h;
+                    if (reference == 50)
+                        return Json.Make("variables", new List<object> { Var("RIP", "00007FF6A1B21010", "register"), Var("RSP", "000000E3B42FF8A0", "register") });
+                    if (reference == 40)
+                    {
+                        var first = (int)(Json.Long(arguments, "start") ?? 0);
+                        var take = (int)(Json.Long(arguments, "count") ?? 200);
+                        return Json.Make("variables", Enumerable.Range(first, Math.Max(0, Math.Min(take, 1000 - first)))
+                            .Select(i => (object)Var($"[{i}]", hex ? $"0x{i * 3:x8}" : (i * 3).ToString(), "int")).ToList());
+                    }
                     if (Children.TryGetValue(reference, out var children)) return Json.Make("variables", children.ToList());
                     if (reference != 7) return Json.Make("variables", new List<object> { Var("shapes", "{ size=3 }", "std::pair[3]") });
                     var locals = new List<object>();
-                    for (var i = 0; i + 1 < Here.Vars.Length; i += 2) locals.Add(Var(Here.Vars[i], Here.Vars[i + 1], "double"));
+                    for (var i = 0; i + 1 < Here.Vars.Length; i += 2)
+                    {
+                        var shown = hex && int.TryParse(Here.Vars[i + 1], out var number) ? $"0x{number:x8}" : Here.Vars[i + 1];
+                        var local = Var(Here.Vars[i], shown, "double");
+                        if (Here.Vars[i] == "total") local["memoryReference"] = "0x000000E3B42FF900";
+                        locals.Add(local);
+                    }
+                    var big = Var("big", "{ size=1000 }", "std::vector<int>", 40);
+                    big["indexedVariables"] = 1000L;
+                    locals.Add(big);
                     locals.Add(Var("points", "{ size=4 }", "const std::vector<Point>&", 20));
                     locals.Add(Var("settings", "{...}", "Settings", 21));
                     locals.Add(Var("credentials", "{...}", "Credentials", 23));
@@ -280,6 +357,7 @@ namespace AutoDebug.Harness
                     return Json.Make("variables", locals);
                 case "next": case "stepIn": case "stepOut":
                     if (Flag("HARNESS_STEP_FAIL") == "1") throw new InvalidOperationException("the debugger rejected the step");
+                    if (arguments.Count > 1) Say("STEP " + Json.Write(arguments));
                     Later(() =>
                     {
                         pos++;
@@ -287,6 +365,7 @@ namespace AutoDebug.Harness
                     });
                     return Json.Make();
                 case "continue":
+                    if (arguments.Count > 1) Say("CONTINUE " + Json.Write(arguments));
                     Later(Run);
                     return Json.Make("allThreadsContinued", true);
                 case "pause":
@@ -295,7 +374,32 @@ namespace AutoDebug.Harness
                 case "exceptionInfo":
                     return Json.Make("exceptionId", "std::out_of_range", "description", "vector subscript out of range");
                 case "setExceptionBreakpoints":
+                    if (Json.Get(arguments, "exceptionOptions") != null || Json.List(Json.Get(arguments, "filters")).Count > 0)
+                        Say("EXCEPTIONS " + Json.Write(arguments));
                     return Json.Make();
+                case "dataBreakpointInfo":
+                    var name = Json.Str(arguments, "name");
+                    return Json.Long(arguments, "variablesReference") == 7 && name == "total"
+                        ? Json.Make("dataId", "total", "description", "total", "accessTypes", new List<object> { "write" })
+                        : Json.Make("dataId", null, "description", $"{name} has no plain path Visual Studio can watch");
+                case "setDataBreakpoints":
+                    lock (sync)
+                    {
+                        watched.Clear();
+                        watched.AddRange(Json.List(Json.Get(arguments, "breakpoints")).Select(b => Json.Str(Json.Obj(b), "dataId")));
+                        return Json.Make("breakpoints", watched.Select((w, i) => (object)Json.Make("id", (long)i + 1, "verified", true)).ToList());
+                    }
+                case "modules":
+                    return Json.Make("modules", new List<object> {
+                        Json.Make("id", "geometry.exe", "name", "geometry.exe", "path", Path.Combine(workspace, "build", "Debug", "geometry.exe"), "symbolStatus", "Symbols loaded."),
+                        Json.Make("id", "ucrtbased.dll", "name", "ucrtbased.dll", "path", @"C:\Windows\System32\ucrtbased.dll", "version", "10.0.26100", "symbolStatus", "Symbols not loaded.") });
+                case "disassemble":
+                    var at = Convert.ToInt64(Json.Str(arguments, "memoryReference"), 16) + 4 * (Json.Long(arguments, "instructionOffset") ?? 0);
+                    return Json.Make("instructions", Enumerable.Range(0, (int)(Json.Long(arguments, "instructionCount") ?? 1))
+                        .Select(i => (object)Json.Make("address", $"0x{at + 4 * i:X16}", "instruction", "movsd xmm0,mmword ptr [rbp+8]")).ToList());
+                case "readMemory":
+                    var bytes = Enumerable.Range(0, (int)(Json.Long(arguments, "count") ?? 8)).Select(i => (byte)(0xA0 + i)).ToArray();
+                    return Json.Make("address", Json.Str(arguments, "memoryReference"), "data", Convert.ToBase64String(bytes));
                 default:
                     throw new InvalidOperationException($"the scripted program has no {command}");
             }

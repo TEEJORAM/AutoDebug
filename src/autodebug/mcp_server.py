@@ -34,6 +34,10 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
    not an approval. Each call waits at most 55 seconds; while the status is awaiting_approval, call wait again.
 4. While paused: inspect, stack, step, continue (optionally until a line), trace (before -> after values at each pass
    through a line), breakpoints. Use wait while the status is awaiting_approval, building, starting or running.
+   Loops: give a breakpoint hit_condition (">=500") instead of stepping through every pass, or a log_message to print
+   values without stopping. A wrong value from unknown code: watch it (C/C++/Rust) and continue to the write.
+   Large arrays: inspect with start and count, or a path like items[5000]. Globals, registers: inspect with scope.
+   A breakpoint that never binds: modules (symbols, versions). No source: source, disassemble, memory.
    start_session, step, continue, trace and pause move the program: call them one at a time, never in parallel.
    Breakpoints with source "editor" were set by the developer and stop the program too.
 5. At the stop that shows the bug, call capture with the variables that prove it and a one-sentence note. In Visual
@@ -75,10 +79,17 @@ _FILE_LINE = {
         "file": {"type": "string", "description": "Path relative to the workspace folder, e.g. src/app.py"},
         "line": {"type": "integer", "minimum": 1},
         "condition": {"type": "string", "description": "Optional condition, in the program's language"},
+        "column": {"type": "integer", "minimum": 1, "description": "Optional column, for a lambda or minified code on the line"},
+        "hit_condition": {"type": "string", "maxLength": 20,
+                          "description": "Stop only at this hit: 5 (the 5th), >=5, or %10 (every 10th)"},
+        "log_message": {"type": "string", "maxLength": 300,
+                        "description": "A log point: print this instead of stopping. {name} shows a variable "
+                                       "(paths like {mesh.verts[2]} too; no expressions)"},
     },
     "required": ["file", "line"],
     "additionalProperties": False,
 }
+_FRAME = {"type": "integer", "minimum": 0, "default": 0, "description": "0 is the current frame; see stack"}
 _FOLDER = {"type": "string", "description": "Absolute workspace folder; needed only when several IDE windows are open"}
 _IDE = {"type": "string", "enum": ["cursor", "vscode", "visualstudio"],
         "description": "Which IDE's window to use, when windows of several IDEs are open"}
@@ -87,6 +98,10 @@ _IDE = {"type": "string", "enum": ["cursor", "vscode", "visualstudio"],
 _ARGS = {"type": "array", "items": {"type": "string", "maxLength": 1000}, "maxItems": 32,
          "description": "Program arguments for this run; they replace the launch configuration's and the Approve "
                         "dialog shows them. Launch configurations only. For example [\"-m\", \"repro/issue1771.js\"]"}
+_TEST = {"type": "string", "maxLength": 300,
+         "description": "Run only this test: its id or name (tests/test_x.py::test_y, test_x.Case.test_y, TestArea, "
+                        "'moves a square'). Works with pytest, unittest, go test, jest and vitest configurations; "
+                        "sets the program arguments, so do not pass args too"}
 _TICKET = {"type": "string", "maxLength": 300,
            "description": "The issue or ticket this run is for (URL or key, e.g. PROJ-123); shown in the dialog and report"}
 
@@ -131,6 +146,7 @@ TOOLS = {
             "ticket": _TICKET,
             "screenshots": {"type": "boolean", "description": "Visual Studio: save a picture of its window at each "
                                                              "capture (default true; the dialog says so)"},
+            "test": _TEST,
         }, ("launch_configuration", "breakpoints", "goal"))),
     "reproduce": (
         "Resumes the program (call alone). Before debugging a reported bug: ask the developer to approve one run "
@@ -148,37 +164,95 @@ TOOLS = {
             "max_minutes": {"type": "integer", "minimum": 1, "maximum": 480, "default": 10},
             "build_minutes": {"type": "integer", "minimum": 1, "maximum": 600, "default": 30},
             "wait_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
+            "test": _TEST,
         }, ("launch_configuration", "symptom"))),
     "wait": ("Wait until the session stops, ends or is answered (approval, build). ask_developer shows an information message; it is not an approval.",
              _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
                       "ask_developer": {"type": "string", "maxLength": 300}})),
     "step": ("Resumes the program (call alone). Step over, into or out of the current line, 1-20 times. Returns the "
-             "new location and every variable whose value changed. wait_ms is how long to wait for the step (default 15000, max 60000).",
-             _schema({"kind": {"type": "string", "enum": ["over", "into", "out"], "default": "over"},
+             "new location and every variable whose value changed. wait_ms is how long to wait for the step (default 15000, max 60000). "
+             "target (kind into): the call on this line to step into, e.g. 'area' in print(area(shape)). single_thread: "
+             "the other threads stay paused. instruction: one machine instruction. kind back steps backwards "
+             "(recording debuggers such as rr only).",
+             _schema({"kind": {"type": "string", "enum": ["over", "into", "out", "back"], "default": "over"},
                       "count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1},
-                      "wait_ms": {"type": "integer", "minimum": 0, "maximum": 60000, "default": 15000}})),
+                      "wait_ms": {"type": "integer", "minimum": 0, "maximum": 60000, "default": 15000},
+                      "target": {"type": "string", "maxLength": 200},
+                      "single_thread": {"type": "boolean", "default": False},
+                      "instruction": {"type": "boolean", "default": False}})),
     "continue": ("Resumes the program (call alone). Run until the next breakpoint or the end and return where it "
-                 "stopped. With until, run past other breakpoints to that line.",
+                 "stopped. With until, run past other breakpoints to that line. single_thread: the other threads stay "
+                 "paused. reverse: run backwards to the previous stop (recording debuggers only).",
                  _schema({"timeout_seconds": {"type": "number", "minimum": 0, "maximum": 55, "default": 30},
-                          "until": _FILE_LINE})),
+                          "until": _FILE_LINE, "reverse": {"type": "boolean", "default": False},
+                          "single_thread": {"type": "boolean", "default": False}})),
     "pause": ("Pause a running program where it is (for hangs and long loops).", _schema({})),
-    "inspect": ("Variables of a frame. Without names: every variable with a short value. With names: full values. depth 0-3 expands children. Names may be paths like mesh.verts[2].co.",
+    "inspect": ("Variables of a frame. Without names: every variable with a short value. With names: full values. depth 0-3 expands children. Names may be paths like mesh.verts[2].co or items[5000]. "
+                "scope reads one scope by name, also slow ones such as Globals or Registers (the result lists the "
+                "frame's scopes). start and count page through one large array or list. hex shows numbers in hex.",
                 _schema({"names": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
-                         "frame_index": {"type": "integer", "minimum": 0, "default": 0,
-                                         "description": "0 is the current frame; see stack"},
-                         "depth": {"type": "integer", "minimum": 0, "maximum": 3, "default": 0}})),
+                         "frame_index": _FRAME,
+                         "depth": {"type": "integer", "minimum": 0, "maximum": 3, "default": 0},
+                         "scope": {"type": "string", "maxLength": 100},
+                         "start": {"type": "integer", "minimum": 0},
+                         "count": {"type": "integer", "minimum": 1, "maximum": 200},
+                         "hex": {"type": "boolean", "default": False}})),
     "stack": ("The call stack, current frame first. start_frame pages deeper frames. levels is at most 200.",
               _schema({"levels": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
                        "start_frame": {"type": "integer", "minimum": 0, "default": 0}})),
     "threads": ("List threads. select switches the paused thread used by stack, inspect, step and continue.",
                 _schema({"select": {"type": "integer"}})),
-    "exceptions": ("List exception breakpoint filters. enable sets them by id.",
-                   _schema({"enable": {"type": "array", "items": {"type": "string"}, "maxItems": 20}})),
-    "breakpoints": ("Add or remove breakpoints during the session; returns all of them and whether they are bound.",
+    "exceptions": ("List exception breakpoint filters. enable sets them by id; an item can be {id, condition} when "
+                   "the filter takes a condition. types stops only for these exception types (e.g. KeyError), when "
+                   "the debugger supports it; mode always (when thrown) or unhandled.",
+                   _schema({"enable": {"type": "array", "maxItems": 20, "items": {"anyOf": [
+                                {"type": "string"},
+                                {"type": "object", "properties": {"id": {"type": "string"},
+                                                                  "condition": {"type": "string", "maxLength": 300}},
+                                 "required": ["id"], "additionalProperties": False}]}},
+                            "types": {"type": "array", "items": {"type": "string", "maxLength": 200}, "maxItems": 20},
+                            "mode": {"type": "string", "enum": ["always", "unhandled"], "default": "always"}})),
+    "breakpoints": ("Add or remove breakpoints during the session (with condition, hit_condition, log_message or "
+                    "column); returns all of them and whether they are bound. check {file, line, end_line} lists the "
+                    "lines in that range where a breakpoint can bind.",
                     _schema({"add": {"type": "array", "items": _FILE_LINE, "maxItems": 20},
                              "remove": {"type": "array", "items": _FILE_LINE, "maxItems": 20},
                              "add_functions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
-                             "remove_functions": {"type": "array", "items": {"type": "string"}, "maxItems": 20}})),
+                             "remove_functions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+                             "check": {"type": "object", "properties": {
+                                 "file": {"type": "string"}, "line": {"type": "integer", "minimum": 1},
+                                 "end_line": {"type": "integer", "minimum": 1}},
+                                 "required": ["file", "line"], "additionalProperties": False}})),
+    "watch": ("While paused: stop when a variable's value changes (a data breakpoint or watchpoint), to find what "
+              "writes a wrong value. add [{name, access}] where name is a variable or path in the frame and access is "
+              "write (default), read or readWrite; remove [names]. Then continue: the stop's reason names the change. "
+              "C/C++, Rust and similar native debuggers; at most 8.",
+              _schema({"add": {"type": "array", "maxItems": 8, "items": {
+                           "type": "object", "properties": {
+                               "name": {"type": "string", "maxLength": 200},
+                               "access": {"type": "string", "enum": ["write", "read", "readWrite"], "default": "write"}},
+                           "required": ["name"], "additionalProperties": False}},
+                       "remove": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
+                       "frame_index": _FRAME})),
+    "modules": ("Loaded modules (libraries, DLLs, packages): path, version, whether symbols loaded. Use it when a "
+                "breakpoint never binds or the wrong version may be loaded. filter matches name or path; sources lists "
+                "the source files the debugger loaded, including code without a file (see source).",
+                _schema({"filter": {"type": "string", "maxLength": 200},
+                         "sources": {"type": "boolean", "default": False}})),
+    "source": ("While paused: the code of a frame that has no file (generated, decompiled or evaluated code), as the "
+               "debugger shows it, around the frame's line. source_reference reads one listed by modules(sources).",
+               _schema({"frame_index": _FRAME, "source_reference": {"type": "integer", "minimum": 1}})),
+    "disassemble": ("While paused: machine instructions around a frame's current instruction, for crashes in code "
+                    "without source or in optimized builds. Registers: inspect with scope Registers.",
+                    _schema({"frame_index": _FRAME,
+                             "before": {"type": "integer", "minimum": 0, "maximum": 50, "default": 8},
+                             "after": {"type": "integer", "minimum": 1, "maximum": 100, "default": 16}})),
+    "memory": ("While paused: raw bytes of a variable (name), or at a frame's current instruction, as hex. At most 256 "
+               "bytes; secret-looking bytes are hidden.",
+               _schema({"name": {"type": "string", "maxLength": 200},
+                        "count": {"type": "integer", "minimum": 1, "maximum": 256, "default": 64},
+                        "offset": {"type": "integer", "minimum": -4096, "maximum": 4096, "default": 0},
+                        "frame_index": _FRAME})),
     "trace": ("Resumes the program (call alone). Run to a line repeatedly; each row has the caller and every named "
               "variable as 'before → after' the line runs (one step per hit). Stops early at other breakpoints.",
               _schema({"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1},
@@ -195,7 +269,7 @@ TOOLS = {
                  "note": {"type": "string", "maxLength": 300,
                           "description": "One plain sentence: what is wrong at this stop"},
                  "wrong": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
-                 "frame_index": {"type": "integer", "minimum": 0, "default": 0},
+                 "frame_index": _FRAME,
                  "stack_levels": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8}},
                 ("names", "note"))),
     "stop_session": ("End the debug session and remove its breakpoints.", _schema({})),

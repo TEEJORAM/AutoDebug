@@ -27,6 +27,15 @@ namespace AutoDebug
         public long? ExitCode;
     }
 
+    /// <summary>What a source breakpoint does besides stopping: where on the line, when, and whether it only logs.</summary>
+    public sealed class BreakpointOptions
+    {
+        public int Column;          // 0: the start of the line
+        public string Condition;    // null: always
+        public string HitCondition; // a count: "5", ">=5", "%10"; null: every hit
+        public string LogMessage;   // a log point (tracepoint): print this instead of stopping; null: stop
+    }
+
     public sealed class Binding
     {
         public bool Verified;
@@ -55,7 +64,7 @@ namespace AutoDebug
 
         void CancelBuild();
 
-        object AddBreakpoint(string file, int line, string condition);
+        object AddBreakpoint(string file, int line, BreakpointOptions options);
         object AddFunctionBreakpoint(string name);
         void RemoveBreakpoint(object handle);
         Binding Binding(object handle);

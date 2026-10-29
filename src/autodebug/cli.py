@@ -341,6 +341,8 @@ def _coerce(key: str, text: str, schema: dict):
         if not file or not line.isdigit():
             raise ValueError(f"{key} must be file:line, e.g. {key}=geometry.cpp:16")
         return {"file": file, "line": int(line)}
+    if kind == "object" and "name" in schema.get("properties", {}):
+        return {"name": text}  # watch add=total,mesh.verts[2]
     if kind == "array":
         if key in SENTENCE_LISTS:  # sentences contain commas: one item per key=value; repeat the key for more
             return [text]

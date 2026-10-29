@@ -206,7 +206,8 @@ class Extension(HarnessTest):
                 connection.call(op, {"expression": "1"})
             self.assertEqual(caught.exception.code, "BAD_REQUEST")
         self.approved()
-        for command in ("evaluate", "setVariable", "setExpression", "disconnect"):
+        for command in ("evaluate", "setVariable", "setExpression", "disconnect", "writeMemory", "goto", "restartFrame",
+                        "restart", "terminateThreads"):
             with self.assertRaises(DebugError) as caught:
                 connection.call("dap", {"command": command, "arguments": {"expression": "1"}})
             self.assertEqual(caught.exception.code, "BAD_REQUEST", command)

@@ -33,7 +33,7 @@ _NEXT = {
     "build_failed": "The build failed (output is in the IDE terminal). Fix it or ask the developer.",
     "starting": "The debugger is starting. Large programs can take minutes to load symbols, so keep calling wait.",
     "running": "The program is running; call wait for the next stop, or pause.",
-    "paused": "Paused. Use inspect, stack, step, continue, trace or breakpoints.",
+    "paused": "Paused. Use inspect, stack, step, continue, trace, breakpoints or watch.",
     "ended": "The debug session ended. Call write_report with your findings.",
 }
 
@@ -69,6 +69,7 @@ class Debugger:
         self._last_status: str | None = None
         self._last_build: dict | None = None
         self._last_exception: str | None = None
+        self._activity_seen = 0
         self.ticket: str | None = None
         self.reproducing: dict | None = None  # the current session, when it only reproduces the bug
         self.reproductions: list[dict] = []  # reproduction runs since the last report
@@ -146,11 +147,21 @@ class Debugger:
             result["steps"] = f"{raw['steps_used']} of {raw['max_steps']} used"
         if raw.get("breakpoints"):
             result["breakpoints"] = [
-                {"at": clean_text(f"function {b['function']}" if b.get("function") else f"{b.get('file')}:{b.get('line')}", 300),
+                {"at": clean_text(f"function {b['function']}" if b.get("function") else
+                                  f"{b.get('file')}:{b.get('line')}" + (f":{b['column']}" if b.get("column") else ""), 300),
                  "source": b.get("source", "session"), "verified": b.get("verified", False),
+                 **({"when": clean_text(b["condition"], 200)} if b.get("condition") else {}),
+                 **({"hits": b["hit_condition"]} if b.get("hit_condition") else {}),
+                 **({"logs": clean_text(b["log_message"], 300)} if b.get("log_message") else {}),
                  **({"note": clean_text(b["message"], 200)} if b.get("message") else {})}
                 for b in raw["breakpoints"]
             ]
+        if raw.get("watches"):
+            result["watches"] = raw["watches"]
+        fresh = [a for a in raw.get("activity") or [] if a.get("seq", 0) > self._activity_seen]
+        if fresh:
+            self._activity_seen = fresh[-1]["seq"]
+            result["activity"] = [clean_text(a["text"], 300) for a in fresh]
         output = [clean_text(line, 500) for line in raw.get("output") or []]
         if output and status == "ended":
             result["output"] = output
@@ -245,6 +256,10 @@ class Debugger:
             cleaned["expandable"] = True
         if variable.get("more"):
             cleaned["more"] = variable["more"]
+        if variable.get("size"):
+            cleaned["size"] = variable["size"]
+        if variable.get("page"):
+            cleaned["page"] = variable["page"]
         if variable.get("children"):
             cleaned["children"] = [self._clean_variable(child, limit, secret) for child in variable["children"]]
         return cleaned
@@ -330,28 +345,28 @@ class Debugger:
                       source_folders: list[str] | None = None,
                       function_breakpoints: list[str] | None = None, ide: str | None = None,
                       args: list[str] | None = None, ticket: str | None = None,
-                      screenshots: bool | None = None) -> dict:
+                      screenshots: bool | None = None, test: str | None = None) -> dict:
         return self._begin(launch_configuration, breakpoints, goal, workspace_folder=workspace_folder,
                            build_task=build_task, max_steps=max_steps, max_minutes=max_minutes,
                            wait_seconds=wait_seconds, build_minutes=build_minutes, process_id=process_id,
                            source_folders=source_folders, function_breakpoints=function_breakpoints, ide=ide,
-                           args=args, ticket=ticket, reproduce=False, screenshots=screenshots)
+                           args=args, ticket=ticket, reproduce=False, screenshots=screenshots, test=test)
 
     def reproduce(self, launch_configuration: str, symptom: str, args: list[str] | None = None,
                   ticket: str | None = None, workspace_folder: str | None = None, build_task: str | None = None,
                   max_minutes: int = 10, wait_seconds: float = 30, build_minutes: int = 30,
-                  ide: str | None = None) -> dict:
+                  ide: str | None = None, test: str | None = None) -> dict:
         """Run the program once without breakpoints (after Approve) to see whether the reported bug shows."""
         return self._begin(launch_configuration, [], f"Reproduce: {symptom}", workspace_folder=workspace_folder,
                            build_task=build_task, max_steps=1, max_minutes=max_minutes, wait_seconds=wait_seconds,
                            build_minutes=build_minutes, process_id=None, source_folders=None,
                            function_breakpoints=None, ide=ide, args=args, ticket=ticket, reproduce=True,
-                           symptom=symptom)
+                           symptom=symptom, test=test)
 
     def _begin(self, launch_configuration: str, breakpoints: list[dict], goal: str, *, workspace_folder, build_task,
                max_steps, max_minutes, wait_seconds, build_minutes, process_id, source_folders, function_breakpoints,
                ide, args, ticket, reproduce: bool, symptom: str | None = None,
-               screenshots: bool | None = None) -> dict:
+               screenshots: bool | None = None, test: str | None = None) -> dict:
         window = self._window_for(workspace_folder, ide, launch_configuration)
         if self.connection is not None:
             self.connection.close()
@@ -364,6 +379,8 @@ class Debugger:
                    "build_minutes": build_minutes, "process_id": process_id, "source_folders": source_folders or [],
                    "function_breakpoints": function_breakpoints or [], "args": args, "ticket": ticket,
                    "reproduce": reproduce, "screenshots": screenshots}
+        if test is not None:
+            request["test"] = test
         try:
             answer = self._call("start", request)
         except DebugError:
@@ -371,7 +388,7 @@ class Debugger:
             self.connection = None
             raise
         # The timeline runs until the next report, so it covers every session behind it.
-        self.version, self._last_status, self._last_build = 0, None, None
+        self.version, self._last_status, self._last_build, self._activity_seen = 0, None, None, 0
         self.sessions += 1
         raw = answer["state"]
         self.folder = answer.get("folder") or workspace_folder or (window.folders[0] if len(window.folders) == 1 else None)
@@ -379,6 +396,8 @@ class Debugger:
         debugging = {"ide": IDE_NAMES.get(window.ide, window.ide), "folder": self.folder,
                      "launch_configuration": launch_configuration, "build": describe(build) if build else "attach: "
                      "the running program's build"}
+        if test is not None:
+            debugging["test"] = clean_text(test, 300)
         if ticket:
             self.ticket = clean_text(" ".join(str(ticket).split()), 300)
         self.plan = {"goal": goal, "launch": launch_configuration, "task": build_task,
@@ -413,16 +432,22 @@ class Debugger:
             return self._state(raw)
         return self._state(self._wait(min(max(timeout_seconds, 0), 55)))
 
-    def step(self, kind: str = "over", count: int = 1, wait_ms: int = 15000) -> dict:
-        if kind not in ("over", "into", "out"):
-            raise DebugError("BAD_REQUEST", "kind must be over, into or out")
+    def step(self, kind: str = "over", count: int = 1, wait_ms: int = 15000, target: str | None = None,
+             single_thread: bool = False, instruction: bool = False) -> dict:
+        if kind not in ("over", "into", "out", "back"):
+            raise DebugError("BAD_REQUEST", "kind must be over, into, out or back")
         count = max(1, min(int(count), 20))
         wait_ms = max(0, min(int(wait_ms), 60000))
         before = self._values()
         path = []
         raw = {}
-        for _ in range(count):
-            raw = self._call("step", {"kind": kind, "wait_ms": wait_ms}, timeout=wait_ms / 1000 + 10)["state"]
+        request = {"kind": kind, "wait_ms": wait_ms, "single_thread": bool(single_thread), "instruction": bool(instruction)}
+        for n in range(count):
+            if target and n == 0:
+                request["target"] = target
+            else:
+                request.pop("target", None)
+            raw = self._call("step", request, timeout=wait_ms / 1000 + 10)["state"]
             location = raw.get("location")
             if location:
                 path.append(f"{location['file']}:{location['line']}")
@@ -431,7 +456,8 @@ class Debugger:
         after = self._values() if raw.get("status") == "paused" else {}
         changed = [{"name": n, "before": before.get(n, "(new)"), "after": v}
                    for n, v in after.items() if before.get(n) != v]
-        self._log(f"step {kind}" + (f" ×{len(path)}" if len(path) > 1 else ""), " → ".join(path[-5:]),
+        self._log(f"step {kind}" + (f" to {target}" if target else "") + (" (instruction)" if instruction else "")
+                  + (f" ×{len(path)}" if len(path) > 1 else ""), " → ".join(path[-5:]),
                   ", ".join(f"{c['name']}: {c['before']} → {c['after']}" for c in changed[:8]))
         result = self._state(raw, quiet=True)
         result["changed"] = changed
@@ -441,11 +467,17 @@ class Debugger:
             result["next"] = "It's a slow function: call wait or pause."
         return result
 
-    def continue_(self, timeout_seconds: float = 30, until: dict | None = None) -> dict:
-        """Run to the next stop, or with `until` run past other breakpoints to that line."""
+    def continue_(self, timeout_seconds: float = 30, until: dict | None = None, reverse: bool = False,
+                  single_thread: bool = False) -> dict:
+        """Run to the next stop, or with `until` run past other breakpoints to that line. `reverse` runs backwards
+        to the previous stop (recording debuggers only)."""
         timeout = min(max(timeout_seconds, 0), 55)
-        if until is None:
-            self._call("continue")
+        if until is None or reverse:
+            if until is not None:
+                raise DebugError("BAD_REQUEST", "until and reverse cannot be combined")
+            self._call("continue", {"reverse": bool(reverse), "single_thread": bool(single_thread)})
+            if reverse:
+                self._log("ran backwards", "", "to the previous stop")
             return self._state(self._wait(timeout))
         target = f"{until['file']}:{until['line']}"
         existing = {b["file"] + ":" + str(b["line"]) for b in self._call("breakpoints", {})["state"].get("breakpoints", [])}
@@ -455,7 +487,7 @@ class Debugger:
         deadline = time.monotonic() + timeout
         try:
             while True:
-                self._call("continue")
+                self._call("continue", {"single_thread": bool(single_thread)})
                 raw = self._wait(max(deadline - time.monotonic(), 0), until=("paused", "ended"))
                 location = raw.get("location")
                 where = f"{location['file']}:{location['line']}" if location else ""
@@ -491,21 +523,41 @@ class Debugger:
                 result["location"] = seen["location"]
         return result
 
-    def exceptions(self, enable: list[str] | None = None) -> dict:
-        return self._call("exceptions", {} if enable is None else {"enable": enable})
+    def exceptions(self, enable: list | None = None, types: list[str] | None = None, mode: str = "always") -> dict:
+        args: dict = {} if enable is None else {"enable": enable}
+        if types:
+            args.update({"types": types, "mode": mode})
+        result = self._call("exceptions", args)
+        if enable is not None or types:
+            chosen = ", ".join(e if isinstance(e, str) else f"{e.get('id')} if {e.get('condition')}" for e in enable or [])
+            self._log("exceptions", "", (f"stop on {chosen}" if chosen else "no filters")
+                      + (f"; only {', '.join(types)} ({mode})" if types else ""))
+        return result
 
-    def inspect(self, names: list[str] | None = None, frame_index: int = 0, depth: int = 0) -> dict:
-        frame = None
-        if frame_index:
-            frames = self._call("stack", {"levels": frame_index + 1}).get("frames", [])
-            if frame_index >= len(frames):
-                raise DebugError("BAD_REQUEST", f"the stack has {len(frames)} frames")
-            frame = frames[frame_index]["id"]
-        raw = self._raw_variables(frame, names, depth)
+    def _frame(self, frame_index: int) -> int | None:
+        if not frame_index:
+            return None
+        frames = self._call("stack", {"levels": frame_index + 1}).get("frames", [])
+        if frame_index >= len(frames):
+            raise DebugError("BAD_REQUEST", f"the stack has {len(frames)} frames")
+        return frames[frame_index]["id"]
+
+    def inspect(self, names: list[str] | None = None, frame_index: int = 0, depth: int = 0, scope: str | None = None,
+                start: int | None = None, count: int | None = None, hex: bool = False) -> dict:
+        frame = self._frame(frame_index)
+        args: dict = {"names": names, "depth": max(0, min(int(depth), 3))}
+        for key, value in (("frame", frame), ("scope", scope), ("start", start), ("count", count)):
+            if value is not None:
+                args[key] = value
+        if hex:
+            args["hex"] = True
+        raw = self._call("variables", args)
         limit = 2000 if names else SHORT_VALUE
-        variables = [self._clean_variable(v, limit) for v in raw]
-        self._log("inspected", f"frame {frame_index}", ", ".join(f"{v['name']}={v['value']}" for v in variables[:12]))
-        result = {"frame_index": frame_index, "variables": variables}
+        variables = [self._clean_variable(v, limit) for v in raw.get("variables", [])]
+        self._log("inspected", f"frame {frame_index}" + (f", {scope}" if scope else ""),
+                  ", ".join(f"{v['name']}={v['value']}" for v in variables[:12]))
+        result = {"frame_index": frame_index, "variables": variables,
+                  "scopes": [s["name"] + (" (slow)" if s.get("expensive") else "") for s in raw.get("scopes", [])]}
         if names:
             result["not_found"] = [n for n in names if n not in {v["name"] for v in variables}]
         return result
@@ -556,6 +608,52 @@ class Debugger:
             result["not_found"] = missing
         return result
 
+    def watch(self, add: list[dict] | None = None, remove: list[str] | None = None, frame_index: int = 0) -> dict:
+        """Stop when a variable's value changes (a data breakpoint, also called a watchpoint)."""
+        args: dict = {"add": add or [], "remove": remove or []}
+        frame = self._frame(frame_index)
+        if frame is not None:
+            args["frame"] = frame
+        result = self._call("watch", args)
+        if add or remove:
+            self._log("watch", "", "; ".join(part for part in (
+                ("watching " + ", ".join(f"{w.get('name')} ({w.get('access') or 'write'})" for w in add or [])) if add else "",
+                ("stopped watching " + ", ".join(remove or [])) if remove else "") if part))
+        return {"watches": [{**w, "what": clean_text(w.get("what"), 200)} for w in result.get("watches", [])],
+                "next": "continue runs until a watched value changes; the stop's reason says which." if add else ""}
+
+    def modules(self, filter: str | None = None, sources: bool = False) -> dict:
+        result = self._call("modules", {"filter": filter, "sources": bool(sources)})
+        result["modules"] = [{k: clean_text(v, 500) if isinstance(v, str) else v for k, v in m.items()}
+                             for m in result.get("modules", [])]
+        return result
+
+    def source(self, frame_index: int = 0, source_reference: int | None = None) -> dict:
+        args: dict = {"frame_index": frame_index}
+        if source_reference is not None:
+            args["source_reference"] = source_reference
+        result = self._call("source", args)
+        if result.get("code"):
+            self._log("read code without a file", f"frame {frame_index}", f"{len(result['code'])} lines")
+        return result
+
+    def disassemble(self, frame_index: int = 0, before: int = 8, after: int = 16) -> dict:
+        result = self._call("disassemble", {"frame_index": frame_index, "before": before, "after": after})
+        current = next((r for r in result.get("instructions", []) if r.get("current")), None)
+        self._log("disassembled", f"frame {frame_index}", f"{current['address']}: {current['instruction']}" if current else "")
+        return result
+
+    def memory(self, name: str | None = None, count: int = 64, offset: int = 0, frame_index: int = 0) -> dict:
+        args: dict = {"count": count, "offset": offset, "frame_index": frame_index}
+        if name:
+            args["name"] = name
+            frame = self._frame(frame_index)
+            if frame is not None:
+                args["frame"] = frame
+        result = self._call("memory", args)
+        self._log("read memory", name or f"frame {frame_index} instruction", f"{result.get('count', 0)} bytes")
+        return result
+
     def stack(self, levels: int = 20, start_frame: int = 0) -> dict:
         body = self._call("stack", {"levels": max(1, min(int(levels), 200)), "start_frame": max(0, int(start_frame))})
         frames = body.get("frames", [])
@@ -566,7 +664,12 @@ class Debugger:
                            for i, f in enumerate(frames)]}
 
     def breakpoints(self, add: list[dict] | None = None, remove: list[dict] | None = None,
-                    add_functions: list[str] | None = None, remove_functions: list[str] | None = None) -> dict:
+                    add_functions: list[str] | None = None, remove_functions: list[str] | None = None,
+                    check: dict | None = None) -> dict:
+        if check is not None:
+            found = self._call("locations", check)
+            if not (add or remove or add_functions or remove_functions):
+                return {"valid_lines": found}
         raw = self._call("breakpoints", {"add": add or [], "remove": remove or [],
                                          "add_functions": add_functions or [], "remove_functions": remove_functions or []})["state"]
         changes = [f"{verb} " + ", ".join(f"{b.get('file')}:{b.get('line')}" for b in items)
@@ -577,7 +680,10 @@ class Debugger:
             changes.append("removed functions " + ", ".join(remove_functions))
         if changes:
             self._log("breakpoints", "", "; ".join(changes))
-        return {"breakpoints": self._state(raw).get("breakpoints", [])}
+        result = {"breakpoints": self._state(raw).get("breakpoints", [])}
+        if check is not None:
+            result["valid_lines"] = found
+        return result
 
     def trace(self, file: str, line: int, variables: list[str], hits: int = 10, after: bool = True,
               timeout_seconds: float = 20) -> dict:

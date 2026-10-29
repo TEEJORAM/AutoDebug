@@ -124,7 +124,8 @@ def outdated_extension(window: Window) -> str | None:
     if not older:
         return None
     return (f"Visual Studio's AutoDebug extension is {window.version}, older than AutoDebug {__version__}: "
-            "screenshots and the debug window layout (Locals or Autos, Call Stack) need the new one. Ask the "
+            "screenshots, the debug window layout (Locals or Autos, Call Stack) and the newer debugging tools "
+            "(.NET, exception filters, registers, watchpoints, console output) need the new one. Ask the "
             "developer to close every Visual Studio window and run `autodebug setup` (Windows: "
             "`py -m autodebug setup`), then open the solution again.")
 

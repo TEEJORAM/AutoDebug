@@ -12,15 +12,22 @@ const os = require('os');
 const path = require('path');
 
 const PROTOCOL = 4;
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 const MAX_LINE = 1024 * 1024;
 const APPROVAL_SECONDS = 120;
 const MAX_EVENTS = 5000;
 const MAX_CONFIG = 4000;
-// The only debugger requests the server may send. No evaluate, no setVariable.
+// The only debugger requests the server may send. They read state or move the program; none evaluates an
+// expression or changes a value (no evaluate, setVariable, setExpression, writeMemory, goto or restartFrame).
 const DAP_COMMANDS = new Set(['threads', 'stackTrace', 'scopes', 'variables', 'next', 'stepIn', 'stepOut', 'continue',
-  'pause', 'exceptionInfo', 'setExceptionBreakpoints']);
-const STEPS = new Set(['next', 'stepIn', 'stepOut']);
+  'pause', 'exceptionInfo', 'setExceptionBreakpoints', 'dataBreakpointInfo', 'setDataBreakpoints', 'modules',
+  'loadedSources', 'source', 'stepInTargets', 'disassemble', 'readMemory', 'breakpointLocations', 'stepBack',
+  'reverseContinue']);
+const STEPS = new Set(['next', 'stepIn', 'stepOut', 'stepBack']);
+// What this relay can do beyond protocol 4's first version; the server checks it.
+const FEATURES = ['breakpoint_options', 'child_sessions', 'inspection'];
+const HIT = /^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$/;
+const VARIABLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*$/;
 // IDE-to-debugger requests and debugger responses the server needs to see.
 const TO_ADAPTER = new Set(['setBreakpoints', 'setFunctionBreakpoints']);
 const RESPONSES = new Set(['initialize', 'setBreakpoints', 'setFunctionBreakpoints']);
@@ -53,6 +60,15 @@ function applyPlatform(item, platform) {
   return copy;
 }
 
+// A breakpoint as the dialog shows it: where, and what it does there.
+function describeBreakpoint(where, b) {
+  const parts = [`${where}:${b.line}${b.column ? `:${b.column}` : ''}`];
+  if (b.condition) parts.push(`if ${b.condition}`);
+  if (b.hit) parts.push(`at hit ${b.hit}`);
+  if (b.log) parts.push(`logs "${b.log}" without stopping`);
+  return parts.join(' ');
+}
+
 function taskCommand(task) {
   const args = (task.args || []).map((arg) => (arg && typeof arg === 'object' && 'value' in arg ? arg.value : arg));
   return [task.command, ...args].filter((part) => part != null && part !== '').join(' ');
@@ -68,6 +84,8 @@ function describeTask(label, tasks, seen = new Set()) {
   const deps = [].concat(task.dependsOn || []).map((dep) => (typeof dep === 'string' ? dep : dep && dep.task)).filter(Boolean);
   return deps.length ? `${self} (first: ${deps.map((dep) => describeTask(dep, tasks, seen)).join('; ')})` : self;
 }
+
+const sessionId = (dap) => String((dap && dap.id) || '');
 
 class Relay {
   constructor(vscode, { folder, log, platform = process.platform, buildMinuteMs = 60000, keepMs = 10000 } = {}) {
@@ -181,7 +199,7 @@ class Relay {
     switch (op) {
       case 'info': return {
         window: this.window, ide: this.ide, ide_version: this.vscode.version, version: VERSION, folders: this.folders(),
-        platform: this.platform, debugger_types: this.debuggerTypes(),
+        platform: this.platform, debugger_types: this.debuggerTypes(), features: FEATURES,
       };
       case 'workspace': return this.workspace(args);
       case 'approve': return this.approve(args);
@@ -293,6 +311,7 @@ class Relay {
       buildMinutes: clamp(args.build_minutes, 1, 30, 600),
       notes: [].concat(args.notes || []).map((note) => String(note).slice(0, 500)),
       label: String(args.label || launch.name).slice(0, 200), dap: null, timer: null, buildTimer: null, execution: null,
+      children: new Set(), active: null,
     };
     const ids = this.addBreakpoints(s, args.breakpoints || [], args.functions || []);
     this.session = s;
@@ -309,7 +328,19 @@ class Relay {
       if (typeof b.file !== 'string' || !path.isAbsolute(b.file)) fail('BAD_REQUEST', 'breakpoint files are absolute paths');
       const full = path.resolve(b.file);
       if (!s.roots.some((root) => within(root, full))) fail('OUTSIDE_WORKSPACE', `${b.file} is outside the approved folders`);
-      const item = { id: `b${s.nextId++}`, full, line, condition: b.condition ? String(b.condition).slice(0, 500) : undefined, handle: null };
+      const column = b.column == null ? undefined : Number(b.column);
+      if (column !== undefined && (!Number.isInteger(column) || column < 1)) fail('BAD_REQUEST', 'breakpoint columns are positive integers');
+      const hit = b.hit_condition ? String(b.hit_condition) : undefined;
+      if (hit !== undefined && !HIT.test(hit)) fail('BAD_REQUEST', 'hit_condition is a count such as 5, >=5 or %10');
+      const log = b.log_message ? String(b.log_message).slice(0, 300) : undefined;
+      // A log message shows variables by name only; anything else in braces would be evaluated.
+      for (const placeholder of (log || '').matchAll(/\{([^{}]*)\}/g)) {
+        if (!VARIABLE_PATH.test(placeholder[1].trim())) fail('BAD_REQUEST', 'log_message may show variables by name only, like {total}');
+      }
+      const item = {
+        id: `b${s.nextId++}`, full, line, column, condition: b.condition ? String(b.condition).slice(0, 500) : undefined,
+        hit, log, handle: null,
+      };
       s.breakpoints.push(item);
       added.breakpoint_ids.push(item.id);
     }
@@ -336,7 +367,7 @@ class Relay {
       l.preLaunchTask ? `Before the debugger starts (preLaunchTask): ${describeTask(l.preLaunchTask, s.tasks)}` : null,
       l.postDebugTask ? `After the session (postDebugTask): ${describeTask(l.postDebugTask, s.tasks)}` : null,
       `Run: "${l.name}" (${l.type}) ${program}`.trim(),
-      `Breakpoints: ${s.breakpoints.map((b) => `${this.relative(s, b.full)}:${b.line}${b.condition ? ` if ${b.condition}` : ''}`).join(', ') || 'none'}`,
+      `Breakpoints: ${s.breakpoints.map((b) => describeBreakpoint(this.relative(s, b.full), b)).join(', ') || 'none'}`,
       s.functions.length ? `Function breakpoints: ${s.functions.map((b) => b.name).join(', ')}` : null,
       s.roots.length > 1 ? `Breakpoints may also be set in: ${s.roots.slice(1).join(', ')}` : null,
       `Limits: ${s.maxSteps} steps, ${s.minutes} minutes`,
@@ -344,7 +375,8 @@ class Relay {
         ? 'When the session ends: the debugger detaches and the program keeps running'
         : 'When the session ends: the program is stopped',
       '',
-      'The AI agent can then read the stack and variables, step and continue.',
+      'The AI agent can then read the stack, variables, modules, machine code and memory, add breakpoints and',
+      'watchpoints, step and continue.',
       'It cannot evaluate code or change variables. Secret-looking values are hidden from it.',
       '',
       'Launch configuration, exactly as it will be used:',
@@ -429,7 +461,8 @@ class Relay {
   place(s, lines, functions) {
     const vs = this.vscode;
     for (const b of lines) {
-      b.handle = new vs.SourceBreakpoint(new vs.Location(vs.Uri.file(b.full), new vs.Position(b.line - 1, 0)), true, b.condition);
+      const at = new vs.Position(b.line - 1, b.column ? b.column - 1 : 0);
+      b.handle = new vs.SourceBreakpoint(new vs.Location(vs.Uri.file(b.full), at), true, b.condition, b.hit, b.log);
     }
     for (const f of functions) f.handle = new vs.FunctionBreakpoint(f.name);
     const handles = [...lines, ...functions].map((b) => b.handle);
@@ -438,13 +471,16 @@ class Relay {
 
   // ---- the debug session ---------------------------------------------------------
 
+  // A program can run in child debug sessions that its session starts: Node.js and browsers (the JavaScript
+  // debugger), Python subprocesses. They belong to the approved session, so their messages are followed too.
   tracker(dap) {
     this.sessionStarted(dap); // claim it before its first message
-    const mine = () => this.session && this.session.dap === dap && this.session.phase !== 'ended';
+    const mine = () => this.session && this.session.phase !== 'ended' && this.owns(this.session, dap);
+    const id = () => sessionId(dap);
     return {
       onWillReceiveMessage: (m) => {
         if (mine() && m && m.type === 'request' && TO_ADAPTER.has(m.command)) {
-          this.emit({ kind: 'dap', direction: 'to_adapter', message: m });
+          this.emit({ kind: 'dap', direction: 'to_adapter', message: m, session: id() });
         }
       },
       onDidSendMessage: (m) => {
@@ -453,21 +489,42 @@ class Relay {
           if (m.type === 'event' && m.event === 'output' && m.body && typeof m.body.output === 'string' && m.body.output.length > 4000) {
             m = { ...m, body: { ...m.body, output: `${m.body.output.slice(0, 4000)}…` } };
           }
-          this.emit({ kind: 'dap', direction: 'from_adapter', message: m });
+          if (m.type === 'event' && m.event === 'stopped') this.session.active = dap;
+          this.emit({ kind: 'dap', direction: 'from_adapter', message: m, session: id() });
         }
       },
-      onExit: (code) => { if (mine()) this.finish(this.session, 'the program exited', code == null ? null : code); },
+      onExit: (code) => {
+        if (mine() && this.session.dap === dap) this.finish(this.session, 'the program exited', code == null ? null : code);
+      },
     };
+  }
+
+  // The approved session itself, or a session it started (directly or through another child).
+  owns(s, dap) {
+    if (!s.dap || !dap) return false;
+    for (let at = dap, depth = 0; at && depth < 20; at = at.parentSession, depth += 1) if (at === s.dap) return true;
+    return false;
   }
 
   sessionStarted(dap) {
     const s = this.session;
-    if (s && s.expecting && !s.dap && dap.configuration && dap.configuration.name === s.expecting) s.dap = dap;
+    if (!s) return;
+    if (s.expecting && !s.dap && dap.configuration && dap.configuration.name === s.expecting && !dap.parentSession) {
+      s.dap = dap;
+    } else if (s.dap && dap !== s.dap && this.owns(s, dap) && !s.children.has(dap)) {
+      s.children.add(dap);
+      this.emit({ kind: 'child_started', session: sessionId(dap), name: dap.name || (dap.configuration && dap.configuration.name) });
+    }
   }
 
   sessionEnded(dap) {
     const s = this.session;
-    if (s && s.dap === dap) this.finish(s, 'the debug session ended', null);
+    if (!s) return;
+    if (s.dap === dap) { this.finish(s, 'the debug session ended', null); return; }
+    if (s.children.delete(dap)) {
+      if (s.active === dap) s.active = null;
+      this.emit({ kind: 'child_ended', session: sessionId(dap), name: dap.name || (dap.configuration && dap.configuration.name) });
+    }
   }
 
   finish(s, reason, exitCode) {
@@ -496,13 +553,19 @@ class Relay {
     const command = String(args.command);
     if (!DAP_COMMANDS.has(command)) fail('BAD_REQUEST', `the debugger request ${command} is not allowed`);
     const step = STEPS.has(command);
+    // The session the program last stopped in answers, unless the server names one of the approved sessions.
+    let target = s.active || s.dap;
+    if (args.session != null) {
+      target = [s.dap, ...s.children].find((d) => sessionId(d) === String(args.session));
+      if (!target) fail('NOT_FOUND', 'that debug session has ended');
+    }
     if (step && s.stepsUsed >= s.maxSteps) fail('LIMIT', `the approved limit of ${s.maxSteps} steps is used up`);
     if (step) s.stepsUsed += 1;
     const ms = clamp(args.timeout_ms, 100, 10000, 60000);
     let timer;
     try {
       const answer = await Promise.race([
-        s.dap.customRequest(command, args.arguments || {}),
+        target.customRequest(command, args.arguments || {}),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new RelayError('IDE_ERROR', `the debugger did not answer ${command} in time`)), ms); }),
       ]);
       return { body: answer || {} };

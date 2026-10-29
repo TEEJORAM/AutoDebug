@@ -2,7 +2,7 @@
   "name": "autodebug",
   "displayName": "AutoDebug",
   "description": "Lets an AI agent debug your program with this window's debugger, after you click Approve, and write a root-cause report.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "SwagatTeejoram",
   "license": "MIT",
   "repository": {"type": "git", "url": "https://github.com/TEEJORAM/AutoDebug"},
