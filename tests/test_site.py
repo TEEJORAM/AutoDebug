@@ -27,7 +27,8 @@ class Site(unittest.TestCase):
         # The site is reviewed anonymously: no link names the repository or its owner.
         for page in (ROOT / "site").rglob("*.html"):
             text = page.read_text(encoding="utf-8").lower()
-            self.assertNotIn("github.com/teejoram", text, page.name)
+            for name in ("teejoram", "swagat"):
+                self.assertNotIn(name, text, page.name)
 
 
 if __name__ == "__main__":
