@@ -307,7 +307,9 @@ class Relay {
     const s = {
       id: ++this.sessions, phase: 'awaiting_approval', folder, launch: JSON.parse(JSON.stringify(launch)), json, task, tasks,
       roots, breakpoints: [], functions: [], nextId: 1, stepsUsed: 0,
-      maxSteps: clamp(args.max_steps, 1, 100, 1000), minutes: clamp(args.max_minutes, 1, 30, 480),
+      // No limits unless asked for: the session runs until the program ends or someone stops it.
+      maxSteps: args.max_steps ? clamp(args.max_steps, 1, 1, 100000) : null,
+      minutes: args.max_minutes ? clamp(args.max_minutes, 1, 1, 1440) : null,
       buildMinutes: clamp(args.build_minutes, 1, 30, 600),
       notes: [].concat(args.notes || []).map((note) => String(note).slice(0, 500)),
       label: String(args.label || launch.name).slice(0, 200), dap: null, timer: null, buildTimer: null, execution: null,
@@ -370,7 +372,9 @@ class Relay {
       `Breakpoints: ${s.breakpoints.map((b) => describeBreakpoint(this.relative(s, b.full), b)).join(', ') || 'none'}`,
       s.functions.length ? `Function breakpoints: ${s.functions.map((b) => b.name).join(', ')}` : null,
       s.roots.length > 1 ? `Breakpoints may also be set in: ${s.roots.slice(1).join(', ')}` : null,
-      `Limits: ${s.maxSteps} steps, ${s.minutes} minutes`,
+      s.maxSteps || s.minutes
+        ? `Limits: ${s.maxSteps ? `${s.maxSteps} steps` : 'no step limit'}, ${s.minutes ? `${s.minutes} minutes` : 'no time limit'}`
+        : 'Limits: none; stop the session any time with the debug toolbar\'s Stop button',
       l.request === 'attach'
         ? 'When the session ends: the debugger detaches and the program keeps running'
         : 'When the session ends: the program is stopped',
@@ -441,8 +445,10 @@ class Relay {
       this.emit({ kind: 'build', task: s.task.label, status: 'succeeded', exit_code: 0 });
     }
     this.place(s, s.breakpoints, s.functions);
-    s.timer = setTimeout(() => this.end('the session time limit was reached'), s.minutes * 60000);
-    if (s.timer.unref) s.timer.unref();
+    if (s.minutes) {
+      s.timer = setTimeout(() => this.end('the session time limit was reached'), s.minutes * 60000);
+      if (s.timer.unref) s.timer.unref();
+    }
     s.phase = 'starting';
     this.emit({ kind: 'starting' });
     s.expecting = s.launch.name;
@@ -559,7 +565,7 @@ class Relay {
       target = [s.dap, ...s.children].find((d) => sessionId(d) === String(args.session));
       if (!target) fail('NOT_FOUND', 'that debug session has ended');
     }
-    if (step && s.stepsUsed >= s.maxSteps) fail('LIMIT', `the approved limit of ${s.maxSteps} steps is used up`);
+    if (step && s.maxSteps && s.stepsUsed >= s.maxSteps) fail('LIMIT', `the approved limit of ${s.maxSteps} steps is used up`);
     if (step) s.stepsUsed += 1;
     const ms = clamp(args.timeout_ms, 100, 10000, 60000);
     let timer;

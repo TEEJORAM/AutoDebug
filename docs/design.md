@@ -34,7 +34,7 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, JavaScript, Visual Studio's native 
   the IDE: the Approve dialog, running the approved build task and launch
   configuration, placing breakpoints, relaying a short list of Debug Adapter
   Protocol requests, and reporting the session's events. It enforces the approval,
-  the step and time limits, the approved folders and the request list on its own,
+  any step and time limits the agent asked for, the approved folders and the request list on its own,
   so a fault in the server cannot widen what the developer approved.
 - **AutoDebug for Visual Studio (C#, no runtime dependencies).** The same relay
   protocol for Visual Studio 2022 and 2026 (see "Visual Studio" below), for C,
@@ -255,7 +255,7 @@ dialog from the exact objects it will run.
 
 `start_session` opens a modal dialog in the IDE window. It shows what will run:
 the build task and its `dependsOn` chain, `preLaunchTask`, `postDebugTask`,
-`cwd`, `env`, `envFile`, the breakpoints, `source_folders`, the step limit, the
+`cwd`, `env`, `envFile`, the breakpoints, `source_folders`, the limits (none unless asked for), the
 goal, and the launch configuration as JSON exactly as it will be used (without
 `name`). A configuration longer than 4000 characters is refused. `${input:…}`
 and `${command:…}` are refused, except an attach `processId` or CodeLLDB `pid`
@@ -280,9 +280,13 @@ terminated.
 
 ## Limits and redaction
 
-- One session per IDE window. Step limit per session (default 100, at most 1000),
-  enforced by both parts. Sessions end after `max_minutes` (default 30, at most 480),
-  enforced by the extension.
+- One session per IDE window. **No step or time limit by default**: a session
+  runs until the root cause is found, the program ends, or the agent or the
+  developer stops it (the IDE's Stop button), so the agent is never cut off at an
+  arbitrary point. The agent may still ask for `max_steps` (at most 100,000;
+  enforced by both parts) or `max_minutes` (at most 1,440; enforced by the
+  extension), and the dialog then shows them. One `step` call moves at most 20
+  steps and one `trace` at most 50 hits; the agent calls again for more.
 - Values whose name or content looks secret (password, token, key, credential,
   cookie; key-shaped strings) are replaced with `***REDACTED***` before the
   agent or the report sees them, including children of a secret-named parent.

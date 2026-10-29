@@ -97,9 +97,13 @@ class Session(VisualStudioTest):
         self.assertEqual((dialog["modal"], dialog["items"]), (True, ["Approve"]))
         for expected in ("Goal: Find why moving a shape changes its area",
                          'Build first: "Build geometry (Debug|x64)": build project geometry (Debug|x64)',
-                         '"geometry (Debug|x64)" (visualstudio)', "Breakpoints: cpp/geometry.cpp:16", "Limits: 7 steps",
+                         '"geometry (Debug|x64)" (visualstudio)', "Breakpoints: cpp/geometry.cpp:16", "Limits: 7 steps, no time limit",
                          "When the session ends: the program is stopped", '"configuration": "Debug|x64"'):
             self.assertIn(expected, dialog["detail"])
+
+    def test_no_limits_unless_asked_for(self):
+        dialog = self.start()
+        self.assertIn("Limits: none; stop the session any time with Debug > Stop Debugging", dialog["detail"])
 
     def test_agent_args_are_one_command_line(self):
         dialog = self.start(args=["-m", "repro\\issue 1771.js"], ticket="quickjs-ng/quickjs#1771")

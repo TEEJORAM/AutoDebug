@@ -167,7 +167,7 @@ How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/d
 builds without debug info show wrong lines and missing variables. Let the
 build run first through the launch configuration's `preLaunchTask` or the
 agent's `build_task`. A long compile gets `build_minutes` (default 30, up to
-600), separate from the debugging time limit.
+600). Debugging itself has no step or time limit unless the agent asks for one.
 
 **Launch configurations.** For example, in `.vscode/launch.json`:
 

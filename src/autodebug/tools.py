@@ -144,7 +144,8 @@ class Debugger:
             if raw.get(key) not in (None, ""):
                 result[key] = clean_text(raw[key], 500) if isinstance(raw[key], str) else raw[key]
         if "steps_used" in raw:
-            result["steps"] = f"{raw['steps_used']} of {raw['max_steps']} used"
+            result["steps"] = (f"{raw['steps_used']} of {raw['max_steps']} used" if raw.get("max_steps")
+                               else f"{raw['steps_used']} used")
         if raw.get("breakpoints"):
             result["breakpoints"] = [
                 {"at": clean_text(f"function {b['function']}" if b.get("function") else
@@ -340,7 +341,7 @@ class Debugger:
 
     def start_session(self, launch_configuration: str, breakpoints: list[dict], goal: str,
                       workspace_folder: str | None = None, build_task: str | None = None,
-                      max_steps: int = 100, max_minutes: int = 30, wait_seconds: float = 30,
+                      max_steps: int | None = None, max_minutes: int | None = None, wait_seconds: float = 30,
                       build_minutes: int = 30, process_id: int | None = None,
                       source_folders: list[str] | None = None,
                       function_breakpoints: list[str] | None = None, ide: str | None = None,
@@ -354,7 +355,7 @@ class Debugger:
 
     def reproduce(self, launch_configuration: str, symptom: str, args: list[str] | None = None,
                   ticket: str | None = None, workspace_folder: str | None = None, build_task: str | None = None,
-                  max_minutes: int = 10, wait_seconds: float = 30, build_minutes: int = 30,
+                  max_minutes: int | None = None, wait_seconds: float = 30, build_minutes: int = 30,
                   ide: str | None = None, test: str | None = None) -> dict:
         """Run the program once without breakpoints (after Approve) to see whether the reported bug shows."""
         return self._begin(launch_configuration, [], f"Reproduce: {symptom}", workspace_folder=workspace_folder,

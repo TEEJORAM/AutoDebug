@@ -207,7 +207,9 @@ namespace AutoDebug
                 s = new Session
                 {
                     Id = ++sessions, Phase = "awaiting_approval", Folder = folder, Launch = launch, Shown = json, Task = task, Roots = roots,
-                    MaxSteps = Clamp(Json.Get(args, "max_steps"), 1, 100, 1000), Minutes = Clamp(Json.Get(args, "max_minutes"), 1, 30, 480),
+                    // No limits unless asked for (0): the session runs until the program ends or someone stops it.
+                    MaxSteps = Json.Get(args, "max_steps") == null ? 0 : Clamp(Json.Get(args, "max_steps"), 1, 1, 100000),
+                    Minutes = Json.Get(args, "max_minutes") == null ? 0 : Clamp(Json.Get(args, "max_minutes"), 1, 1, 1440),
                     BuildMinutes = Clamp(Json.Get(args, "build_minutes"), 1, 30, 600),
                     Notes = Json.List(Json.Get(args, "notes")).Select(n => Cut(Convert.ToString(n), 500)).ToList(),
                     Label = Cut(Json.Str(args, "label") ?? Json.Str(launch, "name"), 200),
@@ -290,7 +292,9 @@ namespace AutoDebug
             };
             if (s.Marks.Any(m => m.Function != null)) lines.Add("Function breakpoints: " + string.Join(", ", s.Marks.Where(m => m.Function != null).Select(m => m.Function)));
             if (s.Roots.Count > 1) lines.Add("Breakpoints may also be set in: " + string.Join(", ", s.Roots.Skip(1)));
-            lines.Add($"Limits: {s.MaxSteps} steps, {s.Minutes} minutes");
+            lines.Add(s.MaxSteps == 0 && s.Minutes == 0
+                ? "Limits: none; stop the session any time with Debug > Stop Debugging"
+                : $"Limits: {(s.MaxSteps > 0 ? $"{s.MaxSteps} steps" : "no step limit")}, {(s.Minutes > 0 ? $"{s.Minutes} minutes" : "no time limit")}");
             lines.Add(s.Attach ? "When the session ends: the debugger detaches and the program keeps running"
                                : "When the session ends: the program is stopped");
             lines.Add("");
@@ -368,7 +372,7 @@ namespace AutoDebug
             {
                 if (session != s || (s.Phase != "awaiting_approval" && s.Phase != "building")) return;
                 s.Phase = "starting";
-                s.TimeLimit = new Timer(_ => End("the session time limit was reached"), null, s.Minutes * 60000L, Timeout.Infinite);
+                if (s.Minutes > 0) s.TimeLimit = new Timer(_ => End("the session time limit was reached"), null, s.Minutes * 60000L, Timeout.Infinite);
             }
             foreach (var mark in s.Marks.ToList()) Place(mark);
             Emit(Json.Make("kind", "starting"));
@@ -509,7 +513,7 @@ namespace AutoDebug
             lock (sync)
             {
                 s = Live();
-                if (step && s.StepsUsed >= s.MaxSteps) throw Fail("LIMIT", $"the approved limit of {s.MaxSteps} steps is used up");
+                if (step && s.MaxSteps > 0 && s.StepsUsed >= s.MaxSteps) throw Fail("LIMIT", $"the approved limit of {s.MaxSteps} steps is used up");
                 if (step) s.StepsUsed++;
             }
             var ms = Clamp(Json.Get(args, "timeout_ms"), 100, 10000, 60000);

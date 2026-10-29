@@ -445,7 +445,9 @@ class Session:
         self.features = set(info.get("features") or [])
         self._options_supported(breakpoints, info)
         functions = [str(name)[:300] for name in args.get("function_breakpoints") or []]
-        max_steps = max(1, min(int(args.get("max_steps") or 100), 1000))
+        # No step or time limit unless the agent asks for one: a session runs until the root cause is found, the
+        # program ends, or the agent or the developer stops it.
+        max_steps = max(1, min(int(args["max_steps"]), 100000)) if args.get("max_steps") else None
         label = launch["name"]
         notes = [f"Goal: {str(args.get('goal') or '')[:500]}"] if args.get("goal") else []
         if args.get("reproduce"):
@@ -1357,7 +1359,7 @@ class Session:
         s = self.s
         paused_at = (s["location"], s["reason"])
         if step:
-            if s["steps_used"] >= s["max_steps"]:
+            if s["max_steps"] is not None and s["steps_used"] >= s["max_steps"]:
                 raise DebugError("LIMIT", f"the approved limit of {s['max_steps']} steps is used up")
             s["steps_used"] += 1
         self._changed(status="running", location=None, reason=None, exception=None)
@@ -1382,7 +1384,7 @@ class Session:
         command = STEP_COMMANDS.get(args.get("kind"))
         if command is None:
             raise DebugError("BAD_REQUEST", "kind is over, into, out or back")
-        if s["steps_used"] >= s["max_steps"]:
+        if s["max_steps"] is not None and s["steps_used"] >= s["max_steps"]:
             raise DebugError("LIMIT", f"the approved limit of {s['max_steps']} steps is used up")
         request: dict = {"threadId": s["thread_id"]}
         if command == "stepBack":

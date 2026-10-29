@@ -209,7 +209,7 @@ class Stepping(HarnessTest):
         self.assertEqual({v["name"]: v["value"] for v in back["variables"]}["i"], "0")
         stepped = self.debugger.step("back")
         self.assertEqual(stepped["location"], "geometry.py:12")
-        self.assertEqual(stepped["steps"], "1 of 100 used")
+        self.assertEqual(stepped["steps"], "1 used")
 
 
 class ChildSessions(HarnessTest):
