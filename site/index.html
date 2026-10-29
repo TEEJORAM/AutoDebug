@@ -69,43 +69,9 @@
   .lede { font: 400 1.18rem/1.6 var(--sans); color: var(--ink-soft); margin: 0 0 2rem; max-width: 40rem; }
   p, li { max-width: 43rem; }
 
-  /* Hero: the paused line */
-  .editor { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 0 0 1rem; background: #fbfaf7; }
-  .editor-bar { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.9rem; background: var(--panel); border-bottom: 1px solid var(--rule); font: 400 0.85rem/1.4 var(--sans); color: var(--ink-soft); }
-  .editor-bar strong { font-weight: 600; color: var(--ink); }
-  .code { margin: 0; padding: 0.6rem 0; font: 400 0.9rem/1.7 var(--mono); overflow-x: auto; }
-  .ln { display: grid; grid-template-columns: 1.6rem 2.2rem 1fr; align-items: center; padding-right: 1rem; white-space: pre; }
-  .ln .gutter { display: flex; justify-content: center; }
-  .ln .num { color: #9a978e; text-align: right; padding-right: 1rem; }
-  .ln.bp .gutter::before { content: ""; width: 0.62rem; height: 0.62rem; border-radius: 50%; background: var(--breakpoint); }
-  .ln.here { background: var(--paused); }
-  .ln.here .num { color: var(--ink); }
-  .kw { color: #7a3e9d; } .fn { color: #1b5a94; } .cm { color: #6b6a64; font-style: italic; } .nb { color: #a05a00; }
-  .trace { border-top: 1px solid var(--rule); background: var(--panel); padding: 0.7rem 0.9rem 0.8rem; }
-  .trace p { margin: 0 0 0.4rem; font-size: 0.875rem; color: var(--ink-soft); }
-  .trace table { border-collapse: collapse; font: 400 0.85rem/1.5 var(--mono); width: 100%; }
-  .trace th { text-align: left; font: 600 0.8rem/1.5 var(--sans); color: var(--ink-soft); padding: 0.1rem 1.2rem 0.2rem 0; border-bottom: 1px solid var(--rule); }
-  .trace td { padding: 0.18rem 1.2rem 0.18rem 0; white-space: nowrap; }
-  .trace .changed { color: var(--breakpoint); }
-  .caption { font-size: 0.95rem; color: var(--ink-soft); margin: 0 0 2.5rem; }
-  .js .trace tbody tr { opacity: 0; transition: opacity 240ms ease; }
-  .js .trace tbody tr.shown { opacity: 1; }
-  .bar-right { display: flex; align-items: center; gap: 0.6rem; }
+  /* Replay buttons (How it works) */
   .replay { font: 600 0.78rem/1 var(--sans); color: var(--ink-soft); background: #fbfaf7; border: 1px solid var(--rule); border-radius: 4px; padding: 0.3rem 0.55rem; cursor: pointer; }
   .replay:hover { color: var(--ink); border-color: var(--ink-soft); }
-  .ln.cause.found > span:last-child { text-decoration: underline wavy var(--breakpoint); text-decoration-thickness: 1px; text-underline-offset: 5px; }
-  .agent { border-top: 1px solid var(--rule); background: #fbfaf7; padding: 0.55rem 0.9rem 0.7rem; }
-  .agent-log { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; line-height: 1.5; }
-  .msg { display: grid; grid-template-columns: 6.2rem 1fr; gap: 0.75rem; padding: 0.3rem 0; }
-  .msg + .msg { border-top: 1px dashed #e3e0d8; }
-  .msg .who { font-weight: 600; font-size: 0.8rem; color: var(--ink-soft); padding-top: 0.08rem; }
-  .msg.you .who { color: var(--link); }
-  .msg.found .who { color: var(--breakpoint); }
-  .msg.found { font-weight: 500; }
-  .tag { display: inline-block; font: 600 0.72rem/1.4 var(--sans); padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--rule); color: var(--ink-soft); white-space: nowrap; }
-  .tag.ok { background: #dcebdf; border-color: #b9d6c0; color: var(--ok); }
-  .js .agent-log .msg { opacity: 0; transition: opacity 280ms ease; }
-  .js .agent-log .msg.shown { opacity: 1; }
 
   /* Steps: a real sequence, so numbered */
   ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
@@ -155,7 +121,6 @@
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .js .trace tbody tr, .js .agent-log .msg { opacity: 1; transition: none; }
   }
 
   /* Get started: pick your system, IDE and agent */
@@ -336,41 +301,6 @@
   <h1>AutoDebug</h1>
   <p class="lede">AutoDebug lets an AI agent find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from assumptions or a guess. Then it writes a report with the smallest fix. Nothing runs until you click Approve.</p>
 
-  <figure class="editor" aria-label="Replay of an AutoDebug session: the agent finds why moving a square changes its area">
-    <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span class="bar-right"><span id="status">Report written</span><button type="button" class="replay" id="replay" hidden>Replay</button></span></div>
-    <div class="code" role="presentation">
-<div class="ln" data-line="9"><span class="gutter"></span><span class="num">9</span><span><span class="kw">def</span> <span class="fn">polygon_area</span>(points: list[Point]) -&gt; <span class="nb">float</span>:</span></div>
-<div class="ln" data-line="10"><span class="gutter"></span><span class="num">10</span><span>    <span class="cm">"""Area of a simple polygon, using the shoelace formula."""</span></span></div>
-<div class="ln" data-line="11"><span class="gutter"></span><span class="num">11</span><span>    total = 0.0</span></div>
-<div class="ln cause" data-line="12"><span class="gutter"></span><span class="num">12</span><span>    <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(<span class="nb">len</span>(points) - 1):</span></div>
-<div class="ln" data-line="13"><span class="gutter"></span><span class="num">13</span><span>        x1, y1 = points[i]</span></div>
-<div class="ln" data-line="14"><span class="gutter"></span><span class="num">14</span><span>        x2, y2 = points[i + 1]</span></div>
-<div class="ln bp here" data-line="15"><span class="gutter"></span><span class="num">15</span><span>        total += x1 * y2 - x2 * y1</span></div>
-<div class="ln" data-line="16"><span class="gutter"></span><span class="num">16</span><span>    <span class="kw">return</span> <span class="nb">abs</span>(total) / 2</span></div>
-    </div>
-    <div class="trace">
-      <p><code>trace</code> of line 15 for the square moved by (2, 1)</p>
-      <table>
-        <thead><tr><th>Pass</th><th>i</th><th>total</th><th>Edge added</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>0</td><td><span class="changed">0.0 → -1.0</span></td><td>(2, 1) to (3, 1)</td></tr>
-          <tr><td>2</td><td>1</td><td><span class="changed">-1.0 → 2.0</span></td><td>(3, 1) to (3, 2)</td></tr>
-          <tr><td>3</td><td>2</td><td><span class="changed">2.0 → 4.0</span></td><td>(3, 2) to (2, 2)</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="agent">
-      <ol class="agent-log">
-        <li class="msg you"><span class="who">You</span><span>Moving a square changes its area. Find out why.</span></li>
-        <li class="msg"><span class="who">Agent</span><span>I'll run <code>geometry.py</code> in the debugger and stop on line 15. <span class="tag">Asks you to approve</span></span></li>
-        <li class="msg ide"><span class="who">VS Code</span><span>Approved. Running to the breakpoint.</span></li>
-        <li class="msg"><span class="who">Agent</span><span>Four corners, but only three passes: the edge from (2, 2) back to (2, 1) is never added.</span></li>
-        <li class="msg found"><span class="who">Root cause</span><span>Line 12: <code>range(len(points) - 1)</code> stops one edge before the shape closes. <span class="tag ok">Proven in the debugger</span></span></li>
-        <li class="msg"><span class="who">Fix</span><span>Loop over every point and wrap around with <code>points[(i + 1) % len(points)]</code>. Report written to <code>autodebug-reports/</code>.</span></li>
-      </ol>
-    </div>
-  </figure>
-  <p class="caption">Replayed from a real session: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
 
   <aside class="creed" aria-label="Why AutoDebug exists">
     <p class="creed-eq">
@@ -862,48 +792,6 @@ autodebug setup</pre></div>
   window.addEventListener("scroll", spy, { passive: true });
   spy();
 
-  // The one moment of motion: a replay of the real session. You ask, the agent asks to run,
-  // you approve, the debugger steps 12 → 15 and stops, the trace fills in, and the agent names
-  // the line that causes the bug. Reduced motion: everything is shown at once.
-  const rows = [...document.querySelectorAll(".trace tbody tr")];
-  const lines = [...document.querySelectorAll(".ln")];
-  const msgs = [...document.querySelectorAll(".agent-log .msg")];
-  const causeLine = document.querySelector(".ln.cause");
-  const status = $("status");
-  const replay = $("replay");
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let timers = [];
-  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
-  function finalState() {
-    rows.forEach((r) => r.classList.add("shown"));
-    msgs.forEach((m) => m.classList.add("shown"));
-    lines.forEach((l) => l.classList.toggle("here", l.dataset.line === "15"));
-    causeLine.classList.add("found");
-    status.textContent = "Report written";
-  }
-  function play() {
-    timers.forEach(clearTimeout);
-    timers = [];
-    replay.hidden = true;
-    rows.forEach((r) => r.classList.remove("shown"));
-    msgs.forEach((m) => m.classList.remove("shown"));
-    lines.forEach((l) => l.classList.remove("here"));
-    causeLine.classList.remove("found");
-    status.textContent = "Idle";
-    const show = (i) => msgs[i].classList.add("shown");
-    at(300, () => show(0));
-    at(1300, () => { show(1); status.textContent = "Waiting for Approve"; });
-    at(2700, () => { show(2); status.textContent = "Running"; });
-    [12, 13, 14, 15].forEach((n, i) => at(3000 + i * 420, () => {
-      lines.forEach((l) => l.classList.toggle("here", Number(l.dataset.line) === n));
-      if (n === 15) status.textContent = "Paused on breakpoint";
-    }));
-    rows.forEach((r, j) => at(4600 + j * 320, () => r.classList.add("shown")));
-    at(6000, () => show(3));
-    at(7300, () => { show(4); causeLine.classList.add("found"); });
-    at(8600, () => { show(5); status.textContent = "Report written"; replay.hidden = false; });
-  }
-  replay.addEventListener("click", play);
   // How it works: the steps arrive one by one the first time the section is on screen; Replay plays it again.
   (() => {
     const steps = [...document.querySelectorAll(".fs")];
@@ -931,7 +819,6 @@ autodebug setup</pre></div>
   // The creed beside the hero writes itself in once, as the page opens.
   const creed = document.querySelector(".creed");
   if (creed) requestAnimationFrame(() => requestAnimationFrame(() => creed.classList.add("on")));
-  if (reduced) finalState(); else play();
 </script>
 </body>
 </html>
