@@ -167,7 +167,7 @@ How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/d
 builds without debug info show wrong lines and missing variables. Let the
 build run first through the launch configuration's `preLaunchTask` or the
 agent's `build_task`. A long compile gets `build_minutes` (default 30, up to
-600), separate from the debugging time limit.
+600). Debugging itself has no step or time limit unless the agent asks for one.
 
 **Launch configurations.** For example, in `.vscode/launch.json`:
 
@@ -209,10 +209,27 @@ session ends the debugger detaches and the app keeps running.
   `step`.
 - **Deep stacks.** `stack` pages through up to 200 frames at a time.
 - **Objects and containers.** `inspect` with `depth` 1–3 opens structs, pointers
-  and containers. Names can be paths: `scene->objects[2].transform`.
+  and containers. Names can be paths: `scene->objects[2].transform`. Large
+  arrays page with `start` and `count`, or by index: `items[5000]`. `scope`
+  reads globals or registers; `hex` shows numbers in hex.
+- **Loops.** A breakpoint's `hit_condition` (`>=500`) stops only at that pass;
+  a `log_message` (`total={total}`) prints values without stopping.
+- **Who changed this value?** `watch` stops when a variable's value changes
+  (data breakpoints: C, C++, Rust and Visual Studio's native debugger).
 - **Exceptions.** `exceptions` lists the debugger's exception filters (CodeLLDB
-  offers C++ throw and catch) and turns them on. A stop on an exception reports
-  which one.
+  offers C++ throw and catch) and turns them on, or only for some exception
+  types (`types: ["KeyError"]`). A stop on an exception reports which one.
+- **Wrong library, missing symbols.** `modules` lists what loaded, its version
+  and whether its symbols loaded.
+- **No source.** `source` shows code the debugger holds without a file;
+  `disassemble` and `memory` show machine code and raw bytes.
+- **Stepping.** `step` can step into one chosen call (`target`), keep other
+  threads paused (`single_thread`), step one machine instruction, or step back
+  with a recording debugger.
+- **One test.** `start_session` with `test` runs a single pytest, unittest, go,
+  jest or vitest test.
+- **Node.js and browsers.** The program runs in a child debug session of the
+  one you approve; AutoDebug follows it.
 - **GUI reproduction.** `wait` with `ask_developer` shows you a note such as
   "Click Delete on the last item". You do it, and the program stops at the
   breakpoint.

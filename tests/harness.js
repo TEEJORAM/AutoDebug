@@ -22,12 +22,16 @@ const readJson = (name) => { try { return JSON.parse(fs.readFileSync(path.join(w
 
 class Position { constructor(line, character) { this.line = line; this.character = character; } }
 class Location { constructor(uri, position) { this.uri = uri; this.range = { start: position }; } }
-class SourceBreakpoint { constructor(location, enabled, condition) { this.location = location; this.enabled = enabled; this.condition = condition; } }
+class SourceBreakpoint {
+  constructor(location, enabled, condition, hitCondition, logMessage) {
+    this.location = location; this.enabled = enabled; this.condition = condition; this.hitCondition = hitCondition; this.logMessage = logMessage;
+  }
+}
 class FunctionBreakpoint { constructor(functionName) { this.functionName = functionName; this.enabled = true; } }
 
 let relay;
-let tracker;
-let session;
+let session; // the approved session; with HARNESS_CHILD=1 the program runs in a child session it starts
+const sessions = [];
 const dialogs = [];
 const breakpoints = [];
 // HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before AutoDebug starts.
@@ -36,12 +40,19 @@ for (const spec of (process.env.HARNESS_EDITOR_BP || '').split(',').filter(Boole
   breakpoints.push(new SourceBreakpoint(new Location({ fsPath: path.join(workspace, file) }, new Position(Number(line) - 1, 0)), true));
 }
 const taskListeners = [];
+// Like VS Code: each source breakpoint as the Debug Adapter Protocol sends it.
 const byFile = () => {
   const files = new Map();
   for (const b of breakpoints) {
     if (!b.location || !b.location.uri) continue;
     const file = b.location.uri.fsPath;
-    files.set(file, [...(files.get(file) || []), b.location.range.start.line + 1]);
+    const start = b.location.range.start;
+    const sent = { line: start.line + 1 };
+    if (start.character) sent.column = start.character + 1;
+    if (b.condition) sent.condition = b.condition;
+    if (b.hitCondition) sent.hitCondition = b.hitCondition;
+    if (b.logMessage) sent.logMessage = b.logMessage;
+    files.set(file, [...(files.get(file) || []), sent]);
   }
   return files;
 };
@@ -49,8 +60,10 @@ const functionNames = () => breakpoints.filter((b) => b.functionName).map((b) =>
 
 // One debug session: VS Code's side of the Debug Adapter Protocol, in brief.
 class DapSession {
-  constructor(configuration) {
-    this.id = 'dap-1'; this.name = configuration.name; this.configuration = configuration; this.seq = 1;
+  constructor(configuration, { parent = null, launcher = false } = {}) {
+    this.id = `dap-${sessions.length + 1}`; this.name = configuration.name; this.configuration = configuration; this.seq = 1;
+    this.parentSession = parent;
+    sessions.push(this);
     this.pending = new Map(); this.buffer = Buffer.alloc(0); this.capabilities = {};
     this.initialized = new Promise((resolve) => { this.onInitialized = resolve; });
     this.kind = process.env.HARNESS_GDB ? 'gdb' : process.env.HARNESS_DEBUGPY ? 'debugpy' : 'fake';
@@ -59,13 +72,19 @@ class DapSession {
       debugpy: [process.env.HARNESS_DEBUGPY, ['-m', 'debugpy.adapter']],
       fake: [process.env.HARNESS_PYTHON || 'python3', [path.join(__dirname, 'fake_adapter.py'), workspace]],
     }[this.kind];
-    this.adapter = childProcess.spawn(program, args, { stdio: ['pipe', 'pipe', 'inherit'] });
+    const env = launcher ? { ...process.env, HARNESS_LAUNCHER: '1' } : process.env;
+    this.adapter = childProcess.spawn(program, args, { stdio: ['pipe', 'pipe', 'inherit'], env });
     this.adapter.stdout.on('data', (chunk) => this.receive(chunk));
+    // Writing to an adapter that has just exited (a disconnect after the attach's own disconnect) fails with EPIPE;
+    // like VS Code, the stand-in ignores it instead of crashing.
+    this.adapter.stdin.on('error', () => {});
     this.adapter.on('exit', (code) => {
       for (const { reject } of this.pending.values()) reject(new Error('the debug adapter exited'));
       this.pending.clear();
-      if (tracker && !this.exited) { this.exited = true; tracker.onExit(code); }
+      if (this.tracker && !this.exited) { this.exited = true; this.tracker.onExit(code); }
       relay.sessionEnded(this);
+      // Like the JavaScript debugger: when the program's session ends, its launcher session ends too.
+      if (this.parentSession && this.parentSession.adapter.exitCode === null) this.parentSession.adapter.kill();
     });
   }
   write(message) {
@@ -77,7 +96,7 @@ class DapSession {
   request(command, args) {
     const message = { seq: this.seq++, type: 'request', command, arguments: args };
     if (command === 'disconnect') say(`DISCONNECT ${JSON.stringify(args)}`);
-    tracker.onWillReceiveMessage(message);
+    this.tracker.onWillReceiveMessage(message);
     return new Promise((resolve, reject) => {
       if (this.adapter.exitCode !== null) { reject(new Error('the debug adapter exited')); return; }
       this.pending.set(message.seq, { resolve, reject });
@@ -105,7 +124,9 @@ class DapSession {
       this.write({ seq: this.seq++, type: 'response', request_seq: message.seq, success: true, command: 'runInTerminal', body: { processId: child.pid } });
       return;
     }
-    tracker.onDidSendMessage(message);
+    this.tracker.onDidSendMessage(message);
+    // Like VS Code: a child session whose program ended is disconnected (and its launcher then ends too).
+    if (message.type === 'event' && message.event === 'terminated' && this.parentSession) this.stop();
     if (message.type === 'event' && message.event === 'initialized') this.onInitialized();
     if (message.type === 'response' && this.pending.has(message.request_seq)) {
       const { resolve, reject } = this.pending.get(message.request_seq);
@@ -114,13 +135,14 @@ class DapSession {
     }
   }
   async sendBreakpoints() {
-    for (const [file, lines] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: lines.map((line) => ({ line })) });
+    for (const [file, sent] of byFile()) await this.request('setBreakpoints', { source: { path: file }, breakpoints: sent });
     if (this.capabilities.supportsFunctionBreakpoints) await this.request('setFunctionBreakpoints', { breakpoints: functionNames() });
   }
   async start() {
     this.capabilities = await this.request('initialize', {
       clientID: 'vscode', adapterID: this.kind, pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true,
-      supportsRunInTerminalRequest: true, supportsVariableType: true,
+      supportsRunInTerminalRequest: true, supportsVariableType: true, supportsVariablePaging: true,
+      supportsMemoryReferences: true, supportsProgressReporting: true, supportsStartDebuggingRequest: true,
     });
     if (this.kind === 'gdb') {
       await this.initialized;
@@ -147,14 +169,15 @@ class DapSession {
 
 // Like VS Code: breakpoint changes during a live session are sent to the debug adapter.
 function sync(changed) {
-  if (!session || !session.started) return;
-  const files = new Set(changed.filter((b) => b.location && b.location.uri).map((b) => b.location.uri.fsPath));
-  const current = byFile();
-  for (const file of files) {
-    session.request('setBreakpoints', { source: { path: file }, breakpoints: (current.get(file) || []).map((line) => ({ line })) }).catch(() => {});
-  }
-  if (changed.some((b) => b.functionName) && session.capabilities.supportsFunctionBreakpoints) {
-    session.request('setFunctionBreakpoints', { breakpoints: functionNames() }).catch(() => {});
+  for (const target of sessions.filter((d) => d.started && d.adapter.exitCode === null)) {
+    const files = new Set(changed.filter((b) => b.location && b.location.uri).map((b) => b.location.uri.fsPath));
+    const current = byFile();
+    for (const file of files) {
+      target.request('setBreakpoints', { source: { path: file }, breakpoints: current.get(file) || [] }).catch(() => {});
+    }
+    if (changed.some((b) => b.functionName) && target.capabilities.supportsFunctionBreakpoints) {
+      target.request('setFunctionBreakpoints', { breakpoints: functionNames() }).catch(() => {});
+    }
   }
 }
 
@@ -199,14 +222,23 @@ const vscode = {
     addBreakpoints: (list) => { breakpoints.push(...list); sync(list); },
     removeBreakpoints: (list) => { list.forEach((b) => { const i = breakpoints.indexOf(b); if (i >= 0) breakpoints.splice(i, 1); }); sync(list); },
     startDebugging: async (folder, configuration) => {
-      session = new DapSession(resolveVariables(configuration));
-      tracker = relay.tracker(session);
+      const child = process.env.HARNESS_CHILD === '1';
+      session = new DapSession(resolveVariables(configuration), { launcher: child });
+      session.tracker = relay.tracker(session);
       relay.sessionStarted(session);
       await session.start();
+      if (child) {
+        // The launcher starts the program in a child session, as the JavaScript debugger does.
+        const program = new DapSession({ ...resolveVariables(configuration), name: `${configuration.name}: geometry.py` }, { parent: session });
+        program.tracker = relay.tracker(program);
+        relay.sessionStarted(program);
+        await program.start();
+      }
       return true;
     },
     stopDebugging: async (target) => {
       if (target !== session) return;
+      for (const child of sessions.filter((d) => d.parentSession === session)) await child.stop();
       await session.stop();
       relay.sessionEnded(session);
       say('LOG stopped');
@@ -226,5 +258,5 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const command = line.trim();
   if (command === 'approve' || command === 'deny') { const answer = dialogs.shift(); if (answer) answer(command === 'approve' ? 'Approve' : undefined); }
   else if (command === 'breakpoints') say(`BREAKPOINTS ${breakpoints.length}`);
-  else if (command === 'exit') relay.stop().then(() => { if (session && session.adapter) session.adapter.kill(); process.exit(0); });
+  else if (command === 'exit') relay.stop().then(() => { sessions.forEach((d) => d.adapter.kill()); process.exit(0); });
 });

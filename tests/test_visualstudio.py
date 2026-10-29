@@ -97,9 +97,13 @@ class Session(VisualStudioTest):
         self.assertEqual((dialog["modal"], dialog["items"]), (True, ["Approve"]))
         for expected in ("Goal: Find why moving a shape changes its area",
                          'Build first: "Build geometry (Debug|x64)": build project geometry (Debug|x64)',
-                         '"geometry (Debug|x64)" (visualstudio)', "Breakpoints: cpp/geometry.cpp:16", "Limits: 7 steps",
+                         '"geometry (Debug|x64)" (visualstudio)', "Breakpoints: cpp/geometry.cpp:16", "Limits: 7 steps, no time limit",
                          "When the session ends: the program is stopped", '"configuration": "Debug|x64"'):
             self.assertIn(expected, dialog["detail"])
+
+    def test_no_limits_unless_asked_for(self):
+        dialog = self.start()
+        self.assertIn("Limits: none; stop the session any time with Debug > Stop Debugging", dialog["detail"])
 
     def test_agent_args_are_one_command_line(self):
         dialog = self.start(args=["-m", "repro\\issue 1771.js"], ticket="quickjs-ng/quickjs#1771")
@@ -237,7 +241,7 @@ class Guards(VisualStudioTest):
             connection.call("dap", {"command": "next"})
         self.assertEqual(caught.exception.code, "NOT_FOUND")  # nothing approved, nothing runs
         self.approved(max_steps=1)
-        for command in ("evaluate", "setVariable", "setExpression", "disconnect"):
+        for command in ("evaluate", "setVariable", "setExpression", "disconnect", "writeMemory", "goto", "restartFrame"):
             with self.assertRaises(DebugError) as caught:
                 connection.call("dap", {"command": command, "arguments": {"expression": "1"}})
             self.assertEqual(caught.exception.code, "BAD_REQUEST", command)
@@ -341,3 +345,64 @@ class NoEvaluation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Inspection(VisualStudioTest):
+    """Breakpoint options, watchpoints, registers, paging, hex, modules, machine code, memory, exception types and
+    stepping options through the Visual Studio relay's core and its scripted backend."""
+
+    def test_hit_count_log_point_and_column_reach_visual_studio(self):
+        dialog, result = self.approved(breakpoints=[
+            {"file": "cpp/geometry.cpp", "line": 13, "log_message": "total={total}", "column": 5},
+            {"file": "cpp/geometry.cpp", "line": 16, "hit_condition": ">=2"}])
+        self.assertIn('cpp/geometry.cpp:13:5 logs "total={total}" without stopping', dialog["detail"])
+        self.assertIn("cpp/geometry.cpp:16 at hit >=2", dialog["detail"])
+        self.assertEqual(self.expect("PLACED"), "geometry.cpp:13 column=5 hit= log=total={total}")
+        self.assertEqual((result["location"], {v["name"]: v["value"] for v in result["variables"]}["i"]),
+                         ("cpp/geometry.cpp:16", "1"), "the first pass is skipped")
+        self.assertIn("total=0", self.debugger.connection.snapshot()["output"])
+
+    def test_a_log_message_cannot_be_an_expression(self):
+        with self.assertRaises(DebugError):
+            self.start(breakpoints=[{"file": "cpp/geometry.cpp", "line": 16, "log_message": "{total * 2}"}])
+
+    def test_watch_registers_paging_and_hex(self):
+        _, result = self.approved()
+        self.assertIn("module geometry.exe loaded (Symbols loaded.)", result["activity"])
+        self.assertIn("thread 2 started", result["activity"])
+        self.debugger.watch(add=[{"name": "total"}])
+        self.debugger.breakpoints(remove=[{"file": "cpp/geometry.cpp", "line": 16}])
+        stopped = self.debugger.continue_(10)
+        self.assertEqual(stopped["reason"], "data breakpoint: total changed")
+        self.assertEqual(self.debugger.inspect(scope="Registers")["variables"][0]["name"], "RIP")
+        page = self.debugger.inspect(names=["big"], start=500, count=2)["variables"][0]
+        self.assertEqual([c["value"] for c in page["children"]], ["1500", "1503"])
+        self.assertEqual(self.debugger.inspect(names=["big[999]"], hex=True)["variables"][0]["value"], "0x00000bb5")
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.watch(add=[{"name": "points"}])
+        self.assertIn("no plain path", caught.exception.message)
+
+    def test_modules_machine_code_memory_and_exceptions(self):
+        self.approved()
+        self.assertEqual([m["name"] for m in self.debugger.modules()["modules"]], ["geometry.exe", "ucrtbased.dll"])
+        rows = self.debugger.disassemble(before=1, after=2)["instructions"]
+        self.assertEqual([r.get("current", False) for r in rows], [False, True, False])
+        memory = self.debugger.memory(name="total", count=4)
+        self.assertEqual(len(memory["rows"]), 1)
+        self.assertTrue(memory["rows"][0].startswith("+00000  a0 a1 a2 a3 "), memory)
+        self.assertTrue(memory["rows"][0].endswith("  ...."), memory)
+        filters = [f["id"] for f in self.debugger.exceptions()["filters"]]
+        self.assertEqual(filters, ["cpp", "win32"])  # the scripted backend's; Visual Studio's add clr
+        self.debugger.exceptions(enable=["cpp"], types=["std::out_of_range"])
+        sent = json.loads(self.expect("EXCEPTIONS"))
+        self.assertEqual(sent["filters"], ["cpp"])
+        self.assertEqual(sent["exceptionOptions"], [{"path": [{"names": ["std::out_of_range"]}], "breakMode": "always"}])
+
+    def test_single_thread_and_instruction_steps(self):
+        self.approved()
+        self.debugger.step("over", single_thread=True, instruction=True)
+        self.assertEqual(json.loads(self.expect("STEP")), {"threadId": 1, "singleThread": True, "granularity": "instruction"})
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.step("into", target="polygon_area")
+        self.assertEqual(caught.exception.code, "NOT_SUPPORTED")
+        self.assertIn("(visualstudio)", caught.exception.message)

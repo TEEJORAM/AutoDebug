@@ -206,7 +206,7 @@ class FakeExtension:
             ids = [f"b{i}" for i, _ in enumerate(args.get("breakpoints", []), 1)]
             fids = [f"f{i}" for i, _ in enumerate(args.get("functions", []), 1)]
             self.session = {"phase": "awaiting_approval", "task": args.get("task"), "launch": args["launch"],
-                            "args": args, "steps": 0, "max_steps": args.get("max_steps") or 100, "next": 100,
+                            "args": args, "steps": 0, "max_steps": args.get("max_steps"), "next": 100,
                             "breakpoints": [{"id": i, "file": b["file"], "line": b["line"]}
                                             for i, b in zip(ids, args.get("breakpoints", []))],
                             "functions": [{"id": i, "name": n} for i, n in zip(fids, args.get("functions", []))]}
@@ -234,7 +234,7 @@ class FakeExtension:
             if command not in ALLOWED:
                 raise _Error("BAD_REQUEST", f"the debugger request {command} is not allowed")
             if command in STEPS:
-                if s["steps"] >= s["max_steps"]:
+                if s["max_steps"] and s["steps"] >= s["max_steps"]:
                     raise _Error("LIMIT", "the step limit is used up")
                 s["steps"] += 1
             try:

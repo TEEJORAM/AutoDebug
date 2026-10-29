@@ -61,7 +61,7 @@ class Protocol(unittest.TestCase):
         self.assertIn(" run <tool> key=value", init["instructions"])
         names = [t["name"] for t in replies[2]["result"]["tools"]]
         self.assertEqual(names, list(TOOLS))
-        self.assertEqual(len(names), 17)
+        self.assertEqual(len(names), 22)
         self.assertFalse({"evaluate", "evaluate_expression", "set_variable"} & set(names))
         self.assertEqual(replies[3]["result"], {})
         self.assertEqual(replies[4]["error"]["code"], -32601)
@@ -96,7 +96,7 @@ class Protocol(unittest.TestCase):
         for request_id in range(1, 6):
             self.assertEqual(replies[request_id]["error"]["code"], -32602, replies[request_id])
         messages = [replies[i]["error"]["message"] for i in range(1, 6)]
-        self.assertEqual(messages[0], "step: kind must be one of: over, into, out; got 'sideways'")
+        self.assertEqual(messages[0], "step: kind must be one of: over, into, out, back; got 'sideways'")
         self.assertEqual(messages[1], "step: count must be between 1 and 20; got 99")
         self.assertIn("step: unknown argument surprise; allowed: kind, count, wait_ms", messages[2])
         self.assertIn("trace: missing line, variables", messages[4])

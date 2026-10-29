@@ -24,10 +24,22 @@ namespace AutoDebug
         public const int MaxEvents = 5000;
         public const int MaxConfig = 4000;
         public const int ApprovalSeconds = 120;
+        // The only debugger requests the server may send: they read state or move the program. None evaluates an
+        // expression or changes a value.
         static readonly HashSet<string> Allowed = new HashSet<string> {
             "threads", "stackTrace", "scopes", "variables", "next", "stepIn", "stepOut", "continue", "pause",
-            "exceptionInfo", "setExceptionBreakpoints" };
-        static readonly HashSet<string> Steps = new HashSet<string> { "next", "stepIn", "stepOut" };
+            "exceptionInfo", "setExceptionBreakpoints", "dataBreakpointInfo", "setDataBreakpoints", "modules",
+            "loadedSources", "source", "stepInTargets", "disassemble", "readMemory", "breakpointLocations", "stepBack",
+            "reverseContinue" };
+        static readonly HashSet<string> Steps = new HashSet<string> { "next", "stepIn", "stepOut", "stepBack" };
+        /// <summary>What this relay can do beyond protocol 4's first version; the server checks it.</summary>
+        public static readonly string[] Features = { "breakpoint_options", "inspection" };
+        static readonly System.Text.RegularExpressions.Regex Hit =
+            new System.Text.RegularExpressions.Regex(@"^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$");
+        static readonly System.Text.RegularExpressions.Regex Placeholder =
+            new System.Text.RegularExpressions.Regex(@"\{([^{}]*)\}");
+        static readonly System.Text.RegularExpressions.Regex VariablePath =
+            new System.Text.RegularExpressions.Regex(@"^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*$");
         static readonly string[] Open = { "awaiting_approval", "building", "starting", "debugging" };
 
         readonly IBackend backend;
@@ -44,8 +56,8 @@ namespace AutoDebug
 
         sealed class Mark
         {
-            public string Id, File, Function, Condition;
-            public int Line;
+            public string Id, File, Function, Condition, Hit, Log;
+            public int Line, Column;
             public object Handle;
             public long DapId;
         }
@@ -80,7 +92,7 @@ namespace AutoDebug
                 case "info":
                     return Json.Make("ide", backend.Ide, "ide_version", backend.IdeVersion, "version", RelayServer.Version,
                         "folders", backend.Folders().Cast<object>().ToList(), "platform", backend.Platform,
-                        "debugger_types", backend.DebuggerTypes().Cast<object>().ToList());
+                        "debugger_types", backend.DebuggerTypes().Cast<object>().ToList(), "features", Features.Cast<object>().ToList());
                 case "workspace": return backend.Workspace(Folder(Json.Str(args, "folder")));
                 case "approve": return Approve(args);
                 case "events": return Events(args);
@@ -195,7 +207,9 @@ namespace AutoDebug
                 s = new Session
                 {
                     Id = ++sessions, Phase = "awaiting_approval", Folder = folder, Launch = launch, Shown = json, Task = task, Roots = roots,
-                    MaxSteps = Clamp(Json.Get(args, "max_steps"), 1, 100, 1000), Minutes = Clamp(Json.Get(args, "max_minutes"), 1, 30, 480),
+                    // No limits unless asked for (0): the session runs until the program ends or someone stops it.
+                    MaxSteps = Json.Get(args, "max_steps") == null ? 0 : Clamp(Json.Get(args, "max_steps"), 1, 1, 100000),
+                    Minutes = Json.Get(args, "max_minutes") == null ? 0 : Clamp(Json.Get(args, "max_minutes"), 1, 1, 1440),
                     BuildMinutes = Clamp(Json.Get(args, "build_minutes"), 1, 30, 600),
                     Notes = Json.List(Json.Get(args, "notes")).Select(n => Cut(Convert.ToString(n), 500)).ToList(),
                     Label = Cut(Json.Str(args, "label") ?? Json.Str(launch, "name"), 200),
@@ -222,7 +236,20 @@ namespace AutoDebug
                 if (line < 1) throw Fail("BAD_REQUEST", "breakpoint lines are positive integers");
                 if (file == null || !Path.IsPathRooted(file)) throw Fail("BAD_REQUEST", "breakpoint files are absolute paths");
                 if (!s.Roots.Any(root => Within(root, file))) throw Fail("OUTSIDE_WORKSPACE", $"{file} is outside the approved folders");
-                var mark = new Mark { Id = $"b{s.NextId++}", File = Norm(file), Line = (int)line, Condition = Cut(Json.Str(item, "condition"), 500) };
+                var column = Json.Long(item, "column") ?? 0;
+                if (column < 0) throw Fail("BAD_REQUEST", "breakpoint columns are positive integers");
+                var hit = Json.Str(item, "hit_condition");
+                if (!string.IsNullOrEmpty(hit) && !Hit.IsMatch(hit)) throw Fail("BAD_REQUEST", "hit_condition is a count such as 5, >=5 or %10");
+                var log = Cut(Json.Str(item, "log_message"), 300);
+                // A log message shows variables by name only; anything else in braces would be evaluated.
+                if (!string.IsNullOrEmpty(log))
+                    foreach (System.Text.RegularExpressions.Match m in Placeholder.Matches(log))
+                        if (!VariablePath.IsMatch(m.Groups[1].Value.Trim())) throw Fail("BAD_REQUEST", "log_message may show variables by name only, like {total}");
+                var mark = new Mark
+                {
+                    Id = $"b{s.NextId++}", File = Norm(file), Line = (int)line, Column = (int)column, Condition = Cut(Json.Str(item, "condition"), 500),
+                    Hit = string.IsNullOrEmpty(hit) ? null : hit.Trim(), Log = string.IsNullOrEmpty(log) ? null : log,
+                };
                 s.Marks.Add(mark);
                 lineIds.Add(mark.Id);
             }
@@ -238,6 +265,16 @@ namespace AutoDebug
         string Relative(Session s, string full) =>
             Within(s.Folder, full) && !Same(s.Folder, full) ? full.Substring(Norm(s.Folder).Length + 1).Replace('\\', '/') : full;
 
+        // A breakpoint as the dialog shows it: where, and what it does there.
+        static string Describe(string where, Mark m)
+        {
+            var text = $"{where}:{m.Line}{(m.Column > 0 ? $":{m.Column}" : "")}";
+            if (m.Condition != null) text += $" if {m.Condition}";
+            if (m.Hit != null) text += $" at hit {m.Hit}";
+            if (m.Log != null) text += $" logs \"{m.Log}\" without stopping";
+            return text;
+        }
+
         string DialogText(Session s, List<Dictionary<string, object>> tasks)
         {
             var l = s.Launch;
@@ -250,16 +287,19 @@ namespace AutoDebug
                 task == null ? "Build: none" : $"Build first: \"{s.Task}\": {Json.Str(task, "command")}",
                 $"Run: \"{Json.Str(l, "name")}\" ({Json.Str(l, "type")}) {program}".Trim(),
                 "Breakpoints: " + (s.Marks.Any(m => m.File != null)
-                    ? string.Join(", ", s.Marks.Where(m => m.File != null).Select(m => $"{Relative(s, m.File)}:{m.Line}{(m.Condition != null ? $" if {m.Condition}" : "")}"))
+                    ? string.Join(", ", s.Marks.Where(m => m.File != null).Select(m => Describe(Relative(s, m.File), m)))
                     : "none"),
             };
             if (s.Marks.Any(m => m.Function != null)) lines.Add("Function breakpoints: " + string.Join(", ", s.Marks.Where(m => m.Function != null).Select(m => m.Function)));
             if (s.Roots.Count > 1) lines.Add("Breakpoints may also be set in: " + string.Join(", ", s.Roots.Skip(1)));
-            lines.Add($"Limits: {s.MaxSteps} steps, {s.Minutes} minutes");
+            lines.Add(s.MaxSteps == 0 && s.Minutes == 0
+                ? "Limits: none; stop the session any time with Debug > Stop Debugging"
+                : $"Limits: {(s.MaxSteps > 0 ? $"{s.MaxSteps} steps" : "no step limit")}, {(s.Minutes > 0 ? $"{s.Minutes} minutes" : "no time limit")}");
             lines.Add(s.Attach ? "When the session ends: the debugger detaches and the program keeps running"
                                : "When the session ends: the program is stopped");
             lines.Add("");
-            lines.Add("The AI agent can then read the stack and variables, step and continue.");
+            lines.Add("The AI agent can then read the stack, variables, modules, machine code and memory, add breakpoints and");
+            lines.Add("watchpoints, step and continue.");
             lines.Add("It cannot evaluate code or change variables. Secret-looking values are hidden from it.");
             if (s.Screenshots)
                 lines.Add("Screenshots: at the stops the agent captures, a picture of this window is saved in " +
@@ -332,7 +372,7 @@ namespace AutoDebug
             {
                 if (session != s || (s.Phase != "awaiting_approval" && s.Phase != "building")) return;
                 s.Phase = "starting";
-                s.TimeLimit = new Timer(_ => End("the session time limit was reached"), null, s.Minutes * 60000L, Timeout.Infinite);
+                if (s.Minutes > 0) s.TimeLimit = new Timer(_ => End("the session time limit was reached"), null, s.Minutes * 60000L, Timeout.Infinite);
             }
             foreach (var mark in s.Marks.ToList()) Place(mark);
             Emit(Json.Make("kind", "starting"));
@@ -353,7 +393,9 @@ namespace AutoDebug
 
         void Place(Mark mark)
         {
-            mark.Handle = mark.File != null ? backend.AddBreakpoint(mark.File, mark.Line, mark.Condition) : backend.AddFunctionBreakpoint(mark.Function);
+            mark.Handle = mark.File != null
+                ? backend.AddBreakpoint(mark.File, mark.Line, new BreakpointOptions { Column = mark.Column, Condition = mark.Condition, HitCondition = mark.Hit, LogMessage = mark.Log })
+                : backend.AddFunctionBreakpoint(mark.Function);
         }
 
         // Tell the server which breakpoints exist and whether they are bound, as the
@@ -471,7 +513,7 @@ namespace AutoDebug
             lock (sync)
             {
                 s = Live();
-                if (step && s.StepsUsed >= s.MaxSteps) throw Fail("LIMIT", $"the approved limit of {s.MaxSteps} steps is used up");
+                if (step && s.MaxSteps > 0 && s.StepsUsed >= s.MaxSteps) throw Fail("LIMIT", $"the approved limit of {s.MaxSteps} steps is used up");
                 if (step) s.StepsUsed++;
             }
             var ms = Clamp(Json.Get(args, "timeout_ms"), 100, 10000, 60000);

@@ -193,6 +193,12 @@ class Arguments(unittest.TestCase):
                          {"until": {"file": "geometry.cpp", "line": 20}})
         self.assertEqual(parse_tool_arguments("breakpoints", ['add=[{"file": "a.py", "line": 3, "condition": "i > 2"}]']),
                          {"add": [{"file": "a.py", "line": 3, "condition": "i > 2"}]})
+        self.assertEqual(parse_tool_arguments("watch", ["add=total,mesh.verts[2]"]),
+                         {"add": [{"name": "total"}, {"name": "mesh.verts[2]"}]})
+        self.assertEqual(parse_tool_arguments("breakpoints", ["check=geometry.py:15"]),
+                         {"check": {"file": "geometry.py", "line": 15}})
+        self.assertEqual(parse_tool_arguments("exceptions", ["enable=raised,uncaught", "types=KeyError"]),
+                         {"enable": ["raised", "uncaught"], "types": ["KeyError"]})
 
     def test_mistakes_are_explained(self):
         for pairs, text in ((["until=geometry.cpp"], "file:line"), (["nonsense"], "key=value"),

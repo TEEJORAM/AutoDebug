@@ -127,8 +127,12 @@ class Extension(HarnessTest):
         detail = dialog["detail"]
         for expected in ("Goal: Find why moving a shape changes its area",
                          'Build first: "check": python -m py_compile geometry.py',
-                         '"Debug tests" (debugpy) unittest -v', "Breakpoints: geometry.py:15", "Limits: 7 steps"):
+                         '"Debug tests" (debugpy) unittest -v', "Breakpoints: geometry.py:15", "Limits: 7 steps, no time limit"):
             self.assertIn(expected, detail)
+
+    def test_no_limits_unless_asked_for(self):
+        dialog = self.start()
+        self.assertIn("Limits: none; stop the session any time with the debug toolbar's Stop button", dialog["detail"])
 
     def test_agent_args_and_ticket_are_in_the_dialog(self):
         dialog = self.start(args=["-k", "area"], ticket="PROJ-42")
@@ -206,7 +210,8 @@ class Extension(HarnessTest):
                 connection.call(op, {"expression": "1"})
             self.assertEqual(caught.exception.code, "BAD_REQUEST")
         self.approved()
-        for command in ("evaluate", "setVariable", "setExpression", "disconnect"):
+        for command in ("evaluate", "setVariable", "setExpression", "disconnect", "writeMemory", "goto", "restartFrame",
+                        "restart", "terminateThreads"):
             with self.assertRaises(DebugError) as caught:
                 connection.call("dap", {"command": command, "arguments": {"expression": "1"}})
             self.assertEqual(caught.exception.code, "BAD_REQUEST", command)
@@ -395,7 +400,7 @@ class StepFailure(HarnessTest):
             self.debugger.step()
         state = self.debugger.wait(2)
         self.assertEqual(state["status"], "paused")
-        self.assertEqual(state["steps"], "0 of 100 used")
+        self.assertEqual(state["steps"], "0 used")
 
 
 class HungBuild(HarnessTest):

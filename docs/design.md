@@ -20,7 +20,7 @@ AutoDebug extension  (VS Code / Cursor: JavaScript; Visual Studio: C#)
    │   a thin relay: Approve dialog, builds, breakpoints, start/stop, debugger passthrough
    │  Debug Adapter Protocol (VS Code, Cursor); Visual Studio's debugger automation
    ▼
-the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ...) ── your program
+the debugger (CodeLLDB, C/C++, gdb, debugpy, JavaScript, Visual Studio's native and .NET debuggers, ...) ── your program
 ```
 
 - **`autodebug` (Python 3.11+, no dependencies).** It holds all of AutoDebug's
@@ -34,10 +34,11 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, Visual Studio's native debugger, ..
   the IDE: the Approve dialog, running the approved build task and launch
   configuration, placing breakpoints, relaying a short list of Debug Adapter
   Protocol requests, and reporting the session's events. It enforces the approval,
-  the step and time limits, the approved folders and the request list on its own,
+  any step and time limits the agent asked for, the approved folders and the request list on its own,
   so a fault in the server cannot widen what the developer approved.
 - **AutoDebug for Visual Studio (C#, no runtime dependencies).** The same relay
-  protocol for Visual Studio 2022 and 2026 (see "Visual Studio" below). Its
+  protocol for Visual Studio 2022 and 2026 (see "Visual Studio" below), for C,
+  C++ and .NET programs. Its
   shared core (`visualstudio/Core`: connection, Approve gate, limits, events) has
   no Visual Studio references, so a test harness runs it with plain .NET; only
   `Extension/VsBackend.cs` talks to Visual Studio.
@@ -140,23 +141,61 @@ an agent waits longer for the Approve click by calling `wait` again.
 |---|---|
 | `list_targets` | IDE windows (with `ide`: cursor, vscode or visualstudio), their folders, launch configurations (program and module separately, each with its `build` type and `start_with`: the exact `ide`, name and folder to pass) and build tasks. `ide` limits it to one IDE |
 | `open_ide` | Open a solution or project folder in the IDE when no window has it, and wait until AutoDebug answers there (see "Opening the IDE") |
-| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open. `args` replaces the program's arguments for this run; `ticket` names the issue it is for |
+| `start_session` | Ask the developer to approve, then build, set breakpoints, launch or attach; waits for the first stop. `ide` and `workspace_folder` pick the window when several are open. `args` replaces the program's arguments for this run; `ticket` names the issue it is for; `test` runs one test (see "One test") |
 | `reproduce` | Before debugging a reported bug: one approved run with no breakpoints, to its end; returns the exit code and last output lines, and tells the agent to compare them with the ticket's `symptom` |
 | `wait` | Wait for the session to change state. `ask_developer` shows an information message; it is not an approval |
-| `step` | Step over, into or out (1–20 times). `wait_ms` waits for a slow step (default 15 s, max 60 s) |
-| `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line |
+| `step` | Step over, into or out (1–20 times). `wait_ms` waits for a slow step (default 15 s, max 60 s). `target` steps into one chosen call on the line (`stepInTargets`); `single_thread` keeps the other threads paused; `instruction` steps one machine instruction; kind `back` steps backwards (recording debuggers) |
+| `continue` | Run to the next stop and return it; with `until`, run past other breakpoints to that line. `single_thread`; `reverse` runs backwards to the previous stop (recording debuggers) |
 | `pause` | Stop a running program where it is |
-| `inspect` | Frame variables. `depth` 0–3 expands children. Names may be paths (`mesh.verts[2].co`) |
+| `inspect` | Frame variables (the frame's own scopes: Locals, Arguments; not globals or registers). `depth` 0–3 expands children. Names may be paths (`mesh.verts[2].co`, `items[5000]`). `scope` reads one scope by name, slow ones too (Globals, Registers); the result lists the frame's scopes. `start` and `count` (at most 200) page through one array or list; `hex` asks for hexadecimal values. A large list is read by index: the debugger's paging (`indexedVariables`, `start`, `count`), else debugpy's `more` child and its `[a:b]` ranges, reading only the range that holds the element |
 | `stack` | Call stack, top frame first. `start_frame` pages; up to 200 frames |
 | `threads` | List threads. `select` switches the paused thread |
-| `exceptions` | List exception filters and enable them by id |
-| `breakpoints` | Add or remove source or function breakpoints during the session |
+| `exceptions` | List exception filters and enable them by id; an item `{id, condition}` passes a condition to a filter that takes one (`filterOptions`). `types` stops only for these exception types (`exceptionOptions`; debugpy gets the path `Python Exceptions` → types), `mode` `always` or `unhandled` |
+| `breakpoints` | Add or remove source or function breakpoints during the session. A source breakpoint can have `condition`, `hit_condition`, `log_message` and `column` (see "Breakpoint options"). `check {file, line, end_line}` lists the lines where a breakpoint binds (`breakpointLocations`) |
+| `watch` | While paused: data breakpoints (watchpoints). `add [{name, access}]` (`write`, `read`, `readWrite`), `remove [names]`; at most 8. The name is a variable or path in the frame; `dataBreakpointInfo` gets its id from the container that holds it, so nothing is evaluated. A stop on one has the reason `data breakpoint: <what changed>` |
+| `modules` | Loaded modules: name, path, version, symbol status, optimized (`modules` request, else the module events). `filter`; `sources` adds `loadedSources`, including code without a file |
+| `source` | While paused: the code of a frame that has no file (`source` request with its `sourceReference`), 120 lines around the frame's line, redacted |
+| `disassemble` | While paused: instructions around a frame's `instructionPointerReference` (`before`, `after`); the current one is marked. A debugger that cannot go backwards from an address (gdb 15) gets the current instruction and those after it |
+| `memory` | While paused: at most 256 bytes of a variable (its `memoryReference`) or at a frame's instruction, as hex rows. A variable with a secret name, or bytes whose text looks like a key or token, come back as `***REDACTED***` |
 | `trace` | Run to a line repeatedly; each row has the caller and each variable as `before → after` the line runs (one step per hit, counted in the step limit). Stops early at another breakpoint |
 | `capture` | At the stop that shows the bug: a screenshot of the IDE (Visual Studio) with the agent's note for the report; returns the named variables to the agent; at most 5 per report |
 | `stop_session` | End the debug session |
 | `write_report` | Write the Markdown report (see "Report") |
 
-There is no tool that evaluates expressions or changes variables.
+There is no tool that evaluates expressions or changes variables. Breakpoint
+conditions are the program's language, as before; a log message may name only
+variables and paths (`{total}`, `{mesh.verts[2].co}`), and a hit condition only
+a count, so neither runs code the developer did not see.
+
+**Breakpoint options.** `hit_condition` is a count with an optional comparison
+(`5`, `>=5`, `%10`, ...); what it means is the debugger's: debugpy and Visual
+Studio stop at that hit, gdb's own adapter skips that many hits, and Visual
+Studio has no "fewer than". `log_message` makes a log point: the debugger prints
+it (variables in braces) and does not stop; the lines reach the agent as program
+output. `column` places the breakpoint at a column (a lambda, minified code).
+The Approve dialog shows each option (`geometry.py:15 at hit >=2`, `logs "..."
+without stopping`). An extension without `breakpoint_options` in its `info`
+would drop them, so such breakpoints are refused there with `OLD_EXTENSION`
+before anything is shown.
+
+**What the debugger cannot do** is said plainly: a tool that needs a capability
+the debugger does not report (`supportsDataBreakpoints`, `supportsStepBack`,
+`supportsDisassembleRequest`, ...) fails with `NOT_SUPPORTED`, naming the
+debugger type. Requests the extension does not know fail with `OLD_EXTENSION`
+and the fix.
+
+**Activity.** Debugger events about threads, processes, modules, sources
+without a file and long debugger work (`progressStart`), and child sessions
+starting and ending, are kept as short lines; each tool result shows the new
+ones once as `activity`. The first 30 module loads are listed, then only
+changes.
+
+**One test.** `test` on `start_session` or `reproduce` sets the program
+arguments that run one test with the launch configuration's runner: pytest
+(`module: pytest` or a `pytest` program) and unittest get the id itself, go
+(`mode: test`) gets `-test.run ^Name$`, jest `--runInBand -t name`, vitest
+`run -t name`. Other configurations are refused with the hint to pass `args`.
+`test` and `args` are not combined. The Approve dialog says that one test runs.
 `start_session`, `reproduce`, `step`, `continue`, `trace` and `pause` move the program; the
 agent must not call them in parallel with `stack` or `inspect`.
 
@@ -216,7 +255,7 @@ dialog from the exact objects it will run.
 
 `start_session` opens a modal dialog in the IDE window. It shows what will run:
 the build task and its `dependsOn` chain, `preLaunchTask`, `postDebugTask`,
-`cwd`, `env`, `envFile`, the breakpoints, `source_folders`, the step limit, the
+`cwd`, `env`, `envFile`, the breakpoints, `source_folders`, the limits (none unless asked for), the
 goal, and the launch configuration as JSON exactly as it will be used (without
 `name`). A configuration longer than 4000 characters is refused. `${input:…}`
 and `${command:…}` are refused, except an attach `processId` or CodeLLDB `pid`
@@ -241,14 +280,21 @@ terminated.
 
 ## Limits and redaction
 
-- One session per IDE window. Step limit per session (default 100, at most 1000),
-  enforced by both parts. Sessions end after `max_minutes` (default 30, at most 480),
-  enforced by the extension.
+- One session per IDE window. **No step or time limit by default**: a session
+  runs until the root cause is found, the program ends, or the agent or the
+  developer stops it (the IDE's Stop button), so the agent is never cut off at an
+  arbitrary point. The agent may still ask for `max_steps` (at most 100,000;
+  enforced by both parts) or `max_minutes` (at most 1,440; enforced by the
+  extension), and the dialog then shows them. One `step` call moves at most 20
+  steps and one `trace` at most 50 hits; the agent calls again for more.
 - Values whose name or content looks secret (password, token, key, credential,
   cookie; key-shaped strings) are replaced with `***REDACTED***` before the
   agent or the report sees them, including children of a secret-named parent.
   Values are capped at 2,000 characters.
 - Breakpoint files must be inside the workspace folder or a `source_folders` path.
+- `memory` reads at most 256 bytes at a time and hides secret-looking ones;
+  `source` and `disassemble` text is redacted like values. At most 8 watched
+  values at a time.
 
 ## Extension protocol
 
@@ -256,6 +302,9 @@ Connection file `<state>/bridges/<window>.json` (`%LOCALAPPDATA%\autodebug`,
 `~/Library/Application Support/autodebug`, `~/.local/state/autodebug`), mode
 0600 where the OS supports it:
 `{"protocol": 4, "port", "token", "window", "ide", "folders", "version"}`.
+Newer relays add `features` to `info`: `breakpoint_options` (hit counts, log
+points, columns), `inspection` (the requests below) and, in VS Code and Cursor,
+`child_sessions`.
 
 AutoDebug connects to `127.0.0.1:<port>` and sends `{"hello": token}`; a wrong
 token closes the connection. Then one JSON object per line:
@@ -263,11 +312,11 @@ token closes the connection. Then one JSON object per line:
 
 | Op | Args | Result |
 |---|---|---|
-| `info` | – | window, ide, versions, folders, `platform`, `debugger_types` (null if unknown) |
+| `info` | – | window, ide, versions, folders, `platform`, `debugger_types` (null if unknown), `features` |
 | `workspace` | `folder` | `folder`, `launch` (configurations as written), `tasks` (definitions as written) |
-| `approve` | `folder`, `launch` (the prepared configuration), `task`, `notes`, `label`, `breakpoints` [{file (absolute), line, condition}], `functions`, `source_folders`, `max_steps`, `max_minutes`, `build_minutes`, `screenshots` (Visual Studio) | `session`, `breakpoint_ids`, `function_ids`; the dialog opens |
+| `approve` | `folder`, `launch` (the prepared configuration), `task`, `notes`, `label`, `breakpoints` [{file (absolute), line, condition, column, hit_condition, log_message}], `functions`, `source_folders`, `max_steps`, `max_minutes`, `build_minutes`, `screenshots` (Visual Studio) | `session`, `breakpoint_ids`, `function_ids`; the dialog opens |
 | `events` | `since`, `wait_ms` (≤ 60000) | `events` (up to 500, oldest first), `next`, `latest`, `dropped` (long poll) |
-| `dap` | `command`, `arguments`, `timeout_ms` | `body` of the debugger's response |
+| `dap` | `command`, `arguments`, `timeout_ms`, `session` | `body` of the debugger's response |
 | `breakpoints` | `add`, `add_functions`, `remove` (ids) | `breakpoint_ids`, `function_ids` |
 | `editor_breakpoints` | – | the developer's own enabled breakpoints: {file, line} or {function} |
 | `notify` | `text` (≤ 300) | – (a non-modal note to the developer; never an approval) |
@@ -287,15 +336,32 @@ JSON. Only after **Approve** does it build, place the breakpoints and call
 `startDebugging` with that configuration.
 
 `dap` accepts only `threads`, `stackTrace`, `scopes`, `variables`, `next`,
-`stepIn`, `stepOut`, `continue`, `pause`, `exceptionInfo` and
-`setExceptionBreakpoints`, only while the approved session runs. Steps count
-against the approved limit (`LIMIT`).
+`stepIn`, `stepOut`, `continue`, `pause`, `exceptionInfo`,
+`setExceptionBreakpoints`, `dataBreakpointInfo`, `setDataBreakpoints`,
+`modules`, `loadedSources`, `source`, `stepInTargets`, `disassemble`,
+`readMemory`, `breakpointLocations`, `stepBack` and `reverseContinue`, only while
+the approved session runs. Each reads state or moves the program; none
+evaluates an expression or changes a value (`evaluate`, `setVariable`,
+`setExpression`, `writeMemory`, `goto`, `restartFrame` stay refused). Steps,
+`stepBack` included, count against the approved limit (`LIMIT`). The relays
+check a breakpoint's `hit_condition` and `log_message` the same way as the
+server.
+
+**Child sessions** (VS Code, Cursor). A program can run in debug sessions that
+the approved one starts: the JavaScript debugger (Node.js, browsers) runs the
+program in a child session, debugpy can follow subprocesses. The relay follows
+every session whose `parentSession` chain leads to the approved one: their
+messages are relayed with a `session` id, `child_started` and `child_ended`
+{session, name} events say when they come and go, and `dap` goes to the session
+that last stopped unless the server names one with `session`. A child that ends
+does not end the session; the approved session ending does, and stopping it
+stops its children.
 
 Events: `{seq, kind, ...}` with `kind`:
 `approval` {approved, reason}, `build` {task, status (`running`, `succeeded`,
 `failed`, `timeout`, `unavailable`), exit_code, minutes}, `starting`, `started`,
-`not_started`, `error` {message}, `ended` {reason, exit_code}, and `dap`
-{direction, message}: every event from the debugger, its responses to
+`not_started`, `error` {message}, `ended` {reason, exit_code}, `child_started`,
+`child_ended`, and `dap` {direction, message, session}: every event from the debugger, its responses to
 `initialize`, `setBreakpoints` and `setFunctionBreakpoints`, and the IDE's
 `setBreakpoints` / `setFunctionBreakpoints` requests (so the server can tell
 which breakpoints are bound). Output longer than 4000 characters is cut. The
@@ -307,14 +373,16 @@ The server turns these into the state the tools return:
 thread {id, name}, exception {id, description} | null,
 breakpoints [{file, line} or {function}, source, verified, message],
 steps_used, max_steps, build {task, status, exit_code} | null, output [last lines],
-output_note}` where `status` is `awaiting_approval`, `denied`, `building`,
+output_note, activity [{seq, text}], watches [{name, access, verified, message}]}` where `status` is `awaiting_approval`, `denied`, `building`,
 `build_failed`, `starting`, `running`, `paused` or `ended`. A breakpoint that is
 not bound yet says it may bind when its module or library loads, with the
-debugger's own message. Frames without source are `(no source)`.
+debugger's own message. Frames without source are `(no source)`; a stop in one
+is at `(no file) <name>`, and `source` or `disassemble` shows its code.
 
 Error codes: `NO_WINDOW`, `OLD_EXTENSION`, `AMBIGUOUS_WINDOW`, `NOT_FOUND`,
 `NOT_APPROVED`, `BUSY`, `NOT_PAUSED`, `LIMIT`, `OUTSIDE_WORKSPACE`,
-`BAD_REQUEST`, `IDE_ERROR`, `NOT_BUILT` (the launch configuration's program is
+`BAD_REQUEST`, `IDE_ERROR`, `NOT_SUPPORTED` (the debugger lacks what the tool
+needs), `NOT_BUILT` (the launch configuration's program is
 not on disk and no build task or `preLaunchTask` will build it; checked before the
 dialog, so the developer is not asked to approve a launch that cannot start).
 
@@ -337,25 +405,72 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   locations use source paths.
 
 - **Launch configurations** come from the solution's startup projects: one per
-  project, from its active configuration's debug settings (`LocalDebuggerCommand`,
-  `LocalDebuggerCommandArguments`, `LocalDebuggerWorkingDirectory`,
-  `LocalDebuggerEnvironment`, falling back to `TargetPath`), with `"type":
-  "visualstudio"`, `"engine": "native"`, `project` and `configuration`. Plus
-  **Attach to a process (native)**, which needs `process_id`. Build "tasks" are
-  `Build <project> (<configuration>)` and `Build solution (<configuration>)`.
+  project, with `"type": "visualstudio"`, `engine`, `project` and
+  `configuration`. C and C++ projects: their active configuration's debug
+  settings (`LocalDebuggerCommand`, `LocalDebuggerCommandArguments`,
+  `LocalDebuggerWorkingDirectory`, `LocalDebuggerEnvironment`, falling back to
+  `TargetPath`), `"engine": "native"`. .NET projects (`.csproj`, `.vbproj`,
+  `.fsproj`): the program is the build's `.exe`, else `dotnet` with the `.dll`;
+  arguments, working folder and environment come from the
+  `Properties/launchSettings.json` profile with `"commandName": "Project"`;
+  `"engine"` is `managed` (.NET), `framework` (.NET Framework), or `mixed` /
+  `mixed_framework` when the profile has `"nativeDebugging": true`. Plus
+  **Attach to a process (native)** and **Attach to a process (.NET)**, which
+  need `process_id`. Build "tasks" are `Build <project> (<configuration>)` and
+  `Build solution (<configuration>)`.
 - **Approve** is a modal Visual Studio dialog (Deny is the default button). After
   Approve the relay builds through Visual Studio's build, places the breakpoints
   and starts exactly the configuration shown (`IVsDebugger4.LaunchDebugTargets4`
-  with the native engine; attach uses the same call with the process ID).
-- **Requests** map to Visual Studio's debugger automation: threads, stack frames
-  (`StackFrame2`), each frame's locals and their members (no expression is ever
-  evaluated, and values are never set), step over/into/out, go and break.
-  Frame and value references are valid until the program runs again.
+  with the configuration's debug engines: native, .NET (CoreCLR), .NET Framework,
+  or native and .NET together; attach uses the same call with the process ID).
+- **Requests** map to Visual Studio's debugger automation: threads of every
+  debugged process (named `<process>: <thread>` when there are several), stack
+  frames (`StackFrame2`), each frame's locals and their members (paged with
+  `start` and `count`; containers report `indexedVariables`; `hex` switches
+  `HexDisplayMode` for the read and back), step over/into/out, go and break. No
+  expression is ever evaluated for the agent, and values are never set. Frame
+  and value references are valid until the program runs again.
+- **The debug engine's view** of the stop (the program and thread of the last
+  stopping event) gives what the automation does not: each frame's instruction
+  address, a **Registers** scope (`guidFilterRegisters`, marked slow),
+  disassembly (`IDebugDisassemblyStream2`), memory of a local or at an
+  instruction (`IDebugMemoryBytes2`; locals carry their `memoryReference`), and
+  one-instruction steps (`IDebugProgram2.Step` with `STEP_INSTRUCTION`).
+- **Breakpoint options**: hit counts map to Visual Studio's =, >= and "multiple
+  of"; a log point is a tracepoint (`Breakpoint2.Message`, `BreakWhenHit` off),
+  whose lines the relay reads from the Output window's Debug pane at each stop
+  and at the end (module loads, thread exits and lines the engine already
+  reported are left out); a column is the breakpoint's column.
+- **Data breakpoints**: `dataBreakpointInfo` takes the variable's plain path
+  (`total`, `mesh.verts[2]`) from the locals and members listed, and
+  `setDataBreakpoints` adds Visual Studio data breakpoints on it (write access;
+  native code). They are removed when the session ends.
+- **Exception filters**: `cpp` (C++ Exceptions), `win32` (Win32 Exceptions) and
+  `clr` (.NET) turn on "break when thrown" for the group's exceptions; `types`
+  does it for named exceptions, adding a name that is not listed yet to the C++
+  or .NET group. Visual Studio always stops on unhandled exceptions, so mode
+  `unhandled` changes nothing. Every setting changed is put back when the
+  session ends.
+- **Single thread**: the other threads are frozen for the step or continue and
+  thawed at the next stop or the end.
+- **Console output**: a console program's own window is read for its output by
+  a small Windows PowerShell helper that attaches to the program's console and
+  prints each finished line until the program exits. Visual Studio itself never
+  attaches to a console, so closing the program's window cannot close Visual
+  Studio. Where PowerShell cannot run that helper, there is no console output,
+  as before.
+- **Modules, threads and processes**: the debug engine's module load and unload,
+  thread create and destroy, and process create events become `module`, `thread`
+  and `process` events; `modules` lists the loaded modules with symbol status.
+- **Not available in Visual Studio** (`NOT_SUPPORTED`): stepping into a chosen
+  call, stepping back, valid breakpoint lines, code without a file (use
+  `disassemble`), read watchpoints, and globals (Visual Studio has no globals
+  list; read them through a local or a member).
 - **Events**: break mode becomes `stopped` (breakpoint, step, pause or
   exception), run mode `continued`, design mode `exited` and `terminated`; the
   debug engine's breakpoint-bound and binding-error events update which
   breakpoints are bound, and its output-string events become `output`
-  (`OutputDebugString` only: a console program's own window is not captured).
+  (`OutputDebugString`; the console window is read separately, see above).
 - **Debug windows.** At every stop of an AutoDebug session the relay brings the
   Call Stack and a variables window forward and puts the code document back in
   front, so Visual Studio's debug layout (code on top, Autos/Locals bottom left,
@@ -382,8 +497,7 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   covered) as a PNG under `autodebug-reports/screenshots`. Only that window is
   saved, never the screen, and only into that folder. The report shows it under the
   stop's note.
-- **Not yet:** exception filters (none are offered) and `launch.vs.json` ("Open
-  Folder") projects.
+- **Not yet:** `launch.vs.json` ("Open Folder") projects.
 
 ## Report
 
