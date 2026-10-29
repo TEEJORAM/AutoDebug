@@ -90,6 +90,22 @@
   .caption { font-size: 0.95rem; color: var(--ink-soft); margin: 0 0 2.5rem; }
   .js .trace tbody tr { opacity: 0; transition: opacity 240ms ease; }
   .js .trace tbody tr.shown { opacity: 1; }
+  .bar-right { display: flex; align-items: center; gap: 0.6rem; }
+  .replay { font: 600 0.78rem/1 var(--sans); color: var(--ink-soft); background: #fbfaf7; border: 1px solid var(--rule); border-radius: 4px; padding: 0.3rem 0.55rem; cursor: pointer; }
+  .replay:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .ln.cause.found > span:last-child { text-decoration: underline wavy var(--breakpoint); text-decoration-thickness: 1px; text-underline-offset: 5px; }
+  .agent { border-top: 1px solid var(--rule); background: #fbfaf7; padding: 0.55rem 0.9rem 0.7rem; }
+  .agent-log { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; line-height: 1.5; }
+  .msg { display: grid; grid-template-columns: 6.2rem 1fr; gap: 0.75rem; padding: 0.3rem 0; }
+  .msg + .msg { border-top: 1px dashed #e3e0d8; }
+  .msg .who { font-weight: 600; font-size: 0.8rem; color: var(--ink-soft); padding-top: 0.08rem; }
+  .msg.you .who { color: var(--link); }
+  .msg.found .who { color: var(--breakpoint); }
+  .msg.found { font-weight: 500; }
+  .tag { display: inline-block; font: 600 0.72rem/1.4 var(--sans); padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--rule); color: var(--ink-soft); white-space: nowrap; }
+  .tag.ok { background: #dcebdf; border-color: #b9d6c0; color: var(--ok); }
+  .js .agent-log .msg { opacity: 0; transition: opacity 280ms ease; }
+  .js .agent-log .msg.shown { opacity: 1; }
 
   /* Steps: a real sequence, so numbered */
   ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
@@ -139,7 +155,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .js .trace tbody tr { opacity: 1; transition: none; }
+    .js .trace tbody tr, .js .agent-log .msg { opacity: 1; transition: none; }
   }
 
   /* Get started: pick your system, IDE and agent */
@@ -170,8 +186,9 @@
   .block.prompt pre { white-space: pre-wrap; }
   .options button:disabled { opacity: 0.4; cursor: not-allowed; }
   .options button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .soon { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.55rem 0 0; font-size: 0.85rem; color: var(--ink-soft); }
+  .soon .pill { border: 1px dashed var(--side-dim); border-radius: 999px; padding: 0.2rem 0.65rem; }
   /* Case studies: pick a bug, then watch it and read the report */
-  .watch { margin: -1.25rem 0 2rem; font-weight: 500; }
   ol.cases { list-style: none; margin: 0.5rem 0 1.25rem; padding: 0; background: #faf9f6; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
   ol.cases li + li { border-top: 1px solid #e3e0d8; }
   .case-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.9rem; min-height: 3.2rem; padding: 0.55rem 1rem; color: var(--ink); text-decoration: none; }
@@ -221,7 +238,7 @@
   <p class="version">Version 0.7.2 · MIT License</p>
   <nav aria-label="Contents">
     <ul>
-      <li><a href="#what">What it is<small>Two parts, which IDEs and agents</small></a></li>
+      <li><a href="#what">What it is<small>Why it exists, IDEs and agents</small></a></li>
       <li><a href="#cases">Case studies<small>5 real Godot bugs, video and report</small></a></li>
       <li><a href="#start">Get started<small>Your steps in about 2 minutes</small></a></li>
       <li><a href="#safety">Debug safely<small>What Approve means</small></a></li>
@@ -230,22 +247,20 @@
       <li><a href="#get">Where to get it<small>PyPI, Open VSX, Marketplaces</small></a></li>
     </ul>
   </nav>
-  <a class="repo" href="https://github.com/TEEJORAM/AutoDebug">Source on GitHub</a>
 </aside>
 
 <main id="top">
 <div class="page">
   <h1>AutoDebug</h1>
-  <p class="lede">An AI agent debugs your program with the debugger of VS Code, Cursor or Visual Studio, then writes the root cause in a report. Nothing runs until you click Approve.</p>
-  <p class="watch"><a href="#cases">Watch it on 5 real Godot bugs</a></p>
+  <p class="lede">AutoDebug lets an AI agent find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from a guess. Then it writes a report with the smallest fix. Nothing runs until you click Approve.</p>
 
-  <figure class="editor" aria-label="An AutoDebug session paused in geometry.py">
-    <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span id="status">Paused on breakpoint</span></div>
+  <figure class="editor" aria-label="Replay of an AutoDebug session: the agent finds why moving a square changes its area">
+    <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span class="bar-right"><span id="status">Report written</span><button type="button" class="replay" id="replay" hidden>Replay</button></span></div>
     <div class="code" role="presentation">
 <div class="ln" data-line="9"><span class="gutter"></span><span class="num">9</span><span><span class="kw">def</span> <span class="fn">polygon_area</span>(points: list[Point]) -&gt; <span class="nb">float</span>:</span></div>
 <div class="ln" data-line="10"><span class="gutter"></span><span class="num">10</span><span>    <span class="cm">"""Area of a simple polygon, using the shoelace formula."""</span></span></div>
 <div class="ln" data-line="11"><span class="gutter"></span><span class="num">11</span><span>    total = 0.0</span></div>
-<div class="ln" data-line="12"><span class="gutter"></span><span class="num">12</span><span>    <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(<span class="nb">len</span>(points) - 1):</span></div>
+<div class="ln cause" data-line="12"><span class="gutter"></span><span class="num">12</span><span>    <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(<span class="nb">len</span>(points) - 1):</span></div>
 <div class="ln" data-line="13"><span class="gutter"></span><span class="num">13</span><span>        x1, y1 = points[i]</span></div>
 <div class="ln" data-line="14"><span class="gutter"></span><span class="num">14</span><span>        x2, y2 = points[i + 1]</span></div>
 <div class="ln bp here" data-line="15"><span class="gutter"></span><span class="num">15</span><span>        total += x1 * y2 - x2 * y1</span></div>
@@ -262,16 +277,26 @@
         </tbody>
       </table>
     </div>
+    <div class="agent">
+      <ol class="agent-log">
+        <li class="msg you"><span class="who">You</span><span>Moving a square changes its area. Find out why.</span></li>
+        <li class="msg"><span class="who">Agent</span><span>I'll run <code>geometry.py</code> in the debugger and stop on line 15. <span class="tag">Asks you to approve</span></span></li>
+        <li class="msg ide"><span class="who">VS Code</span><span>Approved. Running to the breakpoint.</span></li>
+        <li class="msg"><span class="who">Agent</span><span>Four corners, but only three passes: the edge from (2, 2) back to (2, 1) is never added.</span></li>
+        <li class="msg found"><span class="who">Root cause</span><span>Line 12: <code>range(len(points) - 1)</code> stops one edge before the shape closes. <span class="tag ok">Proven in the debugger</span></span></li>
+        <li class="msg"><span class="who">Fix</span><span>Loop over every point and wrap around with <code>points[(i + 1) % len(points)]</code>. Report written to <code>autodebug-reports/</code>.</span></li>
+      </ol>
+    </div>
   </figure>
-  <p class="caption">From a real session: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
+  <p class="caption">Replayed from a real session: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
 
   <h2 id="what">What it is <a class="anchor" href="#what" aria-label="Link to this section">#</a></h2>
-  <p>AutoDebug has two parts. A small extension runs inside each IDE window and controls that IDE's debugger. A Python program gives AI agents the debugging tools, through MCP or the terminal. The agent asks to run one of your launch configurations, you approve it in the IDE, and the agent builds, stops at breakpoints, steps, reads variables and writes a report into your project.</p>
+  <p>Asked to fix a bug, an AI agent usually guesses the cause from the code. A wrong guess gives a fix that is far bigger than needed, or one that works half the time and leaves the bug in place or adds a new one. AutoDebug makes the agent prove the cause first: it runs your program in the IDE's debugger, stops where the bug happens, reads the values, and only then explains what went wrong and suggests the smallest fix that follows your project's patterns.</p>
   <ul>
-    <li><strong>IDEs:</strong> VS Code, Cursor, Visual Studio 2022 and 2026.</li>
-    <li><strong>Agents:</strong> Cursor's agent, Claude Code, GitHub Copilot in VS Code and in Visual Studio, and any other agent with MCP or a terminal.</li>
-    <li><strong>From a ticket:</strong> give the agent a GitHub issue or Jira ticket. It writes a small reproduction, runs it once to see the bug, then debugs it. The Approve dialog shows the ticket and any program arguments it chose.</li>
-    <li><strong>Languages:</strong> whatever the IDE's debugger runs: C++ and Python in VS Code and Cursor; C++ in Visual Studio.</li>
+    <li><strong>IDEs:</strong> VS Code, Cursor and Visual Studio 2022 / 2026 today. Xcode, CLion and more are planned.</li>
+    <li><strong>Agents:</strong> any AI agent with MCP or a terminal, such as Cursor's agent, Claude Code and GitHub Copilot.</li>
+    <li><strong>From a bug ticket:</strong> give the agent the link to a GitHub issue or Jira ticket, or paste its text. The agent writes a small program that triggers the bug, runs it once to confirm the bug is real, then debugs it until it finds the cause.</li>
+    <li><strong>You stay in control:</strong> the Approve dialog in the IDE shows what will run, including the ticket and the exact program arguments.</li>
   </ul>
 
   <!-- case-studies:start -->
@@ -297,7 +322,7 @@
           <p>parse_tag_assign_eof returns OK as soon as the value parses and never reads the rest of the line, so a trailing comma becomes the start of the next key.</p>
           <p class="case-label">Suggested fix</p>
           <p>After the value, finish the line: skip spaces and comments; anything else is a parse error.</p>
-          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+          <ul class="chips"><li class="ok">Root cause proven in the debugger</li><li>Agent: Grok 4.7</li></ul>
         </div>
         <figure><img src="case-studies/screenshots/20261028-235639-stop-1.png" alt="Visual Studio stopped at core/variant/variant_parser.cpp:1830, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/variant/variant_parser.cpp:1830</code></figcaption></figure>
       </div>
@@ -319,7 +344,7 @@
           <p>VariantCallable::compare_equal compares only hashes. Two different arrays with the same values hash the same, so connect thinks the signal is already connected.</p>
           <p class="case-label">Suggested fix</p>
           <p>Compare the method and identity_compare of the bound value, not the hash.</p>
-          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+          <ul class="chips"><li class="ok">Root cause proven in the debugger</li><li>Agent: Grok 4.7</li></ul>
         </div>
         <figure><img src="case-studies/screenshots/20261029-000602-stop-1.png" alt="Visual Studio stopped at core/variant/variant_callable.cpp:36, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/variant/variant_callable.cpp:36</code></figcaption></figure>
       </div>
@@ -341,7 +366,7 @@
           <p>is_valid asks has_method on GDScriptNativeClass, which only knows its own method new, so a static method like FileAccess.file_exists looks invalid.</p>
           <p class="case-label">Suggested fix</p>
           <p>Let GDScriptNativeClass answer has_method for static ClassDB methods.</p>
-          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+          <ul class="chips"><li class="ok">Root cause proven in the debugger</li><li>Agent: Grok 4.7</li></ul>
         </div>
         <figure><img src="case-studies/screenshots/20261029-001801-stop-1.png" alt="Visual Studio stopped at core/object/object.cpp:748, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/object/object.cpp:748</code></figcaption></figure>
       </div>
@@ -363,7 +388,7 @@
           <p>The typed slot is filled with operator[], which keeps the plain Array. Indexing it later as a PackedStringArray reads size 0 and fails.</p>
           <p class="case-label">Suggested fix</p>
           <p>Store entries with Dictionary::set() and reject the constant if it fails.</p>
-          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+          <ul class="chips"><li class="ok">Root cause proven in the debugger</li><li>Agent: Grok 4.7</li></ul>
         </div>
         <figure><img src="case-studies/screenshots/20261029-003535-stop-1.png" alt="Visual Studio stopped at modules/gdscript/gdscript_analyzer.cpp:5428, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>modules/gdscript/gdscript_analyzer.cpp:5428</code></figcaption></figure>
       </div>
@@ -385,7 +410,7 @@
           <p>The outer class checks for pending lambdas before its inner class body is resolved, so the inner lambda is still pending and GDScript reports a bug.</p>
           <p class="case-label">Suggested fix</p>
           <p>Resolve inner class bodies before the pending-lambda check.</p>
-          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+          <ul class="chips"><li class="ok">Root cause proven in the debugger</li><li>Agent: Grok 4.7</li></ul>
         </div>
         <figure><img src="case-studies/screenshots/20261029-004523-stop-1.png" alt="Visual Studio stopped at modules/gdscript/gdscript_analyzer.cpp:1552, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>modules/gdscript/gdscript_analyzer.cpp:1552</code></figcaption></figure>
       </div>
@@ -411,7 +436,9 @@
       <button type="button" data-value="visualstudio">Visual Studio 2022 / 2026</button>
       <button type="button" data-value="vscode">VS Code</button>
       <button type="button" data-value="cursor">Cursor</button>
-    </div></fieldset></div>
+    </div>
+    <p class="soon"><span>Planned:</span> <span class="pill">Xcode</span> <span class="pill">CLion</span> <span class="pill">Rider</span> <span class="pill">IntelliJ IDEA</span> <span class="pill">Android Studio</span></p>
+    </fieldset></div>
     <div class="pick"><fieldset><legend>Chat with</legend><div class="options" data-pick="agent">
       <button type="button" data-value="cursor">Cursor's agent</button>
       <button type="button" data-value="copilot-vscode">Copilot in VS Code</button>
@@ -451,7 +478,7 @@ autodebug setup</pre></div>
       </li>
       <li id="step-approve"></li>
     </ol>
-    <noscript><p>This guide needs JavaScript. The same steps are in the <a href="https://github.com/TEEJORAM/AutoDebug#readme">README</a>.</p></noscript>
+    <noscript><p>This guide needs JavaScript to show the steps for your system, IDE and agent.</p></noscript>
   </div>
 
   <h2 id="safety">Debug safely <a class="anchor" href="#safety" aria-label="Link to this section">#</a></h2>
@@ -502,7 +529,7 @@ autodebug setup</pre></div>
       <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Calls a debugging tool from a terminal; <code>run help</code> lists them.</td></tr>
     </tbody>
   </table>
-  <p class="tip">On Windows, write <code>py -m autodebug</code> instead of <code>autodebug</code>. Details: <a href="https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md">docs/design.md</a>.</p>
+  <p class="tip">On Windows, write <code>py -m autodebug</code> instead of <code>autodebug</code>.</p>
 
   <h2 id="get">Where to get it <a class="anchor" href="#get" aria-label="Link to this section">#</a></h2>
   <table class="ref">
@@ -517,7 +544,6 @@ autodebug setup</pre></div>
 
   <footer>
     <span>AutoDebug 0.7.2 · MIT License</span>
-    <a href="https://github.com/TEEJORAM/AutoDebug">github.com/TEEJORAM/AutoDebug</a>
   </footer>
 </div>
 </main>
@@ -670,37 +696,69 @@ autodebug setup</pre></div>
     });
   }
 
-  // Current section in the contents
+  // Current section in the contents. The last sections can never reach the top of the
+  // window, so at the bottom of the page the last one is current; a click marks its link at once.
   const links = new Map([...sidebar.querySelectorAll("nav a")].map((a) => [a.getAttribute("href").slice(1), a]));
-  const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      links.forEach((a) => a.removeAttribute("aria-current"));
-      const link = links.get(entry.target.id);
-      if (link) link.setAttribute("aria-current", "true");
-    }
-  }, { rootMargin: "0px 0px -70% 0px" });
-  document.querySelectorAll("h2[id]").forEach((h) => observer.observe(h));
+  const heads = [...document.querySelectorAll("h2[id]")].filter((h) => links.has(h.id));
+  let clicked = null, clickedAt = 0;
+  function mark(id) {
+    links.forEach((a, key) => (key === id ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current")));
+  }
+  function spy() {
+    const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+    if (clicked && (bottom || Date.now() - clickedAt < 1200)) { mark(clicked); return; }
+    clicked = null;
+    let id = null;
+    for (const h of heads) if (h.getBoundingClientRect().top <= window.innerHeight * 0.3) id = h.id;
+    mark(bottom ? heads[heads.length - 1].id : id);
+  }
+  links.forEach((a, id) => a.addEventListener("click", () => { clicked = id; clickedAt = Date.now(); mark(id); }));
+  window.addEventListener("scroll", spy, { passive: true });
+  spy();
 
-  // The one moment of motion: the debugger steps 12 → 15, stops, and the trace fills in.
+  // The one moment of motion: a replay of the real session. You ask, the agent asks to run,
+  // you approve, the debugger steps 12 → 15 and stops, the trace fills in, and the agent names
+  // the line that causes the bug. Reduced motion: everything is shown at once.
   const rows = [...document.querySelectorAll(".trace tbody tr")];
   const lines = [...document.querySelectorAll(".ln")];
+  const msgs = [...document.querySelectorAll(".agent-log .msg")];
+  const causeLine = document.querySelector(".ln.cause");
   const status = $("status");
+  const replay = $("replay");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduced) {
+  let timers = [];
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  function finalState() {
     rows.forEach((r) => r.classList.add("shown"));
-  } else {
-    const path = [12, 13, 14, 15];
-    lines.forEach((l) => l.classList.remove("here"));
-    status.textContent = "Running";
-    path.forEach((n, i) => setTimeout(() => {
-      lines.forEach((l) => l.classList.toggle("here", Number(l.dataset.line) === n));
-      if (n === 15) {
-        status.textContent = "Paused on breakpoint";
-        rows.forEach((r, j) => setTimeout(() => r.classList.add("shown"), 350 + j * 300));
-      }
-    }, 500 + i * 420));
+    msgs.forEach((m) => m.classList.add("shown"));
+    lines.forEach((l) => l.classList.toggle("here", l.dataset.line === "15"));
+    causeLine.classList.add("found");
+    status.textContent = "Report written";
   }
+  function play() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    replay.hidden = true;
+    rows.forEach((r) => r.classList.remove("shown"));
+    msgs.forEach((m) => m.classList.remove("shown"));
+    lines.forEach((l) => l.classList.remove("here"));
+    causeLine.classList.remove("found");
+    status.textContent = "Idle";
+    const show = (i) => msgs[i].classList.add("shown");
+    at(300, () => show(0));
+    at(1300, () => { show(1); status.textContent = "Waiting for Approve"; });
+    at(2700, () => { show(2); status.textContent = "Running"; });
+    [12, 13, 14, 15].forEach((n, i) => at(3000 + i * 420, () => {
+      lines.forEach((l) => l.classList.toggle("here", Number(l.dataset.line) === n));
+      if (n === 15) status.textContent = "Paused on breakpoint";
+    }));
+    rows.forEach((r, j) => at(4600 + j * 320, () => r.classList.add("shown")));
+    at(6000, () => show(3));
+    at(7300, () => { show(4); causeLine.classList.add("found"); });
+    at(8600, () => { show(5); status.textContent = "Report written"; replay.hidden = false; });
+  }
+  replay.addEventListener("click", play);
+  if (reduced) finalState(); else play();
 </script>
 </body>
 </html>

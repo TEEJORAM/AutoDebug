@@ -23,6 +23,12 @@ class Site(unittest.TestCase):
         self.assertIn('name="viewport"', site)
         self.assertIn("prefers-reduced-motion", site)
 
+    def test_no_link_to_the_source_repository(self):
+        # The site is reviewed anonymously: no link names the repository or its owner.
+        for page in (ROOT / "site").rglob("*.html"):
+            text = page.read_text(encoding="utf-8").lower()
+            self.assertNotIn("github.com/teejoram", text, page.name)
+
 
 if __name__ == "__main__":
     unittest.main()
