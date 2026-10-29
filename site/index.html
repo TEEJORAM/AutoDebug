@@ -252,7 +252,7 @@
 <main id="top">
 <div class="page">
   <h1>AutoDebug</h1>
-  <p class="lede">AutoDebug lets an AI agent find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from a guess. Then it writes a report with the smallest fix. Nothing runs until you click Approve.</p>
+  <p class="lede">AutoDebug lets an AI agent find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from assumptions or a guess. Then it writes a report with the smallest fix. Nothing runs until you click Approve.</p>
 
   <figure class="editor" aria-label="Replay of an AutoDebug session: the agent finds why moving a square changes its area">
     <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span class="bar-right"><span id="status">Report written</span><button type="button" class="replay" id="replay" hidden>Replay</button></span></div>
@@ -291,12 +291,11 @@
   <p class="caption">Replayed from a real session: four corners, three passes. The edge from (2, 2) back to (2, 1) is never added, so the moved square reports area 2 instead of 1.</p>
 
   <h2 id="what">What it is <a class="anchor" href="#what" aria-label="Link to this section">#</a></h2>
-  <p>Asked to fix a bug, an AI agent usually guesses the cause from the code. A wrong guess gives a fix that is far bigger than needed, or one that works half the time and leaves the bug in place or adds a new one. AutoDebug makes the agent prove the cause first: it runs your program in the IDE's debugger, stops where the bug happens, reads the values, and only then explains what went wrong and suggests the smallest fix that follows your project's patterns.</p>
+  <p>AI agents often guess why a bug happens. A wrong guess gives a fix that is too big, misses the bug, or adds a new one. With AutoDebug, the agent first proves the cause in the debugger, then suggests the smallest fix.</p>
   <ul>
-    <li><strong>IDEs:</strong> VS Code, Cursor and Visual Studio 2022 / 2026 today. Xcode, CLion and more are planned.</li>
-    <li><strong>Agents:</strong> any AI agent with MCP or a terminal, such as Cursor's agent, Claude Code and GitHub Copilot.</li>
-    <li><strong>From a bug ticket:</strong> give the agent the link to a GitHub issue or Jira ticket, or paste its text. The agent writes a small program that triggers the bug, runs it once to confirm the bug is real, then debugs it until it finds the cause.</li>
-    <li><strong>You stay in control:</strong> the Approve dialog in the IDE shows what will run, including the ticket and the exact program arguments.</li>
+    <li><strong>IDEs:</strong> VS Code, Cursor and Visual Studio. More are planned.</li>
+    <li><strong>Agents:</strong> any agent with MCP or a terminal.</li>
+    <li><strong>Bug tickets:</strong> give the agent a GitHub issue or Jira ticket. It reproduces the bug, then debugs it.</li>
   </ul>
 
   <!-- case-studies:start -->
@@ -568,14 +567,14 @@ autodebug setup</pre></div>
     },
     visualstudio: {
       name: "Visual Studio",
-      debugger: "<strong>Check Visual Studio.</strong> It needs the <strong>Desktop development with C++</strong> workload and a solution whose startup project runs your program (C++ only). For CMake, generate one first: <code>cmake -S . -B build\\vs</code>.",
+      debugger: "<strong>Check Visual Studio.</strong> It needs the <strong>Desktop development with C++</strong> workload and a solution whose startup project runs your program (C++ only). For CMake, generate one first: <code>cmake -S . -B build\\vs</code> (for the demo, run <code>cmake -S cpp -B build\\vs</code> in <code>examples/AutoDebugDemo</code>).",
       open: "<strong>Open the solution in Visual Studio.</strong> Set the startup project and the <strong>Debug</strong> configuration. <strong>View → Output → AutoDebug</strong> says it is listening. The agent sees the configuration as, for example, <code>geometry (Debug|x64)</code>.",
       config: "geometry (Debug|x64)",
     },
   };
   const AGENT = {
     cursor: { name: "Cursor's agent", app: "cursor", appName: "Cursor",
-      tools: "<strong>In Cursor, start a new chat in Agent mode.</strong> Nothing to switch on: <strong>Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot. Don't add autodebug to <code>mcp.json</code> by hand." },
+      tools: "<strong>In Cursor, start a new chat in Agent mode.</strong> Nothing to switch on: <strong>Cursor Settings → Customize → MCPs</strong> shows <strong>extension-autodebug</strong> with a green dot. Don't add autodebug to <code>mcp.json</code> by hand." },
     "copilot-vscode": { name: "Copilot in VS Code", app: "vscode", appName: "VS Code",
       tools: "<strong>In VS Code, open the Copilot chat in Agent mode</strong>, open its tools list and tick <strong>autodebug</strong>. If VS Code asks to trust or start the server, allow it." },
     "copilot-vs": { name: "Copilot in Visual Studio", app: "visualstudio", appName: "Visual Studio",
@@ -628,14 +627,14 @@ autodebug setup</pre></div>
       + " Setup connects every IDE and agent it finds, and updates AutoDebug when a newer version is out.";
 
     $("step-prefer").hidden = sameApp;
-    $("prefer-text").innerHTML = `Then tell AutoDebug you debug in ${ide.name}, so the agent never has to ask:`;
+    $("prefer-text").innerHTML = `Then tell AutoDebug you debug in ${ide.name}, so agents pick it when several IDEs are open:`;
     $("prefer-command").textContent = `${cmd} setup --debug-in ${state.ide}`;
 
-    let open = ide.open;
+    $("step-open").innerHTML = `<p>${ide.open}</p>`;
+    let tools = agent.tools;
     if (!sameApp && (agent.app === "cursor" || agent.app === "vscode"))
-      open += ` Reload the ${agent.appName} window once too, so it picks up the extension.`;
-    $("step-open").innerHTML = `<p>${open}</p>`;
-    $("step-tools").innerHTML = `<p>${agent.tools}</p>`;
+      tools = `<strong>Reload ${agent.appName} once</strong> (Command Palette → <strong>Developer: Reload Window</strong>) so it loads AutoDebug. ` + tools;
+    $("step-tools").innerHTML = `<p>${tools}</p>`;
     $("prompt").textContent = `Use the autodebug tools with launch configuration "${ide.config}" in ${ide.name}. `
       + (state.ide === "visualstudio" ? "Build first, stop at geometry.cpp line 16, trace total, " : "Find why moving a shape changes its area, ")
       + "and write a report.";

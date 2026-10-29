@@ -123,9 +123,7 @@ def render(report: Report) -> str:
               else "- Tokens: not reported by the agent. Your AI app's usage page shows the exact count.",
               f"- AutoDebug: {report.tool_calls} tool calls, about {estimate:,} tokens of tool input and output "
               f"(estimated at {CHARS_PER_TOKEN} characters per token; part of the total above).",
-              "", "---", "",
-              "_Written by AutoDebug. Values that look secret are shown as `***REDACTED***`. AutoDebug ran only what "
-              "the developer approved in the IDE._", ""]
+              ""]
     return "\n".join(lines)
 
 
