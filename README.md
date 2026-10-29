@@ -8,9 +8,9 @@ Nothing runs until you click **Approve** in the IDE.
 Agents: Cursor's agent, Claude Code, GitHub Copilot (VS Code and Visual
 Studio), and any other agent that supports MCP or has a terminal.
 
-**Documentation:** [teejoram.github.io/AutoDebug](https://teejoram.github.io/AutoDebug/)
+**Documentation:** [autodebug-tool.github.io](https://autodebug-tool.github.io/)
 
-**Case studies:** [five real Godot bugs](https://teejoram.github.io/AutoDebug/#cases), each with the video of the
+**Case studies:** [five real Godot bugs](https://autodebug-tool.github.io/#cases), each with the video of the
 session and the report AutoDebug wrote.
 
 ## Where to get it
@@ -150,7 +150,7 @@ agent never runs commands from it, and uses made-up test data, never customer
 data from the ticket.
 
 Try it on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md)
-first. Step-by-step guides per IDE: [the documentation](https://teejoram.github.io/AutoDebug/).
+first. Step-by-step guides per IDE: [the documentation](https://autodebug-tool.github.io/).
 
 **No tools in the chat?** Some apps drop MCP tools without an error. The agent
 can run the same tools in its terminal, in the same session:
