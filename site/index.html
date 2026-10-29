@@ -170,6 +170,37 @@
   .block.prompt pre { white-space: pre-wrap; }
   .options button:disabled { opacity: 0.4; cursor: not-allowed; }
   .options button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  /* Case studies: pick a bug, then watch it and read the report */
+  .watch { margin: -1.25rem 0 2rem; font-weight: 500; }
+  ol.cases { list-style: none; margin: 0.5rem 0 1.25rem; padding: 0; background: #faf9f6; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  ol.cases li + li { border-top: 1px solid #e3e0d8; }
+  .case-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.9rem; min-height: 3.2rem; padding: 0.55rem 1rem; color: var(--ink); text-decoration: none; }
+  .case-row:hover { background: #efede6; }
+  .case-row[aria-current="true"] { background: var(--paused); }
+  .case-n { width: 1.1rem; text-align: right; font: 400 0.8rem/1 var(--mono); color: #8d8a82; }
+  .case-dot { width: 0.62rem; height: 0.62rem; border-radius: 50%; }
+  .case-row[aria-current="true"] .case-dot { background: var(--breakpoint); }
+  .case-row code { font-weight: 500; min-width: 4.4rem; background: none; border: 0; padding: 0; }
+  .case-title { flex: 1 1 16rem; min-width: 0; }
+  .case-area { font-size: 0.85rem; color: var(--ink-soft); }
+  .case-len { font: 400 0.8rem/1 var(--mono); color: var(--ink-soft); margin-left: auto; }
+  section.case { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--panel); margin: 0 0 0.75rem; }
+  section.case video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+  .case-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.5rem; padding: 1.2rem 1.2rem 0.4rem; }
+  .case-body h3 { margin: 0 0 0.6rem; }
+  .case-body p { margin: 0 0 0.6rem; }
+  .case-body p.case-label { margin: 0 0 0.15rem; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); }
+  .case-body figure { margin: 0; }
+  .case-body figure img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; }
+  .case-body figcaption { font-size: 0.85rem; color: var(--ink-soft); margin-top: 0.3rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.6rem; padding: 0; list-style: none; font-size: 0.8rem; }
+  .chips li { padding: 0.1rem 0.55rem; border-radius: 999px; background: var(--paper); }
+  .chips li.ok { background: #dcebdf; color: var(--ok); font-weight: 600; }
+  .case-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; padding: 0.6rem 1.2rem 1.2rem; }
+  .button { display: inline-block; text-decoration: none; border-radius: 6px; padding: 0.55rem 1rem; border: 1px solid var(--rule); color: var(--ink); background: #fbfaf7; }
+  .button.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .button:hover { text-decoration: none; border-color: var(--ink-soft); }
+  @media (max-width: 900px) { .case-area { display: none; } .case-title { flex-basis: 100%; order: 5; } }
 </style>
 </head>
 <body>
@@ -191,6 +222,7 @@
   <nav aria-label="Contents">
     <ul>
       <li><a href="#what">What it is<small>Two parts, which IDEs and agents</small></a></li>
+      <li><a href="#cases">Case studies<small>5 real Godot bugs, video and report</small></a></li>
       <li><a href="#start">Get started<small>Your steps in about 2 minutes</small></a></li>
       <li><a href="#safety">Debug safely<small>What Approve means</small></a></li>
       <li><a href="#help">Troubleshooting<small>Common problems and fixes</small></a></li>
@@ -205,6 +237,7 @@
 <div class="page">
   <h1>AutoDebug</h1>
   <p class="lede">An AI agent debugs your program with the debugger of VS Code, Cursor or Visual Studio, then writes the root cause in a report. Nothing runs until you click Approve.</p>
+  <p class="watch"><a href="#cases">Watch it on 5 real Godot bugs</a></p>
 
   <figure class="editor" aria-label="An AutoDebug session paused in geometry.py">
     <div class="editor-bar"><span><strong>geometry.py</strong> &nbsp;examples/AutoDebugDemo</span><span id="status">Paused on breakpoint</span></div>
@@ -240,6 +273,130 @@
     <li><strong>From a ticket:</strong> give the agent a GitHub issue or Jira ticket. It writes a small reproduction, runs it once to see the bug, then debugs it. The Approve dialog shows the ticket and any program arguments it chose.</li>
     <li><strong>Languages:</strong> whatever the IDE's debugger runs: C++ and Python in VS Code and Cursor; C++ in Visual Studio.</li>
   </ul>
+
+  <!-- case-studies:start -->
+  <h2 id="cases">Case studies <a class="anchor" href="#cases" aria-label="Link to this section">#</a></h2>
+  <p>Five open bugs from the Godot engine, each given to an AI agent as a GitHub link. The agent debugged them in Visual Studio 2026 with AutoDebug. Each video is the real session, sped up while the agent reads code. Each report is the file AutoDebug wrote, unedited.</p>
+  <h3 id="cases-pick">Pick a bug</h3>
+  <ol class="cases" aria-labelledby="cases-pick">
+      <li><a class="case-row" href="case-studies/godot-119459.html" data-case="0" aria-current="true"><span class="case-n">1</span><span class="case-dot" aria-hidden="true"></span><code>#119459</code><span class="case-title">ConfigFile glues trailing text onto the next key</span><span class="case-area">Core, variant parser</span><span class="case-len">1:12</span></a></li>
+      <li><a class="case-row" href="case-studies/godot-116141.html" data-case="1"><span class="case-n">2</span><span class="case-dot" aria-hidden="true"></span><code>#116141</code><span class="case-title">Signal connect treats two different arrays as the same callable</span><span class="case-area">Core, callables</span><span class="case-len">1:10</span></a></li>
+      <li><a class="case-row" href="case-studies/godot-123848.html" data-case="2"><span class="case-n">3</span><span class="case-dot" aria-hidden="true"></span><code>#123848</code><span class="case-title">Callable.is_valid() is false for native static methods</span><span class="case-area">GDScript, native classes</span><span class="case-len">1:15</span></a></li>
+      <li><a class="case-row" href="case-studies/godot-124061.html" data-case="3"><span class="case-n">4</span><span class="case-dot" aria-hidden="true"></span><code>#124061</code><span class="case-title">Constant Dictionary stores an Array where a PackedStringArray belongs</span><span class="case-area">GDScript analyzer</span><span class="case-len">1:13</span></a></li>
+      <li><a class="case-row" href="case-studies/godot-123766.html" data-case="4"><span class="case-n">5</span><span class="case-dot" aria-hidden="true"></span><code>#123766</code><span class="case-title">Inner-class lambda default is resolved from the outer class</span><span class="case-area">GDScript analyzer</span><span class="case-len">1:05</span></a></li>
+  </ol>
+    <section class="case" id="case-0" aria-label="Godot issue 119459">
+      <div class="editor-bar"><span><strong>godot #119459</strong> &nbsp;core/variant/variant_parser.cpp</span><span>Visual Studio 2026 · 1:12</span></div>
+      <video controls preload="none" playsinline poster="case-studies/godot-119459.jpg" aria-label="The debugging session for Godot issue 119459, 1:12, no sound">
+        <source src="case-studies/godot-119459.mp4" type="video/mp4">
+      </video>
+      <div class="case-body">
+        <div>
+          <h3>ConfigFile glues trailing text onto the next key</h3>
+          <p class="case-label">Root cause</p>
+          <p>parse_tag_assign_eof returns OK as soon as the value parses and never reads the rest of the line, so a trailing comma becomes the start of the next key.</p>
+          <p class="case-label">Suggested fix</p>
+          <p>After the value, finish the line: skip spaces and comments; anything else is a parse error.</p>
+          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+        </div>
+        <figure><img src="case-studies/screenshots/20261028-235639-stop-1.png" alt="Visual Studio stopped at core/variant/variant_parser.cpp:1830, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/variant/variant_parser.cpp:1830</code></figcaption></figure>
+      </div>
+      <div class="case-actions">
+        <a class="button dark" href="case-studies/godot-119459.html">Read the full report</a>
+        <a class="button" href="case-studies/godot-119459.md" download>Download the .md file</a>
+        <a href="https://github.com/godotengine/godot/issues/119459">Godot issue #119459</a>
+      </div>
+    </section>
+    <section class="case" id="case-1" aria-label="Godot issue 116141" hidden>
+      <div class="editor-bar"><span><strong>godot #116141</strong> &nbsp;core/variant/variant_callable.cpp</span><span>Visual Studio 2026 · 1:10</span></div>
+      <video controls preload="none" playsinline poster="case-studies/godot-116141.jpg" aria-label="The debugging session for Godot issue 116141, 1:10, no sound">
+        <source src="case-studies/godot-116141.mp4" type="video/mp4">
+      </video>
+      <div class="case-body">
+        <div>
+          <h3>Signal connect treats two different arrays as the same callable</h3>
+          <p class="case-label">Root cause</p>
+          <p>VariantCallable::compare_equal compares only hashes. Two different arrays with the same values hash the same, so connect thinks the signal is already connected.</p>
+          <p class="case-label">Suggested fix</p>
+          <p>Compare the method and identity_compare of the bound value, not the hash.</p>
+          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+        </div>
+        <figure><img src="case-studies/screenshots/20261029-000602-stop-1.png" alt="Visual Studio stopped at core/variant/variant_callable.cpp:36, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/variant/variant_callable.cpp:36</code></figcaption></figure>
+      </div>
+      <div class="case-actions">
+        <a class="button dark" href="case-studies/godot-116141.html">Read the full report</a>
+        <a class="button" href="case-studies/godot-116141.md" download>Download the .md file</a>
+        <a href="https://github.com/godotengine/godot/issues/116141">Godot issue #116141</a>
+      </div>
+    </section>
+    <section class="case" id="case-2" aria-label="Godot issue 123848" hidden>
+      <div class="editor-bar"><span><strong>godot #123848</strong> &nbsp;core/object/object.cpp</span><span>Visual Studio 2026 · 1:15</span></div>
+      <video controls preload="none" playsinline poster="case-studies/godot-123848.jpg" aria-label="The debugging session for Godot issue 123848, 1:15, no sound">
+        <source src="case-studies/godot-123848.mp4" type="video/mp4">
+      </video>
+      <div class="case-body">
+        <div>
+          <h3>Callable.is_valid() is false for native static methods</h3>
+          <p class="case-label">Root cause</p>
+          <p>is_valid asks has_method on GDScriptNativeClass, which only knows its own method new, so a static method like FileAccess.file_exists looks invalid.</p>
+          <p class="case-label">Suggested fix</p>
+          <p>Let GDScriptNativeClass answer has_method for static ClassDB methods.</p>
+          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+        </div>
+        <figure><img src="case-studies/screenshots/20261029-001801-stop-1.png" alt="Visual Studio stopped at core/object/object.cpp:748, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>core/object/object.cpp:748</code></figcaption></figure>
+      </div>
+      <div class="case-actions">
+        <a class="button dark" href="case-studies/godot-123848.html">Read the full report</a>
+        <a class="button" href="case-studies/godot-123848.md" download>Download the .md file</a>
+        <a href="https://github.com/godotengine/godot/issues/123848">Godot issue #123848</a>
+      </div>
+    </section>
+    <section class="case" id="case-3" aria-label="Godot issue 124061" hidden>
+      <div class="editor-bar"><span><strong>godot #124061</strong> &nbsp;modules/gdscript/gdscript_analyzer.cpp</span><span>Visual Studio 2026 · 1:13</span></div>
+      <video controls preload="none" playsinline poster="case-studies/godot-124061.jpg" aria-label="The debugging session for Godot issue 124061, 1:13, no sound">
+        <source src="case-studies/godot-124061.mp4" type="video/mp4">
+      </video>
+      <div class="case-body">
+        <div>
+          <h3>Constant Dictionary stores an Array where a PackedStringArray belongs</h3>
+          <p class="case-label">Root cause</p>
+          <p>The typed slot is filled with operator[], which keeps the plain Array. Indexing it later as a PackedStringArray reads size 0 and fails.</p>
+          <p class="case-label">Suggested fix</p>
+          <p>Store entries with Dictionary::set() and reject the constant if it fails.</p>
+          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+        </div>
+        <figure><img src="case-studies/screenshots/20261029-003535-stop-1.png" alt="Visual Studio stopped at modules/gdscript/gdscript_analyzer.cpp:5428, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>modules/gdscript/gdscript_analyzer.cpp:5428</code></figcaption></figure>
+      </div>
+      <div class="case-actions">
+        <a class="button dark" href="case-studies/godot-124061.html">Read the full report</a>
+        <a class="button" href="case-studies/godot-124061.md" download>Download the .md file</a>
+        <a href="https://github.com/godotengine/godot/issues/124061">Godot issue #124061</a>
+      </div>
+    </section>
+    <section class="case" id="case-4" aria-label="Godot issue 123766" hidden>
+      <div class="editor-bar"><span><strong>godot #123766</strong> &nbsp;modules/gdscript/gdscript_analyzer.cpp</span><span>Visual Studio 2026 · 1:05</span></div>
+      <video controls preload="none" playsinline poster="case-studies/godot-123766.jpg" aria-label="The debugging session for Godot issue 123766, 1:05, no sound">
+        <source src="case-studies/godot-123766.mp4" type="video/mp4">
+      </video>
+      <div class="case-body">
+        <div>
+          <h3>Inner-class lambda default is resolved from the outer class</h3>
+          <p class="case-label">Root cause</p>
+          <p>The outer class checks for pending lambdas before its inner class body is resolved, so the inner lambda is still pending and GDScript reports a bug.</p>
+          <p class="case-label">Suggested fix</p>
+          <p>Resolve inner class bodies before the pending-lambda check.</p>
+          <ul class="chips"><li class="ok">Confirmed in the debugger</li><li>Fix not tested yet</li><li>Agent: Grok 4.7</li></ul>
+        </div>
+        <figure><img src="case-studies/screenshots/20261029-004523-stop-1.png" alt="Visual Studio stopped at modules/gdscript/gdscript_analyzer.cpp:1552, with Locals and Call Stack" loading="lazy"><figcaption>Stop 1 from the report: <code>modules/gdscript/gdscript_analyzer.cpp:1552</code></figcaption></figure>
+      </div>
+      <div class="case-actions">
+        <a class="button dark" href="case-studies/godot-123766.html">Read the full report</a>
+        <a class="button" href="case-studies/godot-123766.md" download>Download the .md file</a>
+        <a href="https://github.com/godotengine/godot/issues/123766">Godot issue #123766</a>
+      </div>
+    </section>
+  <p class="tip">Recorded on Godot 4.8 (dev build, commit cafc17a), Windows 11 and Visual Studio 2026. The agent was Grok 4.7. The videos have no sound.</p>
+  <!-- case-studies:end -->
 
   <h2 id="start">Get started <a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
   <p>Pick your system, the IDE you debug in and the agent you chat with. They can be different apps: for example, chat in Cursor and debug in Visual Studio.</p>
@@ -496,6 +653,22 @@ autodebug setup</pre></div>
     sidebar.classList.remove("open");
     menu.setAttribute("aria-expanded", "false");
   }));
+
+  // Case studies: a row shows its case here; without JavaScript it opens the report page
+  const caseRows = [...document.querySelectorAll(".case-row")];
+  for (const row of caseRows) {
+    row.addEventListener("click", (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      for (const other of caseRows) other.removeAttribute("aria-current");
+      row.setAttribute("aria-current", "true");
+      document.querySelectorAll("section.case").forEach((panel) => {
+        const show = panel.id === "case-" + row.dataset.case;
+        if (!show) panel.querySelector("video").pause();
+        panel.hidden = !show;
+      });
+    });
+  }
 
   // Current section in the contents
   const links = new Map([...sidebar.querySelectorAll("nav a")].map((a) => [a.getAttribute("href").slice(1), a]));
