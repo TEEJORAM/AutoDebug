@@ -236,9 +236,12 @@ def load() -> dict:
 def chips(case: dict) -> list[tuple[str, str]]:
     facts = case["facts"]
     out = []
-    if facts["confidence"]:
-        out.append(("ok" if facts["confidence"] == "Confirmed" else "", f"{facts['confidence']} in the debugger"))
-    out.append(("", "Fix verified" if facts["verified"] else "Fix not tested yet"))
+    if facts["confidence"] == "Confirmed":
+        out.append(("ok", "Root cause proven in the debugger"))
+    elif facts["confidence"]:
+        out.append(("", f"Root cause: {facts['confidence'].lower()}"))
+    if facts["verified"]:
+        out.append(("ok", "Fix verified"))
     out += [("", "Visual Studio 2026"), ("", "Godot 4.8 dev build")]
     if facts["model"]:
         out.append(("", f"Agent: {facts['model']}"))

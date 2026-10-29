@@ -67,6 +67,12 @@ class Markdown(unittest.TestCase):
         self.assertEqual(facts["model"], "Some Model 1")
         self.assertEqual(facts["stops"][0][0], "Stop 1: The value is wrong.")
         self.assertIn('<h2 id="root-cause">', body)
+        case = {"facts": facts}
+        labels = [label for _, label in cs.chips(case)]
+        self.assertIn("Root cause proven in the debugger", labels)
+        self.assertIn("Fix verified", labels)
+        facts["verified"] = False
+        self.assertFalse(any("Fix" in label for _, label in cs.chips(case)))
 
     def test_unfenced_code_in_a_report_keeps_its_lines(self):
         body, _ = cs.render_markdown("for (int i) {\n    call(i);\n}\n")
