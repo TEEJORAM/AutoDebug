@@ -251,6 +251,54 @@
     .js .creed .ne-bar, .js .creed .ne-slash { stroke-dashoffset: 0; transition: none; }
     .js .creed .eq-c { background-size: 100% 0.45em; }
   }
+  /* How it works: four lanes, one arrow per step, drawn in order */
+  .flow { margin: 1.25rem 0 0.5rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 0.9rem 0.9rem 0.4rem; }
+  .flow-lanes, .fs { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .flow-lanes span { text-align: center; font: 600 0.82rem/1.3 var(--sans); color: var(--ink-soft); padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule); }
+  .flow-steps { list-style: none; margin: 0; padding: 0.4rem 0 0; position: relative;
+    background: linear-gradient(var(--rule), var(--rule)) 12.5% 0 / 1px 100% no-repeat,
+                linear-gradient(var(--rule), var(--rule)) 37.5% 0 / 1px 100% no-repeat,
+                linear-gradient(var(--rule), var(--rule)) 62.5% 0 / 1px 100% no-repeat,
+                linear-gradient(var(--rule), var(--rule)) 87.5% 0 / 1px 100% no-repeat; }
+  .fs { position: relative; min-height: 3.1rem; align-items: end; padding: 0.15rem 0; }
+  .fs-text { grid-column: 1 / 5; grid-row: 1; justify-self: center; text-align: center; font-size: 0.85rem; line-height: 1.35;
+    background: var(--panel); padding: 0 0.4rem; margin-bottom: 0.55rem; max-width: 100%; position: relative; z-index: 1; }
+  .fs-text b { font-weight: 600; }
+  .fs-text code { font-size: 0.78rem; }
+  /* The arrow: from lane a to lane b, a line with a head; "back" steps point left */
+  .fs::after { content: ""; position: absolute; bottom: 0.45rem; height: 2px; background: var(--ink);
+    left: calc((min(var(--a), var(--b)) - 0.5) * 25%); width: calc((max(var(--a), var(--b)) - min(var(--a), var(--b))) * 25%);
+    transform-origin: left center; }
+  .fs.back::after { transform-origin: right center; }
+  .fs::before { content: ""; position: absolute; bottom: calc(0.45rem - 4px); width: 0; height: 0; border: 5px solid transparent;
+    border-left: 8px solid var(--ink); border-right: 0; left: calc((var(--b) - 0.5) * 25% - 8px); }
+  .fs.back::before { border-left: 0; border-right: 8px solid var(--ink); left: calc((var(--a) - 0.5) * 25%); }
+  /* A step in one lane: a box, and a dot on that lane's line */
+  .fs.self::before { display: none; }
+  .fs.self::after { width: 9px; height: 9px; border-radius: 50%; bottom: auto; top: 50%; margin-top: -4.5px;
+    left: calc((var(--a) - 0.5) * 25% - 4.5px); background: var(--ink); transform-origin: center; }
+  .fs.self { align-items: center; }
+  .fs.stop::after { background: var(--breakpoint); }
+  .fs.self .fs-text { border: 1px solid var(--ink); border-radius: 4px; padding: 0.15rem 0.5rem; margin: 0.3rem 0; }
+  .fs.approve::after { background: var(--ok); }
+  .fs.approve::before { border-left-color: var(--ok); }
+  .fs.cause .fs-text { background: var(--paused); border-color: var(--breakpoint); }
+  .flow figcaption { display: flex; justify-content: flex-end; min-height: 1.6rem; }
+  .js .fs { opacity: 0; transition: opacity 350ms ease; }
+  .js .fs::after { transform: scaleX(0); transition: transform 450ms ease 150ms; }
+  .js .fs::before { opacity: 0; transition: opacity 150ms ease 550ms; }
+  .js .fs.shown { opacity: 1; }
+  .js .fs.shown::after { transform: scaleX(1); }
+  .js .fs.shown::before { opacity: 1; }
+  table.ref td.n, .tool-groups .n { font: 600 0.95rem/1.4 var(--mono); }
+  .tool-groups .n { margin-left: 0.35rem; color: var(--ink-soft); font-size: 0.8rem; }
+  .tool-groups code { display: inline-block; margin: 0 0.25rem 0.25rem 0; }
+  table.ide-tools td:first-child { width: 22%; }
+  table.ide-tools td.n { width: 14%; }
+  @media (max-width: 560px) { .fs-text { font-size: 0.78rem; } .flow { padding: 0.7rem 0.4rem 0.3rem; } }
+  @media (prefers-reduced-motion: reduce) {
+    .js .fs, .js .fs::after, .js .fs::before { opacity: 1; transform: none; transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -268,10 +316,11 @@
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
-  <p class="version">Version 0.7.2 · MIT License</p>
+  <p class="version">Version 0.8.0 · MIT License</p>
   <nav aria-label="Contents">
     <ul>
       <li><a href="#what">What it is<small>Why it exists, IDEs and agents</small></a></li>
+      <li><a href="#how">How it works<small>One session, start to report; 22 tools</small></a></li>
       <li><a href="#cases">Case studies<small>5 real Godot bugs, video and report</small></a></li>
       <li><a href="#start">Get started<small>Your steps in about 2 minutes</small></a></li>
       <li><a href="#safety">Debug safely<small>What Approve means</small></a></li>
@@ -355,6 +404,46 @@
     <li><strong>Agents:</strong> any agent with MCP or a terminal.</li>
     <li><strong>Bug tickets:</strong> give the agent a GitHub issue or Jira ticket. It reproduces the bug, then debugs it.</li>
   </ul>
+
+  <h2 id="how">How it works <a class="anchor" href="#how" aria-label="Link to this section">#</a></h2>
+  <p>One debugging session, from your question to the report.</p>
+  <figure class="flow" id="flow">
+    <div class="flow-lanes" aria-hidden="true"><span>You</span><span>AI agent</span><span>AutoDebug</span><span>IDE debugger</span></div>
+    <ol class="flow-steps">
+      <li class="fs" style="--a:1;--b:2"><span class="fs-text"><b>You</b> ask: moving a square changes its area. Find why.</span></li>
+      <li class="fs" style="--a:2;--b:3"><span class="fs-text"><b>Agent</b> reads the code and asks to debug: <code>start_session</code> with breakpoints</span></li>
+      <li class="fs" style="--a:3;--b:4"><span class="fs-text"><b>AutoDebug</b> opens the Approve dialog: exactly what will run</span></li>
+      <li class="fs approve" style="--a:1;--b:4"><span class="fs-text"><b>You</b> click Approve</span></li>
+      <li class="fs self stop" style="--a:4;--b:4"><span class="fs-text"><b>Debugger</b> builds, runs, stops at line 15</span></li>
+      <li class="fs back" style="--a:2;--b:4"><span class="fs-text"><b>Agent</b> gets real values: <code>i = 0</code>, <code>total = 0.0</code></span></li>
+      <li class="fs" style="--a:2;--b:4"><span class="fs-text"><b>Agent</b> traces, steps, watches: <code>trace</code>, <code>step</code>, <code>watch</code></span></li>
+      <li class="fs back" style="--a:2;--b:4"><span class="fs-text"><b>Debugger</b> shows the loop ends early: the last edge is never added</span></li>
+      <li class="fs self cause" style="--a:2;--b:2"><span class="fs-text"><b>Root cause</b> proven from values, not a guess</span></li>
+      <li class="fs back" style="--a:1;--b:2"><span class="fs-text"><b>Agent</b> writes the report and the correct fix: <code>write_report</code></span></li>
+    </ol>
+    <figcaption><button type="button" class="replay" id="flow-replay" hidden>Replay</button></figcaption>
+  </figure>
+
+  <h3 id="tools">22 tools in every IDE</h3>
+  <p>The agent gets the same MCP tools in each IDE. When a debugger cannot do something, the tool says so.</p>
+  <table class="ref ide-tools">
+    <thead><tr><th>IDE</th><th>MCP tools</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>VS Code</td><td class="n">22</td><td>Python, C/C++, Rust, Go, Node.js and more, through their debuggers</td></tr>
+      <tr><td>Cursor</td><td class="n">22</td><td>The same, with CodeLLDB for C, C++ and Rust</td></tr>
+      <tr><td>Visual Studio</td><td class="n">22</td><td>C, C++ and .NET; also saves a screenshot at each <code>capture</code></td></tr>
+    </tbody>
+  </table>
+  <table class="ref tool-groups">
+    <thead><tr><th>What for</th><th>Tools</th></tr></thead>
+    <tbody>
+      <tr><td>Start and run <span class="n">6</span></td><td><code>list_targets</code> <code>open_ide</code> <code>reproduce</code> <code>start_session</code> <code>wait</code> <code>stop_session</code></td></tr>
+      <tr><td>Move <span class="n">4</span></td><td><code>step</code> <code>continue</code> <code>pause</code> <code>trace</code></td></tr>
+      <tr><td>Stop where it matters <span class="n">3</span></td><td><code>breakpoints</code> <code>watch</code> <code>exceptions</code></td></tr>
+      <tr><td>Read <span class="n">7</span></td><td><code>inspect</code> <code>stack</code> <code>threads</code> <code>modules</code> <code>source</code> <code>disassemble</code> <code>memory</code></td></tr>
+      <tr><td>Prove and report <span class="n">2</span></td><td><code>capture</code> <code>write_report</code></td></tr>
+    </tbody>
+  </table>
 
   <!-- case-studies:start -->
   <h2 id="cases">Case studies <a class="anchor" href="#cases" aria-label="Link to this section">#</a></h2>
@@ -815,6 +904,30 @@ autodebug setup</pre></div>
     at(8600, () => { show(5); status.textContent = "Report written"; replay.hidden = false; });
   }
   replay.addEventListener("click", play);
+  // How it works: the steps arrive one by one the first time the section is on screen; Replay plays it again.
+  (() => {
+    const steps = [...document.querySelectorAll(".fs")];
+    const again = document.getElementById("flow-replay");
+    const flow = document.getElementById("flow");
+    if (!steps.length || !flow) return;
+    let flowTimers = [];
+    const show = () => { steps.forEach((step) => step.classList.add("shown")); again.hidden = false; };
+    const run = () => {
+      flowTimers.forEach(clearTimeout);
+      flowTimers = [];
+      again.hidden = true;
+      steps.forEach((step) => step.classList.remove("shown"));
+      steps.forEach((step, i) => flowTimers.push(setTimeout(() => step.classList.add("shown"), 300 + i * 900)));
+      flowTimers.push(setTimeout(() => { again.hidden = false; }, 300 + steps.length * 900));
+    };
+    again.addEventListener("click", run);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) { show(); return; }
+    const seen = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { seen.disconnect(); run(); }
+    }, { threshold: 0.35 });
+    seen.observe(flow);
+  })();
+
   // The creed beside the hero writes itself in once, as the page opens.
   const creed = document.querySelector(".creed");
   if (creed) requestAnimationFrame(() => requestAnimationFrame(() => creed.classList.add("on")));
