@@ -7,7 +7,7 @@
 <meta name="description" content="AutoDebug lets an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio 2022/2026, after you click Approve, and write a root-cause report.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
     --ink: #1d1d1b;
@@ -218,21 +218,21 @@
   .button.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
   .button:hover { text-decoration: none; border-color: var(--ink-soft); }
   @media (max-width: 900px) { .case-area { display: none; } .case-title { flex-basis: 100%; order: 5; } }
-  /* The creed: beside the hero on wide screens, after it on narrow ones */
+  /* The creed (in the site's own type): beside the hero on wide screens, after it on narrow ones */
   .creed { margin: 0 0 2.5rem; padding: 1.4rem 0 0; border-top: 2px solid var(--ink); max-width: 30rem; }
-  .creed-eq { margin: 0 0 1.5rem; font: 400 1.7rem/1.22 "IBM Plex Serif", Georgia, serif; color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; }
-  .eq-b { font-style: italic; font-size: 1.2rem; line-height: 1.4; color: var(--ink-soft); }
+  .creed-eq { margin: 0 0 1.5rem; font: 600 1.7rem/1.22 var(--sans); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; }
+  .eq-b { font-weight: 400; font-size: 1.15rem; line-height: 1.4; color: var(--ink-soft); }
   .eq-ne { display: block; width: 3.6rem; height: 2.4rem; margin: 0.6rem 0 0.45rem; }
   .eq-ne svg { width: 100%; height: 100%; overflow: visible; }
   .eq-ne path { fill: none; stroke-linecap: round; }
   .ne-bar { stroke: var(--ink); stroke-width: 3.2; }
   .ne-slash { stroke: var(--breakpoint); stroke-width: 3.8; }
-  .eq-c { font-weight: 500; background: linear-gradient(var(--paused), var(--paused)) no-repeat 0 90% / 100% 0.45em; padding: 0 0.12em; margin-left: -0.12em; }
+  .eq-c { font-weight: 600; background: linear-gradient(var(--paused), var(--paused)) no-repeat 0 90% / 100% 0.45em; padding: 0 0.12em; margin-left: -0.12em; }
   .creed-list { list-style: none; margin: 0; padding: 0; }
   .creed-list li { display: grid; grid-template-columns: 2.4rem 1fr; padding: 0.7rem 0; margin: 0; border-top: 1px solid var(--rule); font-size: 0.95rem; line-height: 1.55; }
-  .creed-list .rn { font: italic 400 1rem/1.5 "IBM Plex Serif", Georgia, serif; color: var(--breakpoint); }
+  .creed-list .rn { font: 600 0.95rem/1.55 var(--sans); color: var(--breakpoint); }
   .creed-list strong { font-weight: 600; color: var(--ink); }
-  .creed-foot { margin: 0; padding-top: 0.8rem; border-top: 1px solid var(--rule); font: italic 400 1rem/1.5 "IBM Plex Serif", Georgia, serif; color: var(--ink-soft); }
+  .creed-foot { margin: 0; padding-top: 0.8rem; border-top: 1px solid var(--rule); font: 500 0.95rem/1.5 var(--sans); color: var(--ink-soft); }
   @media (min-width: 1440px) {
     .creed { position: absolute; top: 3.6rem; left: 48rem; width: min(27rem, calc(100vw - var(--sidebar) - 51rem)); margin: 0; }
   }
