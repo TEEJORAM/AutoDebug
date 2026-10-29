@@ -29,6 +29,9 @@ class Site(unittest.TestCase):
             text = page.read_text(encoding="utf-8").lower()
             for name in ("teejoram", "swagat"):
                 self.assertNotIn(name, text, page.name)
+            # Store pages show the publisher's name, so the site names stores without linking them.
+            for store in ("pypi.org", "open-vsx.org", "marketplace.visualstudio.com"):
+                self.assertNotIn(store, text, page.name)
 
 
 if __name__ == "__main__":
