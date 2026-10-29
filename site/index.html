@@ -228,19 +228,18 @@
   .ne-bar { stroke: var(--ink); stroke-width: 3.2; }
   .ne-slash { stroke: var(--breakpoint); stroke-width: 3.8; }
   .eq-c { font-weight: 600; background: linear-gradient(var(--paused), var(--paused)) no-repeat 0 90% / 100% 0.45em; padding: 0 0.12em; margin-left: -0.12em; }
-  .creed-list { list-style: none; margin: 0; padding: 0; }
+  .creed-list { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--rule); }
   .creed-list li { display: grid; grid-template-columns: 2.4rem 1fr; padding: 0.7rem 0; margin: 0; border-top: 1px solid var(--rule); font-size: 0.95rem; line-height: 1.55; }
   .creed-list .rn { font: 600 0.95rem/1.55 var(--sans); color: var(--breakpoint); }
   .creed-list strong { font-weight: 600; color: var(--ink); }
-  .creed-foot { margin: 0; padding-top: 0.8rem; border-top: 1px solid var(--rule); font: 500 0.95rem/1.5 var(--sans); color: var(--ink-soft); }
   @media (min-width: 1440px) {
     .creed { position: absolute; top: 3.6rem; left: 48rem; width: min(27rem, calc(100vw - var(--sidebar) - 51rem)); margin: 0; }
   }
   /* One entrance: the claim is written, the sign is struck through, then the five rules follow */
-  .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-list li, .js .creed-foot { opacity: 0; transform: translateY(6px); transition: opacity 600ms ease, transform 600ms ease; }
+  .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-list li { opacity: 0; transform: translateY(6px); transition: opacity 600ms ease, transform 600ms ease; }
   .js .creed .ne-bar, .js .creed .ne-slash { stroke-dasharray: 60; stroke-dashoffset: 60; transition: stroke-dashoffset 650ms cubic-bezier(.6,0,.2,1); }
   .js .creed .eq-c { background-size: 0% 0.45em; transition: opacity 600ms ease, transform 600ms ease, background-size 800ms cubic-bezier(.6,0,.2,1); }
-  .js .creed.on .eq-a, .js .creed.on .eq-b, .js .creed.on .eq-c, .js .creed.on .creed-list li, .js .creed.on .creed-foot { opacity: 1; transform: none; }
+  .js .creed.on .eq-a, .js .creed.on .eq-b, .js .creed.on .eq-c, .js .creed.on .creed-list li { opacity: 1; transform: none; }
   .js .creed.on .ne-bar, .js .creed.on .ne-slash { stroke-dashoffset: 0; }
   .js .creed.on .eq-c { background-size: 100% 0.45em; transition-delay: 1900ms, 1900ms, 2300ms; }
   .js .creed.on .eq-b { transition-delay: 400ms; }
@@ -252,9 +251,8 @@
   .js .creed.on .creed-list li:nth-child(3) { transition-delay: 3400ms; }
   .js .creed.on .creed-list li:nth-child(4) { transition-delay: 3650ms; }
   .js .creed.on .creed-list li:nth-child(5) { transition-delay: 3900ms; }
-  .js .creed.on .creed-foot { transition-delay: 4300ms; }
   @media (prefers-reduced-motion: reduce) {
-    .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-list li, .js .creed-foot { opacity: 1; transform: none; transition: none; }
+    .js .creed .eq-a, .js .creed .eq-b, .js .creed .eq-c, .js .creed-list li { opacity: 1; transform: none; transition: none; }
     .js .creed .ne-bar, .js .creed .ne-slash { stroke-dashoffset: 0; transition: none; }
     .js .creed .eq-c { background-size: 100% 0.45em; }
   }
@@ -344,7 +342,6 @@
       <li><span class="rn">IV</span><div><strong>Prove the cause.</strong> A report with the steps, the stops and why it happens.</div></li>
       <li><span class="rn">V</span><div><strong>Fix only what is broken.</strong> The smallest fix, in your project's style. No overkill, no half fix.</div></li>
     </ol>
-    <p class="creed-foot">Nothing runs until you click Approve.</p>
   </aside>
 
   <h2 id="what">What it is <a class="anchor" href="#what" aria-label="Link to this section">#</a></h2>
