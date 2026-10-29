@@ -1,9 +1,9 @@
 name: GitHub Pages
 
 # Publishes site/ only. Does not install packages or contact a debugger.
+# The public documentation is published from autodebug-tool/autodebug-tool.github.io,
+# so this runs only when started by hand.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
