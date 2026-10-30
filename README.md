@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://autodebug-tool.github.io/logo.svg" width="96" height="96" alt="Autodebug logo">
+  <img src="https://autodebug-tool.github.io/logo.svg?v=2" width="96" height="96" alt="Autodebug logo">
 </p>
 
 <h1 align="center">Autodebug</h1>
