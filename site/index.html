@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoDebug documentation</title>
-<meta name="description" content="AutoDebug lets an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio 2022/2026, after you click Approve, and write a root-cause report.">
+<title>Autodebug documentation</title>
+<meta name="description" content="Autodebug lets an AI agent debug your program with the debugger of VS Code, Cursor or Visual Studio 2022/2026, after you click Approve, and write a root-cause report.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -269,7 +269,7 @@
 <body>
 <aside class="sidebar" id="sidebar">
   <div class="top">
-    <a class="brand" href="#top" aria-label="AutoDebug home">
+    <a class="brand" href="#top" aria-label="Autodebug home">
       <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
         <rect x="1" y="1" width="24" height="24" rx="4" fill="none" stroke="#d4d2cc" stroke-width="1.5"/>
         <path d="M6 9h14M6 13h9M6 17h11" stroke="#8d8a82" stroke-width="1.5" stroke-linecap="round"/>
@@ -277,7 +277,7 @@
         <path d="M6 13h9" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>
         <circle cx="21" cy="13" r="2.3" fill="#c4262e"/>
       </svg>
-      <span>AutoDebug</span>
+      <span>Autodebug</span>
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
@@ -298,11 +298,11 @@
 
 <main id="top">
 <div class="page">
-  <h1>AutoDebug</h1>
-  <p class="lede">AutoDebug lets an AI agent debug and find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from assumptions the agent makes by reading the code. Then it writes a report with the actual correct fix. Nothing runs until you click Approve.</p>
+  <h1>Autodebug</h1>
+  <p class="lede">Autodebug lets an AI agent debug and find the real root cause of a bug in your IDE's debugger, from what the program actually does, not from assumptions the agent makes by reading the code. Then it writes a report with the actual correct fix. Nothing runs until you click Approve.</p>
 
 
-  <aside class="creed" aria-label="Why AutoDebug exists">
+  <aside class="creed" aria-label="Why Autodebug exists">
     <p class="creed-eq">
       <span class="eq-a" style="--d:0ms">The root cause an AI agent decides</span>
       <span class="eq-b" style="--d:400ms">from reading the code is always</span>
@@ -317,7 +317,7 @@
       <li style="--d:3400ms"><span class="rn" aria-hidden="true">✕</span><div><strong>The wrong suspect.</strong> The code that looks wrong is not always what runs. Input, state and timing decide that, and none of them are in the source.</div></li>
       <li style="--d:3600ms"><span class="rn" aria-hidden="true">✕</span><div><strong>No proof.</strong> You are left to trust a story you cannot check.</div></li>
     </ul>
-    <p class="creed-head" style="--d:4100ms">What AutoDebug does instead</p>
+    <p class="creed-head" style="--d:4100ms">What Autodebug does instead</p>
     <ol class="creed-list">
       <li style="--d:4300ms"><span class="rn">I</span><div><strong>Reproduce first.</strong> The agent runs the bug and watches it fail.</div></li>
       <li style="--d:4500ms"><span class="rn">II</span><div><strong>Put breakpoints where things go wrong.</strong> On the real code path, in your IDE's own debugger.</div></li>
@@ -328,7 +328,7 @@
   </aside>
 
   <h2 id="what">What it is <a class="anchor" href="#what" aria-label="Link to this section">#</a></h2>
-  <p>AI agents often read the code and strongly assume why a bug happens. A strong assumption gives a fix that is too big, misses the actual root cause, or quietly adds a new bug. With AutoDebug, the agent first debugs the program, finds the root cause in the debugger, then suggests the correct and accurate fix, because it found the actual root cause while debugging.</p>
+  <p>AI agents often read the code and strongly assume why a bug happens. A strong assumption gives a fix that is too big, misses the actual root cause, or quietly adds a new bug. With Autodebug, the agent first debugs the program, finds the root cause in the debugger, then suggests the correct and accurate fix, because it found the actual root cause while debugging.</p>
   <ul>
     <li><strong>IDEs:</strong> VS Code, Cursor and Visual Studio. More are planned.</li>
     <li><strong>Agents:</strong> any agent with MCP or a terminal.</li>
@@ -338,11 +338,11 @@
   <h2 id="how">How it works <a class="anchor" href="#how" aria-label="Link to this section">#</a></h2>
   <p>One debugging session, from your question to the report.</p>
   <figure class="flow" id="flow">
-    <div class="flow-lanes" aria-hidden="true"><span>You</span><span>AI agent</span><span>AutoDebug</span><span>IDE debugger</span></div>
+    <div class="flow-lanes" aria-hidden="true"><span>You</span><span>AI agent</span><span>Autodebug</span><span>IDE debugger</span></div>
     <ol class="flow-steps">
       <li class="fs" style="--a:1;--b:2"><span class="fs-text"><b>You</b> ask: moving a square changes its area. Find why.</span></li>
       <li class="fs" style="--a:2;--b:3"><span class="fs-text"><b>Agent</b> reads the code and asks to debug: <code>start_session</code> with breakpoints</span></li>
-      <li class="fs" style="--a:3;--b:4"><span class="fs-text"><b>AutoDebug</b> opens the Approve dialog: exactly what will run</span></li>
+      <li class="fs" style="--a:3;--b:4"><span class="fs-text"><b>Autodebug</b> opens the Approve dialog: exactly what will run</span></li>
       <li class="fs approve" style="--a:1;--b:4"><span class="fs-text"><b>You</b> click Approve</span></li>
       <li class="fs self stop" style="--a:4;--b:4"><span class="fs-text"><b>Debugger</b> builds, runs, stops at line 15</span></li>
       <li class="fs back" style="--a:2;--b:4"><span class="fs-text"><b>Agent</b> gets real values: <code>i = 0</code>, <code>total = 0.0</code></span></li>
@@ -377,7 +377,7 @@
 
   <!-- case-studies:start -->
   <h2 id="cases">Case studies <a class="anchor" href="#cases" aria-label="Link to this section">#</a></h2>
-  <p>Five open bugs from the Godot engine, each given to an AI agent as a GitHub link. The agent debugged them in Visual Studio 2026 with AutoDebug. Each video is the real session, sped up while the agent reads code. Each report is the file AutoDebug wrote, unedited.</p>
+  <p>Five open bugs from the Godot engine, each given to an AI agent as a GitHub link. The agent debugged them in Visual Studio 2026 with Autodebug. Each video is the real session, sped up while the agent reads code. Each report is the file Autodebug wrote, unedited.</p>
   <h3 id="cases-pick">Pick a bug</h3>
   <ol class="cases" aria-labelledby="cases-pick">
       <li><a class="case-row" href="case-studies/godot-119459.html" data-case="0" aria-current="true"><span class="case-n">1</span><span class="case-dot" aria-hidden="true"></span><code>#119459</code><span class="case-title">ConfigFile glues trailing text onto the next key</span><span class="case-area">Core, variant parser</span><span class="case-len">1:12</span></a></li>
@@ -533,7 +533,7 @@
     <ol class="steps">
       <li id="step-debugger"></li>
       <li>
-        <p><strong>Install AutoDebug and connect everything.</strong> You need Python 3.11 or newer.</p>
+        <p><strong>Install Autodebug and connect everything.</strong> You need Python 3.11 or newer.</p>
         <div class="block" id="os-win" data-os="win"><pre>py -m pip install --upgrade autodebug
 py -m autodebug setup</pre></div>
         <div class="block" id="os-mac" data-os="mac"><pre>brew install pipx
@@ -568,7 +568,7 @@ autodebug setup</pre></div>
     <li><strong>Don't press F5 during the agent's session.</strong> One debug session at a time.</li>
     <li><strong>The agent cannot change your program.</strong> No expression evaluation and no writes to variables. Values that look secret are hidden.</li>
     <li><strong>Ticket text can come from anyone.</strong> The agent never runs commands from a ticket and uses made-up test data, never customer data from it. Check the arguments in the dialog.</li>
-    <li><strong>Use test data.</strong> What the agent reads goes to its model provider. AutoDebug itself listens on 127.0.0.1 only and collects no data.</li>
+    <li><strong>Use test data.</strong> What the agent reads goes to its model provider. Autodebug itself listens on 127.0.0.1 only and collects no data.</li>
   </ul>
 
   <h2 id="help">Troubleshooting <a class="anchor" href="#help" aria-label="Link to this section">#</a></h2>
@@ -580,7 +580,7 @@ autodebug setup</pre></div>
     <p>It opens in the IDE you debug in, not in the chat. Switch to that IDE. In Visual Studio it stays on top. It closes after 2 minutes, and the agent then reports "no answer".</p>
   </div></details>
   <details class="q"><summary>"No window is running the extension"</summary><div>
-    <p>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>, then the status bar shows AutoDebug. Visual Studio: <strong>View → Output → AutoDebug</strong> says it is listening.</p>
+    <p>Open the project in the IDE. VS Code and Cursor: <strong>Developer: Reload Window</strong>, then the status bar shows Autodebug. Visual Studio: <strong>View → Output → Autodebug</strong> says it is listening.</p>
   </div></details>
   <details class="q"><summary>The agent asks which IDE to use</summary><div>
     <p>Several IDEs have the same launch configuration. Set yours once: <code>autodebug setup --debug-in visualstudio</code> (or <code>cursor</code>, <code>vscode</code>).</p>
@@ -592,7 +592,7 @@ autodebug setup</pre></div>
     <p>A new version is on PyPI, but pip reads a list that PyPI caches for up to about 10 minutes. Setup then says you are up to date, or pip cannot find the version. Wait 10 minutes and run setup again.</p>
     <p>To install one exact version once it shows: <code>py -m pip install --upgrade --no-cache-dir autodebug==&lt;version&gt;</code>, for example <code>autodebug==0.8.0</code> (macOS and Linux: <code>pipx install --force autodebug==&lt;version&gt;</code>), then <code>py -m autodebug setup</code>.</p>
   </div></details>
-  <details class="q"><summary>Visual Studio still uses the old AutoDebug extension</summary><div>
+  <details class="q"><summary>Visual Studio still uses the old Autodebug extension</summary><div>
     <p>Setup cannot update the Visual Studio extension while Visual Studio is open. It says so and skips it. Then newer features are missing, such as screenshots and Locals or Autos at each stop, and <code>doctor</code> or the agent reports an outdated extension.</p>
     <p>Close every Visual Studio window (<strong>File → Exit</strong>), run <code>py -m autodebug setup</code>, then open the solution again. <code>py -m autodebug doctor</code> no longer lists an outdated extension.</p>
   </div></details>
@@ -604,7 +604,7 @@ autodebug setup</pre></div>
   <table class="ref">
     <thead><tr><th>Command</th><th>Does</th></tr></thead>
     <tbody>
-      <tr><td><code>autodebug setup</code></td><td>Connects every IDE and agent found, and updates AutoDebug first when a newer version is out. Close Visual Studio before you run it, so its extension updates too. <code>--debug-in &lt;ide&gt;</code> sets the IDE you debug in.</td></tr>
+      <tr><td><code>autodebug setup</code></td><td>Connects every IDE and agent found, and updates Autodebug first when a newer version is out. Close Visual Studio before you run it, so its extension updates too. <code>--debug-in &lt;ide&gt;</code> sets the IDE you debug in.</td></tr>
       <tr><td><code>autodebug doctor</code></td><td>Checks the setup, the open IDE windows and the version.</td></tr>
       <tr><td><code>autodebug run &lt;tool&gt; …</code></td><td>Calls a debugging tool from a terminal. <code>run help</code> lists them.</td></tr>
     </tbody>
@@ -616,14 +616,14 @@ autodebug setup</pre></div>
     <thead><tr><th>Store</th><th>What</th><th>Status</th></tr></thead>
     <tbody>
       <tr><td>PyPI</td><td><code>autodebug</code>, with <code>autodebug setup</code></td><td><span class="status live">Available</span></td></tr>
-      <tr><td>Open VSX</td><td>The extension for Cursor (search for AutoDebug). Setup installs it too</td><td><span class="status live">Available</span></td></tr>
+      <tr><td>Open VSX</td><td>The extension for Cursor (search for Autodebug). Setup installs it too</td><td><span class="status live">Available</span></td></tr>
       <tr><td>VS Code Marketplace</td><td>The extension for VS Code. Until then, setup installs it</td><td><span class="status planned">Planned</span></td></tr>
       <tr><td>Visual Studio Marketplace</td><td>The Visual Studio extension. Until then, setup installs it</td><td><span class="status planned">Planned</span></td></tr>
     </tbody>
   </table>
 
   <footer>
-    <span>AutoDebug 0.8.0 · MIT License</span>
+    <span>Autodebug 0.8.0 · MIT License</span>
   </footer>
 </div>
 </main>
@@ -636,20 +636,20 @@ autodebug setup</pre></div>
   const IDE = {
     vscode: {
       name: "VS Code",
-      debugger: "<strong>Install the debugger in VS Code.</strong> C++: the <strong>C/C++</strong> extension or <strong>CodeLLDB</strong>. Python: <strong>Python Debugger</strong>. You need a launch configuration in <code>.vscode/launch.json</code>: if F5 starts your program, AutoDebug can run it.",
-      open: "<strong>Open your project in VS Code</strong>, then Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>AutoDebug</strong>.",
+      debugger: "<strong>Install the debugger in VS Code.</strong> C++: the <strong>C/C++</strong> extension or <strong>CodeLLDB</strong>. Python: <strong>Python Debugger</strong>. You need a launch configuration in <code>.vscode/launch.json</code>: if F5 starts your program, Autodebug can run it.",
+      open: "<strong>Open your project in VS Code</strong>, then Command Palette → <strong>Developer: Reload Window</strong>. The status bar shows <strong>Autodebug</strong>.",
       config: "Debug C++ (CodeLLDB)",
     },
     cursor: {
       name: "Cursor",
       debugger: "<strong>Install the debugger in Cursor.</strong> C++: <strong>CodeLLDB</strong> (Microsoft's C/C++ debugger does not run in Cursor). Python: <strong>Python Debugger</strong>. You need a launch configuration in <code>.vscode/launch.json</code>.",
-      open: "<strong>Open your project in Cursor</strong>, then Command Palette → <strong>Developer: Reload Window</strong> in every Cursor window. The status bar shows <strong>AutoDebug</strong>.",
+      open: "<strong>Open your project in Cursor</strong>, then Command Palette → <strong>Developer: Reload Window</strong> in every Cursor window. The status bar shows <strong>Autodebug</strong>.",
       config: "Debug C++ (CodeLLDB)",
     },
     visualstudio: {
       name: "Visual Studio",
       debugger: "<strong>Check Visual Studio.</strong> It needs the <strong>Desktop development with C++</strong> workload and a solution whose startup project runs your program (C++ only). For CMake, generate one first: <code>cmake -S . -B build\\vs</code> (for the demo, run <code>cmake -S cpp -B build\\vs</code> in <code>examples/AutoDebugDemo</code>).",
-      open: "<strong>Open the solution in Visual Studio.</strong> Set the startup project and the <strong>Debug</strong> configuration. <strong>View → Output → AutoDebug</strong> says it is listening. The agent sees the configuration as, for example, <code>geometry (Debug|x64)</code>.",
+      open: "<strong>Open the solution in Visual Studio.</strong> Set the startup project and the <strong>Debug</strong> configuration. <strong>View → Output → Autodebug</strong> says it is listening. The agent sees the configuration as, for example, <code>geometry (Debug|x64)</code>.",
       config: "geometry (Debug|x64)",
     },
   };
@@ -705,16 +705,16 @@ autodebug setup</pre></div>
       ? "<code>py</code> is the Python launcher, so nothing has to be added to PATH."
       : "Open a new terminal after <code>pipx ensurepath</code>.")
       + (state.ide === "visualstudio" ? " Close every Visual Studio window before you run setup." : "")
-      + " Setup connects every IDE and agent it finds, and updates AutoDebug when a newer version is out.";
+      + " Setup connects every IDE and agent it finds, and updates Autodebug when a newer version is out.";
 
     $("step-prefer").hidden = sameApp;
-    $("prefer-text").innerHTML = `Then tell AutoDebug you debug in ${ide.name}, so agents pick it when several IDEs are open:`;
+    $("prefer-text").innerHTML = `Then tell Autodebug you debug in ${ide.name}, so agents pick it when several IDEs are open:`;
     $("prefer-command").textContent = `${cmd} setup --debug-in ${state.ide}`;
 
     $("step-open").innerHTML = `<p>${ide.open}</p>`;
     let tools = agent.tools;
     if (!sameApp && (agent.app === "cursor" || agent.app === "vscode"))
-      tools = `<strong>Reload ${agent.appName} once</strong> (Command Palette → <strong>Developer: Reload Window</strong>) so it loads AutoDebug. ` + tools;
+      tools = `<strong>Reload ${agent.appName} once</strong> (Command Palette → <strong>Developer: Reload Window</strong>) so it loads Autodebug. ` + tools;
     $("step-tools").innerHTML = `<p>${tools}</p>`;
     $("prompt").textContent = `Use the autodebug tools with launch configuration "${ide.config}" in ${ide.name}. `
       + (state.ide === "visualstudio" ? "Build first, stop at geometry.cpp line 16, trace total, " : "Find why moving a shape changes its area, ")

@@ -1,6 +1,6 @@
-# AutoDebug
+# Autodebug
 
-AutoDebug lets an AI agent debug your program with the debugger of **VS Code**,
+Autodebug lets an AI agent debug your program with the debugger of **VS Code**,
 **Cursor** or **Visual Studio 2022/2026**: it builds, sets breakpoints, runs,
 steps, reads variables, and writes a root-cause report into your project.
 Nothing runs until you click **Approve** in the IDE.
@@ -11,7 +11,7 @@ Studio), and any other agent that supports MCP or has a terminal.
 **Documentation:** autodebug-tool.github.io
 
 **Case studies:** five real Godot bugs on the documentation site, each with the video of the
-session and the report AutoDebug wrote.
+session and the report Autodebug wrote.
 
 ## Where to get it
 
@@ -56,15 +56,15 @@ PATH: write `py -m autodebug` wherever these docs say `autodebug`. On macOS and
 Linux, open a new terminal after `pipx ensurepath`.
 `autodebug setup` finds VS Code, Cursor, Visual Studio and Claude Code, connects
 each one, and prints the few steps left for you (below). `autodebug doctor`
-checks everything: which AutoDebug runs and from where, the connected IDEs, the
+checks everything: which Autodebug runs and from where, the connected IDEs, the
 open IDE windows, and whether a newer version is on PyPI. Setup and doctor print
 commands in the form that works on your computer (`py -m autodebug doctor` on
 Windows).
 
 **To update**, run setup again (`py -m autodebug setup` on Windows). When PyPI
-has a newer AutoDebug, setup installs that exact version first, replacing every
+has a newer Autodebug, setup installs that exact version first, replacing every
 file of the old copy (pip's cache cannot hold it back), and then reconnects your
-IDEs with the new version. It also updates the AutoDebug section of every
+IDEs with the new version. It also updates the Autodebug section of every
 `AGENTS.md` it wrote. `--no-update` skips this; a source checkout is never
 changed (`git pull` instead).
 
@@ -84,7 +84,7 @@ changed (`git pull` instead).
 |---|---|
 | VS Code | Command Palette → **Developer: Reload Window**. In the Copilot chat (Agent mode) make sure **autodebug** is ticked in the tools; allow it if VS Code asks to trust the server. |
 | Cursor | Command Palette → **Developer: Reload Window** in every window. Nothing to turn on: **Cursor Settings → Customize → MCPs** shows **extension-autodebug** with a green dot. Start a new chat. |
-| Visual Studio | Open the solution; **View → Output → AutoDebug** says it is listening. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: chat → **Tools** → tick **autodebug**. |
+| Visual Studio | Open the solution; **View → Output → Autodebug** says it is listening. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: chat → **Tools** → tick **autodebug**. |
 | Claude Code | Nothing. Start a new session. |
 
 **IDE and agent can be different apps.** The IDE you debug in runs the program and
@@ -106,7 +106,7 @@ use two IDEs on one project, set the one you debug in once:
 `autodebug setup --debug-in visualstudio` (or `vscode`, `cursor`; `any` clears it).
 
 **Don't** start your own debug session (F5) in that IDE while the agent's runs,
-open the same folder in two windows of one IDE, switch off the AutoDebug
+open the same folder in two windows of one IDE, switch off the Autodebug
 extension or the autodebug tools, or add `autodebug` to Cursor's `mcp.json` by
 hand (Cursor starts it switched off). A chat message is never an approval.
 
@@ -157,7 +157,7 @@ can run the same tools in its terminal, in the same session:
 `autodebug run list_targets ide=visualstudio` (`autodebug run help` lists them).
 `autodebug setup <project folder>` writes that into the project's `AGENTS.md`.
 
-AutoDebug listens on 127.0.0.1 only, with a token, and collects no data. It is
+Autodebug listens on 127.0.0.1 only, with a token, and collects no data. It is
 released under the MIT License (`LICENSE`). How it works: `docs/design.md`.
 
 ## Large C++ programs
@@ -228,7 +228,7 @@ session ends the debugger detaches and the app keeps running.
 - **One test.** `start_session` with `test` runs a single pytest, unittest, go,
   jest or vitest test.
 - **Node.js and browsers.** The program runs in a child debug session of the
-  one you approve; AutoDebug follows it.
+  one you approve; Autodebug follows it.
 - **GUI reproduction.** `wait` with `ask_developer` shows you a note such as
   "Click Delete on the last item". You do it, and the program stops at the
   breakpoint.
@@ -246,12 +246,12 @@ Debug only programs and data you are allowed to share with it.
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-All of AutoDebug's logic is Python (`src/autodebug`). The IDE extension is a
+All of Autodebug's logic is Python (`src/autodebug`). The IDE extension is a
 small JavaScript relay (`src/autodebug/extension/relay.js`) for VS Code and
 Cursor, and a C# relay (`src/autodebug/visualstudio`) for Visual Studio. The
 relays show the Approve dialog and pass debugger requests and events through.
 
-To work on AutoDebug itself, clone the repository and install it editable:
+To work on Autodebug itself, clone the repository and install it editable:
 `py -m pip install -e .` (Windows) or `python3 -m pip install -e .`.
 
 Most tests run with Python alone. The relay tests need Node.js. The

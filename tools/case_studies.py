@@ -1,6 +1,6 @@
-"""Build the site's case studies from the reports AutoDebug wrote.
+"""Build the site's case studies from the reports Autodebug wrote.
 
-Each report in site/case-studies/*.md is the file AutoDebug wrote, unedited. This script
+Each report in site/case-studies/*.md is the file Autodebug wrote, unedited. This script
 turns each one into a page in the site's style (site/case-studies/<slug>.html) and writes
 the Case studies section of site/index.html between its two markers. Nothing is fetched and
 nothing outside the standard library is used.
@@ -264,8 +264,8 @@ def report_page(data: dict, index: int) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{_e(facts["title"])}: AutoDebug case study</title>
-<meta name="description" content="Godot issue #{_e(case["issue"])}, debugged in Visual Studio by an AI agent with AutoDebug: the video and the report it wrote.">
+<title>{_e(facts["title"])}: Autodebug case study</title>
+<meta name="description" content="Godot issue #{_e(case["issue"])}, debugged in Visual Studio by an AI agent with Autodebug: the video and the report it wrote.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -274,9 +274,9 @@ def report_page(data: dict, index: int) -> str:
 <body>
 <aside class="sidebar" id="sidebar">
   <div class="top">
-    <a class="brand" href="../index.html" aria-label="AutoDebug documentation">
+    <a class="brand" href="../index.html" aria-label="Autodebug documentation">
       {LOGO}
-      <span>AutoDebug</span>
+      <span>Autodebug</span>
     </a>
     <button class="menu" type="button" aria-expanded="false" aria-controls="sidebar">Contents</button>
   </div>
@@ -306,7 +306,7 @@ def report_page(data: dict, index: int) -> str:
       <source src="{case["slug"]}.mp4" type="video/mp4">
       <a href="{case["slug"]}.mp4">Download the video</a>.
     </video>
-    <div class="unedited">{FILE_ICON}<div>Below is the report AutoDebug wrote into <code>autodebug-reports/</code>, unedited. Only the page style is the site's.</div></div>
+    <div class="unedited">{FILE_ICON}<div>Below is the report Autodebug wrote into <code>autodebug-reports/</code>, unedited. Only the page style is the site's.</div></div>
 {case["body"]}
     <nav class="next" aria-label="More case studies">
       <a href="../index.html#cases">All case studies</a>
@@ -375,7 +375,7 @@ def index_section(data: dict) -> str:
     </section>""")
     return f"""{START}
   <h2 id="cases">Case studies <a class="anchor" href="#cases" aria-label="Link to this section">#</a></h2>
-  <p>Five open bugs from the Godot engine, each given to an AI agent as a GitHub link. The agent debugged them in Visual Studio 2026 with AutoDebug. Each video is the real session, sped up while the agent reads code. Each report is the file AutoDebug wrote, unedited.</p>
+  <p>Five open bugs from the Godot engine, each given to an AI agent as a GitHub link. The agent debugged them in Visual Studio 2026 with Autodebug. Each video is the real session, sped up while the agent reads code. Each report is the file Autodebug wrote, unedited.</p>
   <h3 id="cases-pick">Pick a bug</h3>
   <ol class="cases" aria-labelledby="cases-pick">
 {chr(10).join(rows)}

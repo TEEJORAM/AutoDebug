@@ -1,6 +1,6 @@
-# CLAUDE.md — working on AutoDebug
+# CLAUDE.md — working on Autodebug
 
-AutoDebug: an MCP server (Python, `src/autodebug`) plus a VS Code / Cursor
+Autodebug: an MCP server (Python, `src/autodebug`) plus a VS Code / Cursor
 extension (`src/autodebug/extension`) that let an AI agent debug a program with
 the IDE's own debugger and write a root-cause report. All logic is in Python;
 the extension is a thin JavaScript relay (IDE extensions can only be JavaScript):
