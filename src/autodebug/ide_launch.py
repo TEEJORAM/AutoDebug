@@ -143,4 +143,4 @@ def start(argv: list[str]) -> None:
         options["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         options["start_new_session"] = True
-    subprocess.Popen(argv, **options)  # noqa: S603 (the IDE's own launcher, found above)
+    subprocess.Popen(argv, **options)  # the IDE's own launcher, found above

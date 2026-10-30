@@ -16,6 +16,7 @@ from autodebug.cli import main, parse_tool_arguments
 from autodebug.connection import discover
 from autodebug.tools import Debugger
 from tests.fake_extension import FakeExtension
+import contextlib
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -42,10 +43,8 @@ class ServiceTest(unittest.TestCase):
     def stop_service(self):
         info = hub._read_info()
         if info:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 hub._request(info, {"op": "shutdown", "force": True}, 3)
-            except (OSError, ValueError):
-                pass
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline and hub.hub_file().exists():
                 time.sleep(0.05)

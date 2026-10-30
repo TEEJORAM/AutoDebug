@@ -122,10 +122,10 @@ def render_markdown(text: str, image_prefix: str = "") -> tuple[str, dict]:
             while i < len(lines) and lines[i].strip() and not re.match(r"(#{1,4} |- |\d+\. |!\[|-{3,}$)", lines[i]):
                 block.append(lines[i])
                 i += 1
-            if any(l.startswith((" ", "\t")) for l in block[1:]):  # code the report wrote without a fence
+            if any(text.startswith((" ", "\t")) for text in block[1:]):  # code the report wrote without a fence
                 out.append(f"<pre>{html.escape(chr(10).join(block))}</pre>")
                 continue
-            paragraph = " ".join(l.strip() for l in block)
+            paragraph = " ".join(text.strip() for text in block)
             confidence = re.match(r"Confidence: (\w+)\.", paragraph)
             if confidence:
                 facts["confidence"] = confidence.group(1)

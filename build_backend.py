@@ -27,7 +27,7 @@ def _package_files() -> list[Path]:
 
 def _metadata() -> dict[str, bytes]:
     scripts = "\n".join(f"{name} = {target}" for name, target in PROJECT.get("scripts", {}).items())
-    headers = [f"Metadata-Version: 2.1", f"Name: {NAME}", f"Version: {VERSION}", f"Summary: {PROJECT['description']}",
+    headers = ["Metadata-Version: 2.1", f"Name: {NAME}", f"Version: {VERSION}", f"Summary: {PROJECT['description']}",
                f"Requires-Python: {PROJECT['requires-python']}"]
     if PROJECT.get("license"):
         headers.append(f"License: {PROJECT['license']}")

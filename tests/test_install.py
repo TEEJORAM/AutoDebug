@@ -345,10 +345,9 @@ class License(unittest.TestCase):
         root = Path(install.__file__).resolve().parents[2]
         self.assertEqual(install.LICENSE_TEXT, (root / "LICENSE").read_text(encoding="utf-8"))
         self.assertTrue(install.LICENSE_TEXT.startswith("MIT License"))
-        with tempfile.TemporaryDirectory() as folder:
-            with zipfile.ZipFile(install.build_vsix(Path(folder))) as vsix:
-                self.assertEqual(vsix.read("extension/LICENSE.txt").decode(), install.LICENSE_TEXT)
-                self.assertIn("Content.License", vsix.read("extension.vsixmanifest").decode())
+        with tempfile.TemporaryDirectory() as folder, zipfile.ZipFile(install.build_vsix(Path(folder))) as vsix:
+            self.assertEqual(vsix.read("extension/LICENSE.txt").decode(), install.LICENSE_TEXT)
+            self.assertIn("Content.License", vsix.read("extension.vsixmanifest").decode())
         self.assertEqual(install.manifest()["license"], "MIT")
         self.assertEqual((root / "src" / "autodebug" / "visualstudio" / "Extension" / "LICENSE.txt").read_text(encoding="utf-8"),
                          install.LICENSE_TEXT)
@@ -373,7 +372,7 @@ class VisualStudioPackage(unittest.TestCase):
         self.assertIn(f'Version="{__version__}" Language', (source / "Extension" / "source.extension.vsixmanifest").read_text())
         self.assertIn(f"<Version>{__version__}</Version>", (source / "Extension" / "AutoDebug.VisualStudio.csproj").read_text())
         self.assertIn(f'Version = "{__version__}"', (source / "Core" / "RelayServer.cs").read_text())
-        self.assertIn(f"visualstudio-v{{version}}", install.VS_RELEASE)
+        self.assertIn("visualstudio-v{version}", install.VS_RELEASE)
 
 
 if __name__ == "__main__":

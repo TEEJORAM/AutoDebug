@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from tests.fake_adapter import AdapterError, Program
+import contextlib
 
 LAUNCH = [{"name": "Debug tests", "type": "debugpy", "request": "launch", "module": "unittest", "args": ["-v"]}]
 ALLOWED = {"threads", "stackTrace", "scopes", "variables", "next", "stepIn", "stepOut", "continue", "pause",
@@ -82,10 +83,8 @@ class FakeExtension:
                 self._emit({"kind": "approval", "approved": False, "reason": reason})
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._server.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
         self._server.close()
 
     # -- server ----------------------------------------------------------------
@@ -208,8 +207,8 @@ class FakeExtension:
             self.session = {"phase": "awaiting_approval", "task": args.get("task"), "launch": args["launch"],
                             "args": args, "steps": 0, "max_steps": args.get("max_steps"), "next": 100,
                             "breakpoints": [{"id": i, "file": b["file"], "line": b["line"]}
-                                            for i, b in zip(ids, args.get("breakpoints", []))],
-                            "functions": [{"id": i, "name": n} for i, n in zip(fids, args.get("functions", []))]}
+                                            for i, b in zip(ids, args.get("breakpoints", []), strict=False)],
+                            "functions": [{"id": i, "name": n} for i, n in zip(fids, args.get("functions", []), strict=False)]}
             return {"session": 1, "breakpoint_ids": ids, "function_ids": fids}
 
     def op_events(self, args):

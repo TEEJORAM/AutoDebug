@@ -10,7 +10,8 @@ import json
 import logging
 import sys
 import threading
-from typing import BinaryIO, Callable
+from collections.abc import Callable
+from typing import BinaryIO
 
 from autodebug import __version__
 from autodebug.connection import DebugError
@@ -335,60 +336,72 @@ _HINTS = {"wait_seconds": "; call wait to keep waiting", "timeout_seconds": "; c
 
 def argument_problem(value: object, schema: dict, name: str = "arguments") -> str | None:
     """Why `value` does not fit `schema`, naming the argument and what is allowed; None when it fits."""
-    kind = schema.get("type")
-    if kind == "object":
-        if not isinstance(value, dict):
-            return f"{name} must be an object"
-        properties = schema.get("properties", {})
-        if schema.get("additionalProperties") is False and value.keys() - properties.keys():
-            unknown = ", ".join(sorted(value.keys() - properties.keys()))
-            return f"unknown argument {unknown}; allowed: {', '.join(properties) or 'none'}"
-        missing = [key for key in schema.get("required", ()) if key not in value]
-        if missing:
-            return f"missing {', '.join(missing)} (required: {', '.join(schema.get('required', ()))})"
-        for key, item in value.items():
-            if key in properties:
-                problem = argument_problem(item, properties[key], key if name == "arguments" else f"{name}.{key}")
-                if problem:
-                    return problem
-        return None
-    if kind == "array":
-        if not isinstance(value, list):
-            return f"{name} must be a list"
-        if len(value) < schema.get("minItems", 0):
-            return f"{name} needs at least {schema['minItems']} item(s)"
-        if len(value) > schema.get("maxItems", 10**6):
-            return f"{name} has {len(value)} items; at most {schema['maxItems']}"
-        for index, item in enumerate(value):
-            problem = argument_problem(item, schema["items"], f"{name}[{index}]")
+    if "anyOf" in schema:
+        problems = [argument_problem(value, choice, name) for choice in schema["anyOf"]]
+        return None if None in problems else problems[0]
+    check = _CHECKS.get(schema.get("type"))
+    return check(value, schema, name) if check else None
+
+
+def _object_problem(value: object, schema: dict, name: str) -> str | None:
+    if not isinstance(value, dict):
+        return f"{name} must be an object"
+    properties = schema.get("properties", {})
+    if schema.get("additionalProperties") is False and value.keys() - properties.keys():
+        unknown = ", ".join(sorted(value.keys() - properties.keys()))
+        return f"unknown argument {unknown}; allowed: {', '.join(properties) or 'none'}"
+    missing = [key for key in schema.get("required", ()) if key not in value]
+    if missing:
+        return f"missing {', '.join(missing)} (required: {', '.join(schema.get('required', ()))})"
+    for key, item in value.items():
+        if key in properties:
+            problem = argument_problem(item, properties[key], key if name == "arguments" else f"{name}.{key}")
             if problem:
                 return problem
-        return None
-    if kind == "string":
-        if not isinstance(value, str) or len(value) > 20000:
-            return f"{name} must be text"
-        if "enum" in schema and value not in schema["enum"]:
-            return f"{name} must be one of: {', '.join(schema['enum'])}; got {value!r}"
-        if len(value) > schema.get("maxLength", 20000):
-            return f"{name} is at most {schema['maxLength']} characters"
-        return None
-    if kind == "boolean":
-        return None if isinstance(value, bool) else f"{name} must be true or false"
-    if kind in ("integer", "number"):
-        whole = kind == "integer"
-        if isinstance(value, bool) or not isinstance(value, int if whole else (int, float)):
-            return f"{name} must be {'a whole number' if whole else 'a number'}"
-        low, high = schema.get("minimum"), schema.get("maximum")
-        if (low is not None and value < low) or (high is not None and value > high):
-            bounds = f"between {low} and {high}" if low is not None and high is not None else (
-                f"at least {low}" if low is not None else f"at most {high}")
-            return f"{name} must be {bounds}; got {value}{_HINTS.get(name, '')}"
-        return None
     return None
 
 
-def _valid(value: object, schema: dict) -> bool:
-    return argument_problem(value, schema) is None
+def _array_problem(value: object, schema: dict, name: str) -> str | None:
+    if not isinstance(value, list):
+        return f"{name} must be a list"
+    if len(value) < schema.get("minItems", 0):
+        return f"{name} needs at least {schema['minItems']} item(s)"
+    if len(value) > schema.get("maxItems", 10**6):
+        return f"{name} has {len(value)} items; at most {schema['maxItems']}"
+    for index, item in enumerate(value):
+        problem = argument_problem(item, schema["items"], f"{name}[{index}]")
+        if problem:
+            return problem
+    return None
+
+
+def _string_problem(value: object, schema: dict, name: str) -> str | None:
+    if not isinstance(value, str) or len(value) > 20000:
+        return f"{name} must be text"
+    if "enum" in schema and value not in schema["enum"]:
+        return f"{name} must be one of: {', '.join(schema['enum'])}; got {value!r}"
+    if len(value) > schema.get("maxLength", 20000):
+        return f"{name} is at most {schema['maxLength']} characters"
+    return None
+
+
+def _number_problem(value: object, schema: dict, name: str) -> str | None:
+    whole = schema["type"] == "integer"
+    if isinstance(value, bool) or not isinstance(value, int if whole else (int, float)):
+        return f"{name} must be {'a whole number' if whole else 'a number'}"
+    low, high = schema.get("minimum"), schema.get("maximum")
+    if (low is not None and value < low) or (high is not None and value > high):
+        bounds = f"between {low} and {high}" if low is not None and high is not None else (
+            f"at least {low}" if low is not None else f"at most {high}")
+        return f"{name} must be {bounds}; got {value}{_HINTS.get(name, '')}"
+    return None
+
+
+_CHECKS = {
+    "object": _object_problem, "array": _array_problem, "string": _string_problem,
+    "integer": _number_problem, "number": _number_problem,
+    "boolean": lambda value, _schema, name: None if isinstance(value, bool) else f"{name} must be true or false",
+}
 
 
 def _terminal_note() -> str:
@@ -406,7 +419,7 @@ def call_tool(debugger: Debugger, name: str, arguments: dict) -> tuple[dict, boo
         result, failed = {"error": exc.code, "message": exc.message}, True
     except (OSError, ValueError) as exc:
         result, failed = {"error": "IDE_ERROR", "message": str(exc)}, True
-    except Exception:  # noqa: BLE001 — never crash on one tool
+    except Exception:  # never crash on one tool
         _LOG.exception("tool %s failed", name)
         result, failed = {"error": "IDE_ERROR", "message": "internal error; see the server log"}, True
     if name != "write_report" and hasattr(debugger, "count"):

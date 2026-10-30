@@ -1,10 +1,10 @@
-"""Conditions only compare values: the server (session.check_condition), the VS Code relay (relay.js) and the Visual
+"""Conditions only compare values: the server (checks.check_condition), the VS Code relay (relay.js) and the Visual
 Studio relay (Gate.cs) apply one grammar. The same cases go through all three."""
 
 import unittest
 
 from autodebug.connection import DebugError
-from autodebug.session import check_condition
+from autodebug.checks import check_condition
 from tests.test_extension import NODE, HarnessTest
 from tests.test_visualstudio import DOTNET, VisualStudioTest
 

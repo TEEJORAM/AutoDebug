@@ -132,7 +132,7 @@ class Program:
                     "%": self.hits[line] % count == 0}.get(op, self.hits[line] == count):
                 return False
         if options.get("logMessage"):
-            self.say(options["logMessage"].format_map({k: v for k, v in values.items()} | {"line": line}))
+            self.say(options["logMessage"].format_map(dict(values.items()) | {"line": line}))
             return False
         return True
 
@@ -177,12 +177,7 @@ class Program:
                      {"filter": "uncaught", "label": "Uncaught Exceptions", "default": True}]}
         if self.flag("HARNESS_PLAIN") == "1":
             return basic
-        return {**basic, **{name: True for name in (
-            "supportsHitConditionalBreakpoints", "supportsLogPoints", "supportsDataBreakpoints", "supportsModulesRequest",
-            "supportsLoadedSourcesRequest", "supportsDisassembleRequest", "supportsReadMemoryRequest",
-            "supportsBreakpointLocationsRequest", "supportsStepBack", "supportsSteppingGranularity",
-            "supportsSingleThreadExecutionRequests", "supportsStepInTargetsRequest", "supportsValueFormattingOptions",
-            "supportsExceptionOptions", "supportsExceptionFilterOptions", "supportsConditionalBreakpoints")}}
+        return {**basic, **dict.fromkeys(("supportsHitConditionalBreakpoints", "supportsLogPoints", "supportsDataBreakpoints", "supportsModulesRequest", "supportsLoadedSourcesRequest", "supportsDisassembleRequest", "supportsReadMemoryRequest", "supportsBreakpointLocationsRequest", "supportsStepBack", "supportsSteppingGranularity", "supportsSingleThreadExecutionRequests", "supportsStepInTargetsRequest", "supportsValueFormattingOptions", "supportsExceptionOptions", "supportsExceptionFilterOptions", "supportsConditionalBreakpoints"), True)}
 
     def do_launch(self, args):
         return {}

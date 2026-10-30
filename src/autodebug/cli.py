@@ -431,7 +431,7 @@ def _doctor(args: argparse.Namespace) -> int:
           f"(set one: {you_run()} setup --debug-in visualstudio|cursor|vscode)")
     if _update_notice():
         problems += 1
-    if sys.version_info >= (3, 11):
+    if sys.version_info >= (3, 11):  # noqa: UP036 (doctor may run from a checkout on an older Python)
         _ok(f"Python {sys.version.split()[0]}")
     else:
         _bad(f"Python {sys.version.split()[0]}: AutoDebug needs 3.11 or newer")

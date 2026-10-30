@@ -29,6 +29,7 @@ from pathlib import Path
 from autodebug import __version__
 from autodebug.connection import state_folder
 from autodebug.tools import Debugger
+import contextlib
 
 _LOG = logging.getLogger("autodebug")
 IDLE_SECONDS = 30 * 60
@@ -80,10 +81,8 @@ class Hub:
                 if not line or len(line) > MAX_LINE:
                     return
                 reply = hub.answer(line)
-                try:
+                with contextlib.suppress(OSError):
                     self.wfile.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
-                except OSError:
-                    pass
 
         class TCP(socketserver.ThreadingTCPServer):
             daemon_threads = True
@@ -208,7 +207,7 @@ def _start_process() -> None:
     env["PYTHONPATH"] = os.pathsep.join(p for p in (package_parent, env.get("PYTHONPATH")) if p)
     folder = state_folder()
     folder.mkdir(parents=True, exist_ok=True)
-    log = open(folder / "hub.log", "ab")  # noqa: SIM115 — handed to the child
+    log = open(folder / "hub.log", "ab")  # noqa: SIM115 (handed to the child process)
     options: dict = {"stdin": subprocess.DEVNULL, "stdout": log, "stderr": log, "env": env, "close_fds": True}
     command = [sys.executable, "-m", "autodebug", "hub"]
     try:
@@ -229,10 +228,8 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
     info = _read_info()
     alive = _ping(info)
     if alive and (alive.get("version"), alive.get("code")) != (__version__, code_id()) and not alive.get("busy"):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             _request(info, {"op": "shutdown"}, 3)
-        except (OSError, ValueError):
-            pass
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and _ping(info):
             time.sleep(0.1)

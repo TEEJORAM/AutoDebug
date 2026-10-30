@@ -400,14 +400,14 @@ class Tickets(ToolsTest):
         self.assertIsNone(self.fake.session)  # nothing was shown to the developer
 
     def test_args_are_only_for_launch(self):
-        from autodebug.session import program_arguments
+        from autodebug.launch import program_arguments
 
         with self.assertRaises(DebugError) as caught:
             program_arguments({"request": "attach", "type": "debugpy"}, ["x"])
         self.assertIn("only for launch", caught.exception.message)
 
     def test_visual_studio_gets_one_quoted_command_line(self):
-        from autodebug.session import program_arguments
+        from autodebug.launch import program_arguments
 
         launch = {"request": "launch", "type": "visualstudio", "args": ["--old"]}
         program_arguments(launch, ["-m", "D:\\Projects\\my repro\\issue 1771.js"])

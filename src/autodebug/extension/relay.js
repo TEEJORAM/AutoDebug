@@ -28,9 +28,8 @@ const STEPS = new Set(['next', 'stepIn', 'stepOut', 'stepBack']);
 const FEATURES = ['breakpoint_options', 'child_sessions', 'inspection'];
 const HIT = /^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$/;
 const VARIABLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*$/;
-// One token of a condition; the same grammar as the server's check_condition (session.py) and Gate.cs.
+// One token of a condition; the same grammar as the server's check_condition (checks.py) and Gate.cs.
 const CONDITION_TOKEN = /\s*(?:("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(0[xX][0-9a-fA-F]+|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[fFuUlL]*)|(==|!=|<=|>=|<|>|&&|\|\||!)|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*))/y;
-const LITERALS = new Set(['true', 'false', 'True', 'False', 'None', 'null', 'nullptr', 'undefined', 'nil']);
 
 // A condition may only compare values (variables, paths, numbers, strings, true/false/null) with ==, !=, <, <=,
 // >, >=, is (not), not/!, and/&&, or/||. No calls, assignments or arithmetic: they would run code.

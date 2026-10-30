@@ -62,7 +62,7 @@ class HarnessMixin:
         self.lines: queue.Queue[str] = queue.Queue()
         self.node = subprocess.Popen(self.harness_command(self.bridges, self.workspace),
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8", env=env)
-        threading.Thread(target=lambda: [self.lines.put(l.rstrip("\n")) for l in self.node.stdout], daemon=True).start()
+        threading.Thread(target=lambda: [self.lines.put(text.rstrip("\n")) for text in self.node.stdout], daemon=True).start()
         self.addCleanup(self.stop_node)
         self.expect("READY", 30)
         self.debugger = Debugger(find_windows=lambda: discover(self.bridges))

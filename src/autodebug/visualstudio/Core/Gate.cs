@@ -38,7 +38,7 @@ namespace AutoDebug
             new System.Text.RegularExpressions.Regex(@"^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$");
         static readonly System.Text.RegularExpressions.Regex Placeholder =
             new System.Text.RegularExpressions.Regex(@"\{([^{}]*)\}");
-        // One token of a condition; the same grammar as the server's check_condition (session.py) and relay.js.
+        // One token of a condition; the same grammar as the server's check_condition (checks.py) and relay.js.
         static readonly System.Text.RegularExpressions.Regex ConditionToken = new System.Text.RegularExpressions.Regex(
             @"\G\s*(?:(""(?:[^""\\]|\\.)*""|'(?:[^'\\]|\\.)*')|(0[xX][0-9a-fA-F]+|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[fFuUlL]*)|(==|!=|<=|>=|<|>|&&|\|\||!)|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*))");
 

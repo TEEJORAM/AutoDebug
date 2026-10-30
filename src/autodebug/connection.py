@@ -11,6 +11,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+import contextlib
 
 PROTOCOL = 4
 HOST = "127.0.0.1"
@@ -240,7 +241,7 @@ class Connection:
         self._sock.settimeout(timeout)
         try:
             line = self._reader.readline(MAX_LINE + 1)
-        except socket.timeout as exc:
+        except TimeoutError as exc:
             raise DebugError("IDE_ERROR", "the IDE did not answer in time") from exc
         except OSError as exc:
             raise DebugError("NO_WINDOW", "lost the connection to the IDE window") from exc
@@ -271,7 +272,5 @@ class Connection:
 
     def close(self) -> None:
         for closer in (self._reader.close, self._sock.close):
-            try:
+            with contextlib.suppress(OSError):
                 closer()
-            except OSError:
-                pass

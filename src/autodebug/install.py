@@ -60,7 +60,10 @@ def build_vsix(folder: Path) -> Path:
     data = manifest()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{extension_id()}-{data['version']}.vsix"
-    attr = lambda v: escape(str(v), {'"': "&quot;"})  # noqa: E731
+
+    def attr(v: object) -> str:
+        return escape(str(v), {'"': "&quot;"})
+
     vsixmanifest = f"""<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
@@ -151,7 +154,7 @@ def download_vs_extension(version: str, folder: Path) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"AutoDebug.VisualStudio-{version}.vsix"
     temporary = path.with_name(path.name + ".tmp")
-    with urllib.request.urlopen(VS_RELEASE.format(version=version), timeout=120) as response:  # noqa: S310 (fixed https URL)
+    with urllib.request.urlopen(VS_RELEASE.format(version=version), timeout=120) as response:  # a fixed https URL
         temporary.write_bytes(response.read())
     if not zipfile.is_zipfile(temporary):
         temporary.unlink()
@@ -295,7 +298,7 @@ PYPI_JSON = "https://pypi.org/pypi/autodebug/json"
 def latest_version(timeout: float = 3) -> str | None:
     """The newest AutoDebug on PyPI, or None when PyPI cannot be reached (offline, proxy): never an error."""
     try:
-        with urllib.request.urlopen(PYPI_JSON, timeout=timeout) as response:  # noqa: S310 (fixed https URL)
+        with urllib.request.urlopen(PYPI_JSON, timeout=timeout) as response:  # a fixed https URL
             version = json.loads(response.read())["info"]["version"]
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -325,7 +328,7 @@ def is_newer(candidate: str, current: str) -> bool:
 # -- MCP configuration ------------------------------------------------------------
 
 
-def server_entry(ide: str) -> dict:
+def server_entry() -> dict:
     """How the IDE starts this server: this Python, with `src` on the path when run from a checkout."""
     entry: dict = {"type": "stdio", "command": sys.executable, "args": ["-m", "autodebug", "serve"]}
     package = Path(__file__).resolve().parent
@@ -347,7 +350,7 @@ def server_file() -> Path:
 
 def write_server_file() -> Path:
     """How to start the MCP server, for the extension to register it with VS Code or Cursor itself."""
-    entry = server_entry("any")
+    entry = server_entry()
     data = {"command": entry["command"], "args": entry["args"], "env": entry.get("env", {}),
             "version": manifest()["version"]}
     path = server_file()
@@ -402,7 +405,7 @@ def write_config(ide: str, folder: str | None = None) -> Path:
     servers = data.setdefault(_top_key(ide), {})
     if not isinstance(servers, dict):
         raise ValueError(f"{path}: {_top_key(ide)} is not an object")
-    servers[SERVER_NAME] = server_entry(ide)
+    servers[SERVER_NAME] = server_entry()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
