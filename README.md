@@ -1,4 +1,4 @@
-# AutoDebug
+# Autodebug
 
 AutoDebug lets an AI agent debug your program with the debugger of **VS Code**,
 **Cursor** or **Visual Studio 2022/2026**: it builds, sets breakpoints, runs,
