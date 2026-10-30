@@ -8,17 +8,17 @@ Nothing runs until you click **Approve** in the IDE.
 Agents: Cursor's agent, Claude Code, GitHub Copilot (VS Code and Visual
 Studio), and any other agent that supports MCP or has a terminal.
 
-**Documentation:** [autodebug-tool.github.io](https://autodebug-tool.github.io/)
+**Documentation:** autodebug-tool.github.io
 
-**Case studies:** [five real Godot bugs](https://autodebug-tool.github.io/#cases), each with the video of the
+**Case studies:** five real Godot bugs on the documentation site, each with the video of the
 session and the report AutoDebug wrote.
 
 ## Where to get it
 
 | Store | What | Status |
 |---|---|---|
-| [PyPI](https://pypi.org/project/autodebug/) | `autodebug`: the Python program and `autodebug setup` | **Available** |
-| [Open VSX](https://open-vsx.org/extension/SwagatTeejoram/autodebug) | The extension `SwagatTeejoram.autodebug`; Cursor installs and updates from here | **Available** |
+| PyPI | `autodebug`: the Python program and `autodebug setup` | **Available** |
+| Open VSX | The extension `SwagatTeejoram.autodebug`; Cursor installs and updates from here | **Available** |
 | VS Code Marketplace | The same extension for VS Code (until then, `autodebug setup` installs it) | Planned |
 | Visual Studio Marketplace | The Visual Studio extension (until then, `autodebug setup` installs it from the GitHub release) | Planned |
 
@@ -149,8 +149,8 @@ ticket, so check them before you approve. Ticket text can come from anyone: the
 agent never runs commands from it, and uses made-up test data, never customer
 data from the ticket.
 
-Try it on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md)
-first. Step-by-step guides per IDE: [the documentation](https://autodebug-tool.github.io/).
+Try it on `examples/AutoDebugDemo` first. Step-by-step guides per IDE are in the
+documentation at autodebug-tool.github.io.
 
 **No tools in the chat?** Some apps drop MCP tools without an error. The agent
 can run the same tools in its terminal, in the same session:
@@ -158,8 +158,7 @@ can run the same tools in its terminal, in the same session:
 `autodebug setup <project folder>` writes that into the project's `AGENTS.md`.
 
 AutoDebug listens on 127.0.0.1 only, with a token, and collects no data. It is
-released under the [MIT License](https://github.com/TEEJORAM/AutoDebug/blob/main/LICENSE).
-How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md).
+released under the MIT License (`LICENSE`). How it works: `docs/design.md`.
 
 ## Large C++ programs
 
@@ -257,4 +256,4 @@ To work on AutoDebug itself, clone the repository and install it editable:
 
 Most tests run with Python alone. The relay tests need Node.js. The
 real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
-with g++ (C++, Linux and macOS). See [CLAUDE.md](https://github.com/TEEJORAM/AutoDebug/blob/main/CLAUDE.md) for the rules.
+with g++ (C++, Linux and macOS). See `CLAUDE.md` for the rules.

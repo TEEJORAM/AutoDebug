@@ -18,8 +18,6 @@ dependencies = []
 
 [project.urls]
 Documentation = "https://autodebug-tool.github.io/"
-Source = "https://github.com/TEEJORAM/AutoDebug"
-Issues = "https://github.com/TEEJORAM/AutoDebug/issues"
 
 [project.scripts]
 autodebug = "autodebug.cli:main"

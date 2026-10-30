@@ -1,4 +1,4 @@
-"""A real gdb DAP session against the C++ sample. Skipped unless gdb 14+ and g++ exist."""
+"""A real gdb DAP session against the C++ sample. Skipped unless gdb 14+ (with its Python working) and g++ exist."""
 
 import os
 import re
@@ -23,7 +23,21 @@ def _gdb_major() -> int:
     return int(match.group(1)) if match else 0
 
 
-@unittest.skipUnless(_gdb_major() >= 14 and shutil.which("g++"), "needs gdb 14 or later and g++")
+def _gdb_python_works() -> bool:
+    """gdb's debug adapter is written in Python inside gdb. It breaks when gdb loads another Python's library, as on
+    a CI machine whose LD_LIBRARY_PATH points at a Python of the same version as gdb's."""
+    try:
+        done = subprocess.run([shutil.which("gdb") or "gdb", "-nx", "-batch", "-ex", "python import struct"],
+                              capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0 and "Error" not in done.stderr + done.stdout
+
+
+GDB_READY = _gdb_major() >= 14 and bool(shutil.which("g++")) and _gdb_python_works()
+
+
+@unittest.skipUnless(GDB_READY, "needs gdb 14 or later with its Python working, and g++")
 @unittest.skipIf(
     sys.platform == "win32",
     "Windows gdb rejects the launch and cannot find sources under the runner temp path; run this test on Linux or macOS",
@@ -72,7 +86,7 @@ class RealCpp(HarnessTest):
         self.assertGreaterEqual(len(threads["threads"]), 1)
 
 
-@unittest.skipUnless(_gdb_major() >= 14 and shutil.which("g++"), "needs gdb 14 or later and g++")
+@unittest.skipUnless(GDB_READY, "needs gdb 14 or later with its Python working, and g++")
 @unittest.skipIf(sys.platform == "win32", "see RealCpp")
 class RealCppInspection(RealCpp):
     """Hit counts, log points, registers, machine code, memory, instruction and single-thread stepping, valid
