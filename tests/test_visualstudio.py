@@ -208,7 +208,7 @@ class Session(VisualStudioTest):
     def test_ask_developer_and_stop(self):
         self.approved()
         self.debugger.wait(0.3, ask_developer="Delete the last item")
-        self.assertEqual(self.expect("INFO", 5), "AutoDebug: the AI agent asks you to: Delete the last item")
+        self.assertEqual(self.expect("INFO", 5), "Autodebug: the AI agent asks you to: Delete the last item")
         self.debugger.stop_session()
         self.assertEqual(json.loads(self.expect("DISCONNECT")), {"detach": False})
 

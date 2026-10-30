@@ -3,7 +3,7 @@
 Agents used to start Visual Studio themselves and opened it three times while the
 first copy was still loading. `open_ide` finds the solution (or folder), reuses a
 window that already has it, otherwise starts the IDE once and waits for the
-AutoDebug extension in it. A second call while that IDE is still loading waits
+Autodebug extension in it. A second call while that IDE is still loading waits
 instead of starting another copy. Opening the IDE runs nothing of the program:
 debugging still needs the developer's Approve click.
 """
@@ -102,7 +102,7 @@ def _record() -> Path:
 
 
 def recently_started(ide: str, opened: Path) -> float | None:
-    """Seconds since AutoDebug started this IDE with this path, if that was less than LOADING_SECONDS ago."""
+    """Seconds since Autodebug started this IDE with this path, if that was less than LOADING_SECONDS ago."""
     try:
         data = json.loads(_record().read_text(encoding="utf-8"))
         if data.get("ide") == ide and same_folder(str(data.get("path")), str(opened)):
@@ -136,11 +136,11 @@ def command(ide: str, opened: Path) -> list[str]:
 
 
 def start(argv: list[str]) -> None:
-    """Start the IDE detached from AutoDebug, so it keeps running when AutoDebug exits."""
+    """Start the IDE detached from Autodebug, so it keeps running when Autodebug exits."""
     options: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
                      "close_fds": True}
     if sys.platform == "win32":
         options["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         options["start_new_session"] = True
-    subprocess.Popen(argv, **options)  # noqa: S603 (the IDE's own launcher, found above)
+    subprocess.Popen(argv, **options)  # the IDE's own launcher, found above

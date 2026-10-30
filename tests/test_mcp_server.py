@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from autodebug.connection import DebugError
-from autodebug.mcp_server import TOOLS, Server
+from autodebug.mcp_server import TOOLS, Server, argument_problem
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -101,6 +101,15 @@ class Protocol(unittest.TestCase):
         self.assertIn("step: unknown argument surprise; allowed: kind, count, wait_ms", messages[2])
         self.assertIn("trace: missing line, variables", messages[4])
 
+    def test_a_choice_of_shapes_is_checked_by_the_shape_given(self):
+        schema = TOOLS["exceptions"][1]
+        self.assertIsNone(argument_problem({"enable": ["raised", {"id": "uncaught", "condition": "e is None"}]}, schema))
+        self.assertEqual(argument_problem({"enable": [{"id": "raised", "oops": 1}]}, schema),
+                         "unknown argument oops; allowed: id, condition")
+        self.assertEqual(argument_problem({"enable": [{"condition": "x"}]}, schema),
+                         "missing id (required: id)")
+        self.assertEqual(argument_problem({"enable": [3]}, schema), "enable[0] must be text")
+
     def test_debug_errors_are_tool_errors(self):
         reply = run([call(1, "step")])[1]["result"]
         self.assertTrue(reply["isError"])
@@ -113,7 +122,9 @@ class Protocol(unittest.TestCase):
     def test_ping_is_answered_while_a_tool_waits(self):
         read, write = os.pipe()
         output = io.BytesIO()
-        server = Server(FakeDebugger(), os.fdopen(read, "rb"), output)
+        source = os.fdopen(read, "rb")
+        self.addCleanup(source.close)
+        server = Server(FakeDebugger(), source, output)
         thread = threading.Thread(target=server.serve)
         thread.start()
         with os.fdopen(write, "wb") as pipe:

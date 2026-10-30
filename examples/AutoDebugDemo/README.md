@@ -1,13 +1,13 @@
 # AutoDebugDemo
 
 A tiny sketch-geometry project with **one deliberate bug**, for practising
-debugging and for trying AutoDebug. It contains no company code or data.
+debugging and for trying Autodebug. It contains no company code or data.
 
 **The bug:** moving a shape must never change its area, but here it does.
 
 ## 1. See it fail
 
-Run these from the AutoDebug folder.
+Run these from the Autodebug folder.
 
 Windows (PowerShell):
 
@@ -65,14 +65,14 @@ the last corner back to the first. At the origin that edge's term happens to be
 Then run the tests again; both pass and `report.py` prints `ok` for every shape.
 </details>
 
-## 3. Let the AI agent debug it with AutoDebug
+## 3. Let the AI agent debug it with Autodebug
 
-Set up AutoDebug once (see the [main README](../../README.md#set-up-once)):
+Set up Autodebug once (see the [main README](../../README.md#set-up-once)):
 `py -m autodebug setup cursor` (or `setup vscode`), reload the IDE window, and
 turn on the `autodebug` MCP server.
 
 1. Open this folder (`examples/AutoDebugDemo`) in Cursor or VS Code. The status
-   bar shows **AutoDebug**.
+   bar shows **Autodebug**.
 2. In the agent chat (Agent mode), ask:
 
    > Help me debug AutoDebugDemo: moving a shape changes its area. Use the
@@ -99,7 +99,7 @@ cmake --build build
 Run `build\Debug\geometry.exe` on Windows (Visual Studio generator) or
 `build/geometry` on macOS/Linux. In CLion open the `cpp` folder.
 
-### With AutoDebug in Visual Studio
+### With Autodebug in Visual Studio
 
 After `autodebug setup visualstudio`, generate a Visual Studio solution and open it:
 

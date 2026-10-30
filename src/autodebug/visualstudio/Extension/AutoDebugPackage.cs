@@ -1,4 +1,4 @@
-// Loads AutoDebug in the background when Visual Studio starts, and runs the relay
+// Loads Autodebug in the background when Visual Studio starts, and runs the relay
 // for as long as Visual Studio is open.
 
 using System;

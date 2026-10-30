@@ -4,10 +4,10 @@ driven by the real Python tools over the real protocol. Skipped without Node.js.
 
 import json
 import os
-import sys
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -62,7 +62,7 @@ class HarnessMixin:
         self.lines: queue.Queue[str] = queue.Queue()
         self.node = subprocess.Popen(self.harness_command(self.bridges, self.workspace),
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8", env=env)
-        threading.Thread(target=lambda: [self.lines.put(l.rstrip("\n")) for l in self.node.stdout], daemon=True).start()
+        threading.Thread(target=lambda: [self.lines.put(text.rstrip("\n")) for text in self.node.stdout], daemon=True).start()
         self.addCleanup(self.stop_node)
         self.expect("READY", 30)
         self.debugger = Debugger(find_windows=lambda: discover(self.bridges))
@@ -382,7 +382,7 @@ class AskDeveloper(HarnessTest):
         self.approved()
         result = self.debugger.wait(0.4, ask_developer="move the square")
         self.assertEqual(result["status"], "paused")
-        self.assertEqual(self.expect("INFO", 2), "AutoDebug: the AI agent asks you to: move the square")
+        self.assertEqual(self.expect("INFO", 2), "Autodebug: the AI agent asks you to: move the square")
         self.debugger.wait(0.2, ask_developer="move the square")
         try:
             extra = self.lines.get_nowait()

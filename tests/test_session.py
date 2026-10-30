@@ -2,9 +2,10 @@
 
 import unittest
 
+from autodebug.checks import check_hit_condition, check_log_message
 from autodebug.connection import DebugError
-from autodebug.session import (apply_platform, check_hit_condition, check_log_message, prepare_launch, remote_problem,
-                               split_path, substitutions, task_chain, test_arguments)
+from autodebug.launch import apply_platform, prepare_launch, remote_problem, substitutions, task_chain, test_arguments
+from autodebug.values import split_path
 
 
 class LaunchChecks(unittest.TestCase):

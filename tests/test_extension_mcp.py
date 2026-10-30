@@ -60,9 +60,9 @@ class Register(unittest.TestCase):
         out = self.run_ide("vscode")
         self.assertEqual(out["result"], "vscode")
         self.assertEqual(out["calls"], [["provider", "autodebug.server", [[
-            "AutoDebug", self.server["command"], self.server["args"], self.server["env"], "0.5.0"]]]])
+            "Autodebug", self.server["command"], self.server["args"], self.server["env"], "0.5.0"]]]])
         manifest = json.loads((MCP.parent / "package.json").read_text(encoding="utf-8"))
-        self.assertIn({"id": "autodebug.server", "label": "AutoDebug"}, manifest["contributes"]["mcpServerDefinitionProviders"])
+        self.assertIn({"id": "autodebug.server", "label": "Autodebug"}, manifest["contributes"]["mcpServerDefinitionProviders"])
 
     def test_an_existing_mcp_json_entry_is_not_duplicated(self):
         (self.home / ".cursor").mkdir()

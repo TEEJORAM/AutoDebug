@@ -89,7 +89,7 @@ def build_type(launch: dict, folder: str) -> dict:
     if "${" in program:
         return {"type": None, "source": "unknown: the program path uses a variable that is filled in at launch"}
     path = Path(program if os.path.isabs(program) else os.path.join(folder, program))
-    parts = [p for p in path.parent.parts]
+    parts = list(path.parent.parts)
     for part in reversed(parts):
         if part.lower() in KNOWN:
             return _typed(part, f"the program's folder ({part})")

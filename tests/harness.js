@@ -6,14 +6,14 @@
 // or gdb (HARNESS_GDB=1).
 //
 // usage: node harness.js <bridges-folder> <workspace-folder>
-// stdin: approve | deny | breakpoints | exit
+// stdin: approve | deny | breakpoints | condition <text> | exit
 // stdout: READY | DIALOG <json> | INFO <text> | DISCONNECT <json> | BREAKPOINTS <n> | LOG <text>
 
 const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { Relay } = require('../src/autodebug/extension/relay');
+const { Relay, conditionAllowed } = require('../src/autodebug/extension/relay');
 
 const [bridgesFolder, workspace] = process.argv.slice(2);
 const buildExit = Number(process.env.HARNESS_BUILD_EXIT || 0);
@@ -34,7 +34,7 @@ let session; // the approved session; with HARNESS_CHILD=1 the program runs in a
 const sessions = [];
 const dialogs = [];
 const breakpoints = [];
-// HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before AutoDebug starts.
+// HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before Autodebug starts.
 for (const spec of (process.env.HARNESS_EDITOR_BP || '').split(',').filter(Boolean)) {
   const [file, line] = spec.split(':');
   breakpoints.push(new SourceBreakpoint(new Location({ fsPath: path.join(workspace, file) }, new Position(Number(line) - 1, 0)), true));
@@ -255,6 +255,7 @@ relay = new Relay(vscode, {
 relay.start().then(() => say('READY'), (error) => { say(`ERROR ${error.message}`); process.exit(1); });
 
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.startsWith('condition ')) { say(`CONDITION ${conditionAllowed(line.slice(10)) ? 'allowed' : 'refused'}`); return; }
   const command = line.trim();
   if (command === 'approve' || command === 'deny') { const answer = dialogs.shift(); if (answer) answer(command === 'approve' ? 'Approve' : undefined); }
   else if (command === 'breakpoints') say(`BREAKPOINTS ${breakpoints.length}`);

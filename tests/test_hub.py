@@ -1,5 +1,6 @@
-"""The AutoDebug service: the command line and the MCP server share one session through it."""
+"""The Autodebug service: the command line and the MCP server share one session through it."""
 
+import contextlib
 import json
 import os
 import re
@@ -42,13 +43,12 @@ class ServiceTest(unittest.TestCase):
     def stop_service(self):
         info = hub._read_info()
         if info:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 hub._request(info, {"op": "shutdown", "force": True}, 3)
-            except (OSError, ValueError):
-                pass
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline and hub.hub_file().exists():
                 time.sleep(0.05)
+        hub.reap(5)
         # On Windows the exiting service still holds hub.log open for a moment; wait until it lets go.
         log = self.state / "hub.log"
         deadline = time.monotonic() + 15
@@ -105,7 +105,7 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
                                 "confidence=unconfirmed")
         self.assertEqual(code, 0)
         text = Path(report["report_file"]).read_text(encoding="utf-8")
-        calls = int(re.search(r"- AutoDebug: (\d+) tool calls", text).group(1))
+        calls = int(re.search(r"- Autodebug: (\d+) tool calls", text).group(1))
         self.assertGreaterEqual(calls, 4)  # list_targets and start_session here, wait and stop_session over MCP
 
     def test_tool_errors_and_bad_arguments(self):
@@ -208,8 +208,8 @@ class Arguments(unittest.TestCase):
             self.assertIn(text, str(caught.exception))
 
     def test_help_lists_every_tool(self):
-        from io import StringIO
         from contextlib import redirect_stdout
+        from io import StringIO
 
         out = StringIO()
         with redirect_stdout(out):

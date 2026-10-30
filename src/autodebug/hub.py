@@ -1,4 +1,4 @@
-"""The AutoDebug service: one process per user that owns the debug session (docs/design.md, "The service").
+"""The Autodebug service: one process per user that owns the debug session (docs/design.md, "The service").
 
 Every agent reaches the same session through it: the MCP server (`autodebug serve`, started by
 Cursor, VS Code or Visual Studio) and the command line (`autodebug run <tool> ...`), which any agent
@@ -12,6 +12,7 @@ starts one in the background; it exits after IDLE_SECONDS without calls while no
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -49,7 +50,7 @@ _CODE: list[str] = []
 
 
 def code_id() -> str:
-    """A fingerprint of this AutoDebug's Python code, so a service left running from before an update
+    """A fingerprint of this Autodebug's Python code, so a service left running from before an update
     (`git pull`, same version number) is replaced instead of answering with the old code."""
     if not _CODE:
         digest = hashlib.sha256()
@@ -80,10 +81,8 @@ class Hub:
                 if not line or len(line) > MAX_LINE:
                     return
                 reply = hub.answer(line)
-                try:
+                with contextlib.suppress(OSError):
                     self.wfile.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
-                except OSError:
-                    pass
 
         class TCP(socketserver.ThreadingTCPServer):
             daemon_threads = True
@@ -148,7 +147,7 @@ class Hub:
         while True:
             time.sleep(min(30.0, max(0.05, self.idle_seconds / 4)))
             if time.monotonic() - self.last_call > self.idle_seconds and not self.busy():
-                _LOG.info("idle; the AutoDebug service exits")
+                _LOG.info("idle; the Autodebug service exits")
                 self.server.shutdown()
                 return
 
@@ -201,25 +200,40 @@ def _ping(info: dict | None) -> dict | None:
     return reply if reply.get("ok") else None
 
 
+#: Background services this process started. Kept so each one is reaped once it exits (not left as a zombie or
+#: reported as a leaked process); the service itself outlives this process.
+_started: list[subprocess.Popen] = []
+
+
+def reap(wait_seconds: float = 0) -> None:
+    """Collect the exit of background services this process started that have ended (or end within the wait)."""
+    for process in list(_started):
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(wait_seconds)
+            _started.remove(process)
+
+
 def _start_process() -> None:
     """Start `autodebug hub` in the background, detached from the caller (an IDE may kill its MCP servers)."""
+    reap()
     package_parent = str(Path(__file__).resolve().parent.parent)
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(p for p in (package_parent, env.get("PYTHONPATH")) if p)
     folder = state_folder()
     folder.mkdir(parents=True, exist_ok=True)
-    log = open(folder / "hub.log", "ab")  # noqa: SIM115 — handed to the child
+    log = open(folder / "hub.log", "ab")  # noqa: SIM115 (handed to the child process)
     options: dict = {"stdin": subprocess.DEVNULL, "stdout": log, "stderr": log, "env": env, "close_fds": True}
     command = [sys.executable, "-m", "autodebug", "hub"]
     try:
         if os.name == "nt":
             flags = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
             try:
-                subprocess.Popen(command, creationflags=flags | 0x01000000, **options)  # CREATE_BREAKAWAY_FROM_JOB
+                process = subprocess.Popen(command, creationflags=flags | 0x01000000, **options)  # BREAKAWAY_FROM_JOB
             except OSError:
-                subprocess.Popen(command, creationflags=flags, **options)
+                process = subprocess.Popen(command, creationflags=flags, **options)
         else:
-            subprocess.Popen(command, start_new_session=True, **options)
+            process = subprocess.Popen(command, start_new_session=True, **options)
+        _started.append(process)
     finally:
         log.close()
 
@@ -229,10 +243,8 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
     info = _read_info()
     alive = _ping(info)
     if alive and (alive.get("version"), alive.get("code")) != (__version__, code_id()) and not alive.get("busy"):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             _request(info, {"op": "shutdown"}, 3)
-        except (OSError, ValueError):
-            pass
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and _ping(info):
             time.sleep(0.1)
@@ -240,7 +252,7 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
     if alive:
         return info
     if not start:
-        raise ServiceError("the AutoDebug service is not running")
+        raise ServiceError("the Autodebug service is not running")
     _start_process()
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
@@ -248,7 +260,7 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
         if _ping(info):
             return info
         time.sleep(0.1)
-    raise ServiceError(f"the AutoDebug service did not start; see {state_folder() / 'hub.log'}")
+    raise ServiceError(f"the Autodebug service did not start; see {state_folder() / 'hub.log'}")
 
 
 def call(name: str, arguments: dict, timeout: float = CALL_TIMEOUT) -> tuple[dict, bool]:
@@ -257,9 +269,9 @@ def call(name: str, arguments: dict, timeout: float = CALL_TIMEOUT) -> tuple[dic
     try:
         reply = _request(info, {"op": "call", "name": name, "arguments": arguments}, timeout)
     except (OSError, ValueError) as exc:
-        raise ServiceError(f"lost the AutoDebug service during {name}: {exc}") from exc
+        raise ServiceError(f"lost the Autodebug service during {name}: {exc}") from exc
     if "result" not in reply:
-        raise ServiceError(f"the AutoDebug service refused the call: {reply.get('message') or reply}")
+        raise ServiceError(f"the Autodebug service refused the call: {reply.get('message') or reply}")
     return reply["result"], bool(reply.get("is_error"))
 
 

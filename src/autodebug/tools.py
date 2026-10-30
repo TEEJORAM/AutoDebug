@@ -6,6 +6,7 @@ timeline for the report, and applies redaction to everything it returns.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -14,8 +15,17 @@ from dataclasses import dataclass, field
 
 from autodebug import report
 from autodebug.build import describe
-from autodebug.connection import (IDE_NAMES, DebugError, Window, choose, discover, matching, outdated_extension,
-                                  preferred_ide, same_folder)
+from autodebug.connection import (
+    IDE_NAMES,
+    DebugError,
+    Window,
+    choose,
+    discover,
+    matching,
+    outdated_extension,
+    preferred_ide,
+    same_folder,
+)
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
 
@@ -46,6 +56,18 @@ def _telling_lines(output: list[str], count: int = 3) -> list[str]:
     lines = [line.strip() for line in output if line.strip() and set(line.strip()) - set("-=_*")]
     errors = [line for line in lines if _ERROR_LINE.search(line)]
     return (errors or lines)[-count:]
+
+
+def _breakpoint(b: dict) -> dict:
+    """A breakpoint as the agent sees it: where, who set it, whether it is bound, and its options."""
+    at = f"function {b['function']}" if b.get("function") else (
+        f"{b.get('file')}:{b.get('line')}" + (f":{b['column']}" if b.get("column") else ""))
+    shown = {"at": clean_text(at, 300), "source": b.get("source", "session"), "verified": b.get("verified", False)}
+    for key, name, limit in (("condition", "when", 200), ("hit_condition", "hits", 20), ("log_message", "logs", 300),
+                             ("message", "note", 200)):
+        if b.get(key):
+            shown[name] = clean_text(b[key], limit)
+    return shown
 
 
 @dataclass
@@ -127,8 +149,8 @@ class Debugger:
             raise DebugError("NOT_FOUND", "no debug session; call start_session first")
         return self.connection
 
-    def _call(self, op: str, args: dict | None = None, timeout: float = 30.0) -> dict:
-        return self._session().call(op, args, timeout=timeout)
+    def _call(self, op: str, args: dict | None = None) -> dict:
+        return self._session().call(op, args)
 
     def _state(self, raw: dict, quiet: bool = False) -> dict:
         """The session state as the agent sees it, logging changes on the timeline.
@@ -137,66 +159,8 @@ class Debugger:
         status = raw.get("status", "none")
         location = raw.get("location") or None
         where = f"{location['file']}:{location['line']}" if location else ""
-        result = {"status": status}
-        if where:
-            result["location"] = clean_text(where, 300)
-        for key in ("reason", "exit_code", "message"):
-            if raw.get(key) not in (None, ""):
-                result[key] = clean_text(raw[key], 500) if isinstance(raw[key], str) else raw[key]
-        if "steps_used" in raw:
-            result["steps"] = (f"{raw['steps_used']} of {raw['max_steps']} used" if raw.get("max_steps")
-                               else f"{raw['steps_used']} used")
-        if raw.get("breakpoints"):
-            result["breakpoints"] = [
-                {"at": clean_text(f"function {b['function']}" if b.get("function") else
-                                  f"{b.get('file')}:{b.get('line')}" + (f":{b['column']}" if b.get("column") else ""), 300),
-                 "source": b.get("source", "session"), "verified": b.get("verified", False),
-                 **({"when": clean_text(b["condition"], 200)} if b.get("condition") else {}),
-                 **({"hits": b["hit_condition"]} if b.get("hit_condition") else {}),
-                 **({"logs": clean_text(b["log_message"], 300)} if b.get("log_message") else {}),
-                 **({"note": clean_text(b["message"], 200)} if b.get("message") else {})}
-                for b in raw["breakpoints"]
-            ]
-        if raw.get("watches"):
-            result["watches"] = raw["watches"]
-        fresh = [a for a in raw.get("activity") or [] if a.get("seq", 0) > self._activity_seen]
-        if fresh:
-            self._activity_seen = fresh[-1]["seq"]
-            result["activity"] = [clean_text(a["text"], 300) for a in fresh]
-        output = [clean_text(line, 500) for line in raw.get("output") or []]
-        if output and status == "ended":
-            result["output"] = output
-        if raw.get("output_note"):
-            result["output_note"] = raw["output_note"]
-        if raw.get("thread"):
-            result["thread"] = raw["thread"]
-        if raw.get("exception"):
-            result["exception"] = {"id": clean_text(raw["exception"].get("id"), 200),
-                                   "description": clean_text(raw["exception"].get("description"), 500)}
-            if result["exception"]["id"] != self._last_exception:
-                self._last_exception = result["exception"]["id"]
-                self._log("exception", result["exception"]["id"], result["exception"]["description"])
-        key = (status, where, raw.get("reason"))
-        changed, previous = key != self._last_status, self._last_status
-        if changed and previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
-            self._log("approved", "", "the developer clicked Approve")
-        build = raw.get("build")
-        if build and build.get("status") != "running" and build != self._last_build:
-            self._last_build = build
-            self._log("build", str(build.get("task")), f"{build.get('status')}, exit code {build.get('exit_code')}")
-        if changed:
-            self._last_status = key
-            if quiet and status == "paused":
-                pass
-            elif status == "paused":
-                self._log("stopped", where, str(raw.get("reason") or ""))
-            elif status == "ended":
-                code = raw.get("exit_code")
-                last = _telling_lines(output)
-                self._log("ended", "", f"{raw.get('reason') or ''}" + (f", exit code {code}" if code is not None else "")
-                          + (f"; output: {' / '.join(last)}" if last else ""))
-            elif status in ("denied", "build_failed", "running"):
-                self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
+        result = self._facts(raw, status, where)
+        self._log_changes(raw, status, where, quiet, result.get("output") or [])
         ide = self.connection.window.ide if self.connection else "IDE"
         next_step = _NEXT.get(status, "")
         if status == "denied" and "no answer" in str(raw.get("reason") or ""):
@@ -207,6 +171,62 @@ class Debugger:
         if status == "paused":
             result["variables"] = self._short_variables()
         return result
+
+    def _facts(self, raw: dict, status: str, where: str) -> dict:
+        """What the state says, redacted: where, why, steps, breakpoints, watches, new activity, output, exception."""
+        result: dict = {"status": status}
+        if where:
+            result["location"] = clean_text(where, 300)
+        for key in ("reason", "exit_code", "message"):
+            if raw.get(key) not in (None, ""):
+                result[key] = clean_text(raw[key], 500) if isinstance(raw[key], str) else raw[key]
+        if "steps_used" in raw:
+            result["steps"] = (f"{raw['steps_used']} of {raw['max_steps']} used" if raw.get("max_steps")
+                               else f"{raw['steps_used']} used")
+        if raw.get("breakpoints"):
+            result["breakpoints"] = [_breakpoint(b) for b in raw["breakpoints"]]
+        if raw.get("watches"):
+            result["watches"] = raw["watches"]
+        fresh = [a for a in raw.get("activity") or [] if a.get("seq", 0) > self._activity_seen]
+        if fresh:
+            self._activity_seen = fresh[-1]["seq"]
+            result["activity"] = [clean_text(a["text"], 300) for a in fresh]
+        output = [clean_text(line, 500) for line in raw.get("output") or []]
+        if output and status == "ended":
+            result["output"] = output
+        for key in ("output_note", "thread"):
+            if raw.get(key):
+                result[key] = raw[key]
+        if raw.get("exception"):
+            result["exception"] = {"id": clean_text(raw["exception"].get("id"), 200),
+                                   "description": clean_text(raw["exception"].get("description"), 500)}
+            if result["exception"]["id"] != self._last_exception:
+                self._last_exception = result["exception"]["id"]
+                self._log("exception", result["exception"]["id"], result["exception"]["description"])
+        return result
+
+    def _log_changes(self, raw: dict, status: str, where: str, quiet: bool, output: list[str]) -> None:
+        """The timeline: the Approve click, the build, and each new stop or end (once)."""
+        key = (status, where, raw.get("reason"))
+        changed, previous = key != self._last_status, self._last_status
+        if changed and previous and previous[0] == "awaiting_approval" and status not in ("denied", "awaiting_approval"):
+            self._log("approved", "", "the developer clicked Approve")
+        build = raw.get("build")
+        if build and build.get("status") != "running" and build != self._last_build:
+            self._last_build = build
+            self._log("build", str(build.get("task")), f"{build.get('status')}, exit code {build.get('exit_code')}")
+        if not changed:
+            return
+        self._last_status = key
+        if status == "paused" and not quiet:
+            self._log("stopped", where, str(raw.get("reason") or ""))
+        elif status == "ended":
+            code = raw.get("exit_code")
+            last = _telling_lines(output)
+            self._log("ended", "", f"{raw.get('reason') or ''}" + (f", exit code {code}" if code is not None else "")
+                      + (f"; output: {' / '.join(last)}" if last else ""))
+        elif status in ("denied", "build_failed", "running"):
+            self._log(status, "", str(raw.get("reason") or raw.get("message") or ""))
 
     def _reproduced(self, result: dict, ide: str) -> str:
         """A reproduction run ended: record what it showed and tell the agent to compare it with the ticket."""
@@ -231,7 +251,7 @@ class Debugger:
         while True:
             remaining = deadline - time.monotonic()
             wait_ms = int(max(0.0, min(remaining, 25.0)) * 1000)
-            raw = self._call("state", {"since": self.version, "wait_ms": wait_ms}, timeout=wait_ms / 1000 + 10)["state"]
+            raw = self._call("state", {"since": self.version, "wait_ms": wait_ms})["state"]
             self.version = max(self.version, int(raw.get("version") or 0))
             if raw.get("status") in until or time.monotonic() >= deadline:
                 return raw
@@ -290,7 +310,7 @@ class Debugger:
                 entry["extension_note"] = outdated_extension(window)
             found.append(entry)
         several = len(windows) > 1
-        for entry, window in zip(found, windows):
+        for entry, window in zip(found, windows, strict=True):
             for folder in entry["folders"]:
                 for config in folder.get("launch", []):
                     config["start_with"] = {"launch_configuration": config.get("name"), "ide": window.ide,
@@ -307,7 +327,7 @@ class Debugger:
         return result
 
     def open_ide(self, ide: str, path: str, wait_seconds: float = 45) -> dict:
-        """Open the solution or folder in the IDE once and wait until its AutoDebug extension answers."""
+        """Open the solution or folder in the IDE once and wait until its Autodebug extension answers."""
         from autodebug import ide_launch
 
         opened, folder = ide_launch.target(ide, path)
@@ -428,8 +448,7 @@ class Debugger:
         if ask_developer:
             self._log("asked the developer", "", clean_text(ask_developer, 300))
             wait_ms = int(min(max(timeout_seconds, 0), 55) * 1000)
-            raw = self._call("state", {"since": self.version, "wait_ms": wait_ms, "ask_developer": ask_developer},
-                             timeout=wait_ms / 1000 + 10)["state"]
+            raw = self._call("state", {"since": self.version, "wait_ms": wait_ms, "ask_developer": ask_developer})["state"]
             return self._state(raw)
         return self._state(self._wait(min(max(timeout_seconds, 0), 55)))
 
@@ -448,7 +467,7 @@ class Debugger:
                 request["target"] = target
             else:
                 request.pop("target", None)
-            raw = self._call("step", request, timeout=wait_ms / 1000 + 10)["state"]
+            raw = self._call("step", request)["state"]
             location = raw.get("location")
             if location:
                 path.append(f"{location['file']}:{location['line']}")
@@ -497,10 +516,8 @@ class Debugger:
                 skipped.append(where)
         finally:
             if target not in existing and self.connection is not None:
-                try:
+                with contextlib.suppress(DebugError):
                     self._call("breakpoints", {"remove": [{"file": until["file"], "line": until["line"]}]})
-                except DebugError:
-                    pass
         if skipped:
             self._log("continued past", ", ".join(skipped[:5]), f"to reach {target}")
         result = self._state(raw)
@@ -582,7 +599,7 @@ class Debugger:
         if self.plan.get("screenshots"):
             name = f"{time.strftime('%Y%m%d-%H%M%S')}-stop-{len(self.evidence) + 1}"
             try:
-                shot = self._call("screenshot", {"name": name}, timeout=45)
+                shot = self._call("screenshot", {"name": name})
                 item["screenshot"] = f"screenshots/{name}.png"
                 item["variables_window"] = shot.get("variables_window")
             except DebugError as exc:
@@ -712,7 +729,7 @@ class Debugger:
             before, after_values, state = values(), None, raw
             if after:
                 try:
-                    state = self._call("step", {"kind": "over"}, timeout=20)["state"]
+                    state = self._call("step", {"kind": "over"})["state"]
                     after_values = values() if state.get("status") == "paused" else None
                 except DebugError as exc:
                     notes.append(f"no after-values: {exc.message}")
@@ -748,10 +765,8 @@ class Debugger:
                     break
         finally:
             if target not in existing and raw.get("status") != "ended":
-                try:
+                with contextlib.suppress(DebugError):
                     raw = self._call("breakpoints", {"remove": [{"file": file, "line": line}]})["state"]
-                except DebugError:
-                    pass
         self._log("trace", target, "; ".join(
             ", ".join(f"{k}={v}" for k, v in row.items() if k not in ("hit", "caller")) for row in rows[:10]))
         result = self._state(raw, quiet=True)

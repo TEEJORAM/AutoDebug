@@ -1,5 +1,5 @@
 {
-  "_about": "The case studies on the site. Each report .md is exactly what AutoDebug wrote; the short texts here summarise it for the table and player. After editing, run: python tools/case_studies.py",
+  "_about": "The case studies on the site. Each report .md is exactly what Autodebug wrote; the short texts here summarise it for the table and player. After editing, run: python tools/case_studies.py",
   "recorded": "Recorded on Godot 4.8 (dev build, commit cafc17a), Windows 11 and Visual Studio 2026. The agent was Grok 4.7. The videos have no sound.",
   "cases": [
     {

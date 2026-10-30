@@ -6,7 +6,8 @@ the launch configuration, following the session from the debugger's events,
 breakpoint binding, and reading the stack, threads and variables.
 
 `Session.call(op, args)` answers the operations the agent tools use, so
-`tools.Debugger` does not depend on how the extension is built.
+`tools.Debugger` does not depend on how the extension is built. The checks on launch configurations are in
+`launch`, on what the agent writes into breakpoints in `checks`, and reading variables in `values`.
 """
 
 from __future__ import annotations
@@ -16,275 +17,37 @@ import json
 import logging
 import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 from autodebug.build import build_type, describe
+from autodebug.checks import check_condition, check_hit_condition, check_log_message
 from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
+from autodebug.launch import (
+    DEBUGGER_EXTENSIONS,
+    apply_platform,
+    attach_target,
+    missing_program,
+    prepare_launch,
+    process_name,
+    program_arguments,
+    program_exists,
+    substitutions,
+    task_chain,
+    test_arguments,
+)
 from autodebug.redact import REDACTED, clean_text, is_secret_name, looks_secret
+from autodebug.values import Values, split_path
 
 _LOG = logging.getLogger("autodebug")
 
 STEP_COMMANDS = {"over": "next", "into": "stepIn", "out": "stepOut", "back": "stepBack"}
-#: A hit condition: a count, optionally with the comparison the debugger applies (>=, >, ==, <=, <, %).
-_HIT = re.compile(r"\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*")
-#: What a log message may show between braces: a variable or a path into one, never an expression.
-_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
-_VARIABLE_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*")
-#: Test runners `test` knows: how a launch configuration runs one test.
-TEST_RUNNERS = "pytest, unittest, go test, jest or vitest"
 MAX_MEMORY = 256
 MAX_ACTIVITY = 50
-# Extensions to suggest when a launch configuration's debugger is missing.
-DEBUGGER_EXTENSIONS = {
-    "debugpy": "Python Debugger", "python": "Python Debugger", "cppdbg": "C/C++", "cppvsdbg": "C/C++",
-    "lldb": "CodeLLDB", "lldb-dap": "LLDB DAP", "gdb": "Native Debug", "coreclr": "C#", "java": "Debugger for Java",
-    "go": "Go", "php": "PHP Debug",
-}
-PLATFORM_KEYS = {"win32": "windows", "darwin": "osx"}
 FINISHED = ("ended", "denied", "build_failed")
 OUTPUT_NOTE = ('program output went to the IDE terminal; set "console": "internalConsole" in the launch '
                "configuration to capture it")
-_SUBSTITUTION = re.compile(r"\$\{(input|command):([^}]+)\}")
-
-
-# -- launch configurations and tasks ----------------------------------------------
-
-
-def apply_platform(item: dict, platform: str) -> dict:
-    """The configuration as it runs on `platform`: its windows/osx/linux block applied, then removed."""
-    copy = json.loads(json.dumps(item))
-    block = copy.get(PLATFORM_KEYS.get(platform, "linux"))
-    for key in ("windows", "osx", "linux"):
-        copy.pop(key, None)
-    if isinstance(block, dict):
-        copy.update(block)
-    return copy
-
-
-def _strings(value, leaf: str = ""):
-    if isinstance(value, str):
-        yield value, leaf
-    elif isinstance(value, list):
-        for i, item in enumerate(value):
-            yield from _strings(item, str(i))
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            yield from _strings(item, str(key))
-
-
-def substitutions(config: dict, attach_pid_allowed: bool = False) -> list[str]:
-    """`${input:…}` and `${command:…}` values: they would ask the developer after the approval."""
-    found = []
-    for text, leaf in _strings(config):
-        for kind, name in _SUBSTITUTION.findall(text):
-            if not (attach_pid_allowed and kind == "command" and leaf in ("processId", "pid")):
-                found.append(f"${{{kind}:{name}}}")
-    return found
-
-
-def _host(value) -> str:
-    host = str(value).strip()
-    bracket = re.fullmatch(r"\[([^\]]+)\](?::\d+)?", host)
-    if bracket:
-        host = bracket.group(1)
-    else:
-        with_port = re.fullmatch(r"(.*):(\d+)", host)
-        if with_port and with_port.group(1).count(":") == 0:
-            host = with_port.group(1)
-    return host.lower()
-
-
-def remote_problem(config: dict) -> str | None:
-    """The setting that would debug another computer, if any."""
-    if config.get("pipeTransport"):
-        return "pipeTransport"
-    connect = config.get("connect") if isinstance(config.get("connect"), dict) else {}
-    for name, value in (("host", config.get("host")), ("address", config.get("address")),
-                        ("connect.host", connect.get("host")),
-                        ("miDebuggerServerAddress", config.get("miDebuggerServerAddress"))):
-        if value not in (None, "") and _host(value) not in ("localhost", "127.0.0.1", "::1"):
-            return name
-    return None
-
-
-def _depends_on(task: dict) -> list[str]:
-    deps = task.get("dependsOn") or []
-    deps = deps if isinstance(deps, list) else [deps]
-    return [d if isinstance(d, str) else d.get("task") for d in deps if isinstance(d, (str, dict))]
-
-
-def task_chain(label: str | None, tasks: list[dict], seen: set | None = None) -> list[dict]:
-    """The task and every task it depends on."""
-    seen = set() if seen is None else seen
-    if not label or label in seen:
-        return []
-    seen.add(label)
-    task = next((t for t in tasks if t.get("label") == label), None)
-    if task is None:
-        return []
-    return [task] + [t for dep in _depends_on(task) if dep for t in task_chain(dep, tasks, seen)]
-
-
-def attach_target(launch: dict, name: str = "") -> str:
-    pid = launch.get("processId", launch.get("pid"))
-    if pid is not None and "${" not in str(pid):
-        return f"Attach to: process {pid} ({name or 'name unknown'})"
-    connect = launch.get("connect") if isinstance(launch.get("connect"), dict) else {}
-    host = connect.get("host") or launch.get("host") or "localhost"
-    port = connect.get("port") or launch.get("port")
-    return f"Attach to: the debugger listening on {host}:{port}" if port else "Attach to: the running program"
-
-
-def process_name(pid: int) -> str:
-    """The process's name for the Approve dialog, or '' when it cannot be read."""
-    try:
-        if sys.platform.startswith("linux"):
-            return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip()
-        if sys.platform == "darwin":
-            return subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True,
-                                  timeout=3).stdout.strip()
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True,
-                             text=True, timeout=3).stdout.strip()
-        match = re.match(r'"([^"]+)"', out)
-        return match.group(1) if match else ""
-    except FileNotFoundError:
-        if sys.platform.startswith("linux"):
-            raise DebugError("NOT_FOUND", f"no process {pid}") from None
-        return ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-def missing_program(launch: dict, folder: str, building: bool) -> str | None:
-    """The launch configuration's program when it is not on disk and nothing will build it first, else None.
-    Only paths that can be resolved here are checked: absolute, or under ${workspaceFolder}."""
-    if building or launch.get("preLaunchTask") or program_exists(launch, folder) is not False:
-        return None
-    program = launch["program"]
-    for variable in ("${workspaceFolder}", "${workspaceRoot}"):
-        program = program.replace(variable, folder)
-    return program
-
-
-def program_exists(launch: dict, folder: str) -> bool | None:
-    """Whether the launch configuration's program is on disk; None when its path cannot be resolved here."""
-    if launch.get("request") != "launch":
-        return None
-    program = launch.get("program")
-    if not isinstance(program, str) or not program.strip():
-        return None
-    for variable in ("${workspaceFolder}", "${workspaceRoot}"):
-        program = program.replace(variable, folder)
-    if "${" in program or not os.path.isabs(program):
-        return None
-    path = Path(program)
-    return path.exists() or (os.name == "nt" and not path.suffix and path.with_suffix(".exe").exists())
-
-
-def prepare_launch(raw: dict, process_id, platform: str) -> dict:
-    """The launch configuration exactly as it will run, or a DebugError saying why it cannot."""
-    launch = apply_platform(raw, platform)
-    if launch.get("request") not in ("launch", "attach"):
-        raise DebugError("BAD_REQUEST", "request must be launch or attach")
-    attach = launch["request"] == "attach"
-    if process_id is not None:
-        if not attach:
-            raise DebugError("BAD_REQUEST", "process_id is only for attach configurations")
-        if not isinstance(process_id, int) or isinstance(process_id, bool) or process_id < 1:
-            raise DebugError("BAD_REQUEST", "process_id must be a positive integer")
-        field = "pid" if launch.get("type") == "lldb" else "processId"
-        current = launch.get(field)
-        numeric = isinstance(current, int) or (isinstance(current, str) and current.isdigit())
-        placeholder = isinstance(current, str) and _SUBSTITUTION.search(current) and current.startswith("${command:")
-        if (numeric and int(current) != process_id) or (not numeric and not placeholder and current is not None):
-            raise DebugError("BAD_REQUEST", "process_id contradicts the fixed PID")
-        launch[field] = process_id
-    elif attach and any(leaf in ("processId", "pid") and "${command:" in text for text, leaf in _strings(launch)):
-        raise DebugError("BAD_REQUEST", "this configuration picks a process; pass process_id")
-    tokens = substitutions(launch, attach)
-    if tokens:
-        raise DebugError("BAD_REQUEST", f"refuses {', '.join(tokens)}: they would ask the developer after approval")
-    remote = remote_problem(launch)
-    if remote:
-        raise DebugError("BAD_REQUEST", f"AutoDebug debugs only programs on this computer ({remote})")
-    return launch
-
-
-MAX_ARGS = 32
-MAX_ARG = 1000
-
-
-def program_arguments(launch: dict, values) -> list[str]:
-    """Replace the launch configuration's program arguments with `values` (the agent's), after checking them.
-    Visual Studio takes one command line, so there they are joined with Windows quoting."""
-    if launch.get("request") != "launch":
-        raise DebugError("BAD_REQUEST", "args are only for launch configurations; an attached program is already running")
-    if not isinstance(values, list) or len(values) > MAX_ARGS:
-        raise DebugError("BAD_REQUEST", f"args is a list of at most {MAX_ARGS} arguments")
-    for index, value in enumerate(values):
-        if not isinstance(value, str) or len(value) > MAX_ARG:
-            raise DebugError("BAD_REQUEST", f"args[{index}] must be text of at most {MAX_ARG} characters")
-        if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-            raise DebugError("BAD_REQUEST", f"args[{index}] contains a line break or control character; "
-                                            "put multi-line input in a file in the workspace instead")
-        if "${" in value:
-            raise DebugError("BAD_REQUEST", f"args[{index}] contains a ${{...}} variable; pass the value itself")
-        if looks_secret(value):
-            raise DebugError("BAD_REQUEST", f"args[{index}] looks like a secret (a key or token). Use a made-up test "
-                                            "value; never copy secrets or customer data from a ticket")
-    launch["args"] = [subprocess.list2cmdline(values)] if launch.get("type") == "visualstudio" and values else list(values)
-    return launch["args"]
-
-
-def test_arguments(launch: dict, test: object) -> list[str]:
-    """The program arguments that run only `test` with the launch configuration's test runner."""
-    if not isinstance(test, str) or not test.strip() or len(test) > 300:
-        raise DebugError("BAD_REQUEST", "test is the name of one test, at most 300 characters")
-    if test.startswith("-") or any(ord(ch) < 32 or ord(ch) == 127 for ch in test) or "${" in test:
-        raise DebugError("BAD_REQUEST", "test is a test name or id, not an option, a variable or several lines")
-    if launch.get("request") != "launch":
-        raise DebugError("BAD_REQUEST", "test is only for launch configurations")
-    module = str(launch.get("module") or "")
-    program = str(launch.get("program") or "").replace("\\", "/").lower()
-    runner = program.rsplit("/", 1)[-1]
-    if module == "pytest" or runner in ("pytest", "py.test") or "/pytest/" in program:
-        return [test]
-    if module == "unittest":
-        return [test]
-    if launch.get("type") == "go" and launch.get("mode") == "test":
-        name = test.rsplit("/", 1)[-1] if "/" in test and not test.startswith("Test") else test
-        return ["-test.run", f"^{re.escape(name)}$"]
-    if "jest" in runner or "/jest/" in program:
-        return ["--runInBand", "-t", test]
-    if "vitest" in runner or "/vitest/" in program:
-        return ["run", "-t", test]
-    raise DebugError("BAD_REQUEST", f'launch configuration "{launch.get("name")}" does not run a test runner AutoDebug '
-                                    f"knows ({TEST_RUNNERS}); pass args with the runner's own option instead")
-
-
-def check_hit_condition(value: object) -> str | None:
-    if value in (None, ""):
-        return None
-    if not isinstance(value, str) or not _HIT.fullmatch(value):
-        raise DebugError("BAD_REQUEST", "hit_condition is a count such as 5, >=5 or %10")
-    return value.strip()
-
-
-def check_log_message(value: object) -> str | None:
-    """A log point's message. Braces may name a variable or a path into one ({total}, {mesh.verts[2].co}), so the
-    debugger only reads values; anything else in braces would be an expression it evaluates."""
-    if value in (None, ""):
-        return None
-    if not isinstance(value, str) or len(value) > 300 or any(ord(ch) < 32 for ch in value):
-        raise DebugError("BAD_REQUEST", "log_message is one line of at most 300 characters")
-    for inner in _PLACEHOLDER.findall(value):
-        if not _VARIABLE_PATH.fullmatch(inner.strip()):
-            raise DebugError("BAD_REQUEST", f"log_message may show variables by name only, like {{total}} or "
-                                            f"{{mesh.verts[2].co}}; {{{inner}}} is an expression")
-    return value
 
 
 def one_line(text: object, limit: int) -> str:
@@ -292,39 +55,7 @@ def one_line(text: object, limit: int) -> str:
     return " ".join(clean_text(text, limit).split())
 
 
-# -- variable paths ----------------------------------------------------------------
-
-
-def split_path(name: str) -> list[str]:
-    """`mesh.verts[2].co` and `scene->objects[2]` as their parts."""
-    parts = []
-    for piece in str(name).replace("->", ".").split("."):
-        parts += [a or b for a, b in re.findall(r"([^\[\].]+)|\[(\d+)\]", piece)]
-    return [p for p in parts if p]
-
-
-def _child_matches(child: dict, part: str) -> bool:
-    name = str(child.get("name"))
-    if name in (part, f"[{part}]"):
-        return True
-    # Debuggers number elements their own way: [5000], 5000, or debugpy's zero-padded 05000.
-    digits = name.strip("[]")
-    return part.isdigit() and digits.isdigit() and int(digits) == int(part)
-
-
-#: Child entries that are not elements: debugpy's groups and its link to the next hundred elements.
-_NOT_ELEMENTS = re.compile(r"(special|function|protected|class) variables|len\(\)|more|Raw View|\[Raw View\]")
-
-
-_RANGE = re.compile(r"\[(\d+):(\d+)\]")
-#: Scopes that are not the frame's own variables; inspect without names leaves them out.
-_WIDE_SCOPE = re.compile(r"global|static|register|module|thread", re.IGNORECASE)
-
-
-def _is_more(child: dict) -> bool:
-    """debugpy lists a long list a hundred elements at a time, with a "more" child that holds the rest as ranges."""
-    return child.get("type") == "MoreItems" or (child.get("name") == "more" and child.get("value") == "..."
-                                                and bool(child.get("variablesReference")))
+# -- paths ---------------------------------------------------------------------------
 
 
 def _key(file: str) -> str:
@@ -342,11 +73,11 @@ def _within(root: str, full: str) -> bool:
 # -- the session -------------------------------------------------------------------
 
 
-def connect(window: Window) -> "Session":
+def connect(window: Window) -> Session:
     return Session(Connection(window))
 
 
-class Session:
+class Session(Values):
     """The agent's view of one IDE window and its debug session."""
 
     def __init__(self, connection: Connection) -> None:
@@ -363,7 +94,7 @@ class Session:
     def _relay(self, op: str, args: dict | None = None, timeout: float = 15.0) -> dict:
         return self.connection.call(op, args or {}, timeout=timeout)
 
-    def call(self, op: str, args: dict | None = None, timeout: float = 30.0) -> dict:
+    def call(self, op: str, args: dict | None = None) -> dict:
         handler = {
             "targets": self.targets, "start": self.start, "state": self.state, "stack": self.stack,
             "variables": self.variables, "threads": self.threads, "exceptions": self.exceptions, "step": self.step,
@@ -400,16 +131,56 @@ class Session:
     # -- start: everything is checked here, then the extension asks the developer ---------------
 
     def start(self, args: dict) -> dict:
+        """Check everything, then ask the extension to show the Approve dialog. Nothing runs before Approve."""
         info = self._relay("info")
-        platform = info.get("platform", sys.platform)
-        ide = IDE_NAMES.get(info.get("ide"), "the IDE")
-        where = " in Visual Studio's startup project" if info.get("ide") == "visualstudio" else " in .vscode/launch.json"
         ws = self._relay("workspace", {"folder": args.get("folder")})
         folder = ws["folder"]
+        launch, args, program_args = self._launch_for(args, info, ws)
+        tasks = [apply_platform(t, info.get("platform", sys.platform)) for t in ws.get("tasks", [])]
+        self._check_tasks(args, launch, tasks, folder)
+        extras = self._source_folders(args.get("source_folders") or [])
+        roots = [folder, *extras]
+        breakpoints = [self._breakpoint(b, folder, roots) for b in args.get("breakpoints") or []]
+        self.features = set(info.get("features") or [])
+        self._options_supported(breakpoints, info)
+        functions = [str(name)[:300] for name in args.get("function_breakpoints") or []]
+        # No step or time limit unless the agent asks for one: a session runs until the root cause is found, the
+        # program ends, or the agent or the developer stops it.
+        max_steps = max(1, min(int(args["max_steps"]), 100000)) if args.get("max_steps") else None
+        notes, label, build = self._notes(args, launch, folder, program_args)
+        latest = int(self._relay("events", {"since": 2 ** 50, "wait_ms": 0}).get("latest") or 0)
+        answer = self._relay("approve", {
+            "folder": folder, "launch": launch, "task": args.get("task"), "notes": notes, "label": label,
+            "breakpoints": [self._placed(b) for b in breakpoints],
+            "functions": functions, "source_folders": extras, "max_steps": max_steps,
+            "screenshots": bool(args.get("screenshots")),
+            "max_minutes": args.get("max_minutes"), "build_minutes": args.get("build_minutes"),
+        })
+        for b, ident in zip(breakpoints, answer.get("breakpoint_ids", []), strict=False):
+            b["id"] = ident
+        self.cursor = latest
+        self.s = {
+            "status": "awaiting_approval", "reason": None, "location": None, "exit_code": None, "message": None,
+            "steps_used": 0, "max_steps": max_steps, "build": None, "thread_id": None, "thread_name": None,
+            "exception": None, "output": [], "partial": "", "folder": folder, "launch": launch, "roots": roots,
+            "breakpoints": breakpoints,
+            "functions": [{"name": n, "id": i} for n, i in zip(functions, answer.get("function_ids", []), strict=False)],
+            "verified": {}, "by_id": {}, "pending": {}, "capabilities": {}, "asked": None, "connected": False,
+            "caps": {}, "root": None, "active": None, "activity": [], "activity_seq": 0, "modules": {},
+            "watches": [], "frames": {},
+        }
+        self._changed()
+        return {"state": self.snapshot(), "build": build, "folder": folder}
+
+    def _launch_for(self, args: dict, info: dict, ws: dict) -> tuple[dict, dict, list[str] | None]:
+        """The launch configuration as it will run, the arguments (with `test` turned into program arguments) and
+        the program arguments the agent chose, after checking that this IDE has its debugger."""
+        ide = IDE_NAMES.get(info.get("ide"), "the IDE")
+        where = " in Visual Studio's startup project" if info.get("ide") == "visualstudio" else " in .vscode/launch.json"
         found = next((c for c in ws.get("launch", []) if c.get("name") == args.get("launch")), None)
         if found is None:
             raise DebugError("NOT_FOUND", f'no launch configuration named "{args.get("launch")}"{where}; see list_targets')
-        launch = prepare_launch(found, args.get("process_id"), platform)
+        launch = prepare_launch(found, args.get("process_id"), info.get("platform", sys.platform))
         if args.get("test") is not None and args.get("args") is not None:
             raise DebugError("BAD_REQUEST", "pass test or args, not both: test sets the arguments that run one test")
         if args.get("test") is not None:
@@ -424,13 +195,17 @@ class Session:
             raise DebugError("NOT_FOUND", f'{ide} has no debugger for type "{launch.get("type")}". Ask the developer to '
                                           f"install {f'the {extension} extension' if extension else 'the extension for it'}"
                                           " and reload the window.")
-        tasks = [apply_platform(t, platform) for t in ws.get("tasks", [])]
+        return launch, args, program_args
+
+    @staticmethod
+    def _check_tasks(args: dict, launch: dict, tasks: list[dict], folder: str) -> None:
+        """The build task exists, the program exists or will be built, and no task would ask the developer later."""
         if args.get("task") and not any(t.get("label") == args["task"] for t in tasks):
             raise DebugError("NOT_FOUND", f'no build task labelled "{args["task"]}"; see list_targets')
         missing = missing_program(launch, folder, bool(args.get("task")))
         if missing:
             labels = [t.get("label") for t in tasks if t.get("label")]
-            fix = (f"call start_session again with build_task set to one of: {', '.join(repr(l) for l in labels[:5])}"
+            fix = (f"call start_session again with build_task set to one of: {', '.join(repr(x) for x in labels[:5])}"
                    if labels else "ask the developer to build it")
             raise DebugError("NOT_BUILT", f"{missing} does not exist yet, so the debugger cannot start it. "
                                           f"Nothing was shown to the developer. To build it first, {fix}.")
@@ -439,19 +214,14 @@ class Session:
         tokens = list(dict.fromkeys(token for t in used for token in substitutions(t)))
         if tokens:
             raise DebugError("BAD_REQUEST", f"refuses {', '.join(tokens)}: they would ask the developer after approval")
-        extras = self._source_folders(args.get("source_folders") or [])
-        roots = [folder, *extras]
-        breakpoints = [self._breakpoint(b, folder, roots) for b in args.get("breakpoints") or []]
-        self.features = set(info.get("features") or [])
-        self._options_supported(breakpoints, info)
-        functions = [str(name)[:300] for name in args.get("function_breakpoints") or []]
-        # No step or time limit unless the agent asks for one: a session runs until the root cause is found, the
-        # program ends, or the agent or the developer stops it.
-        max_steps = max(1, min(int(args["max_steps"]), 100000)) if args.get("max_steps") else None
+
+    @staticmethod
+    def _notes(args: dict, launch: dict, folder: str, program_args: list[str] | None) -> tuple[list[str], str, dict | None]:
+        """What the Approve dialog says besides the configuration itself, its title label, and the build type."""
         label = launch["name"]
         notes = [f"Goal: {str(args.get('goal') or '')[:500]}"] if args.get("goal") else []
         if args.get("reproduce"):
-            notes.append("This run only reproduces the bug: no breakpoints from the agent; the program runs to its end.")
+            notes.append("This run only reproduces the bug: no breakpoints from the agent. The program runs to its end.")
         if args.get("test") is not None:
             notes.append(f"Runs one test only: {one_line(args['test'], 300)}")
         if args.get("ticket"):
@@ -469,29 +239,7 @@ class Session:
             name = process_name(int(pid)) if pid is not None and str(pid).isdigit() else ""
             label = name or label
             notes.append(attach_target(launch, name))
-        latest = int(self._relay("events", {"since": 2 ** 50, "wait_ms": 0}).get("latest") or 0)
-        answer = self._relay("approve", {
-            "folder": folder, "launch": launch, "task": args.get("task"), "notes": notes, "label": label,
-            "breakpoints": [self._placed(b) for b in breakpoints],
-            "functions": functions, "source_folders": extras, "max_steps": max_steps,
-            "screenshots": bool(args.get("screenshots")),
-            "max_minutes": args.get("max_minutes"), "build_minutes": args.get("build_minutes"),
-        })
-        for b, ident in zip(breakpoints, answer.get("breakpoint_ids", [])):
-            b["id"] = ident
-        self.cursor = latest
-        self.s = {
-            "status": "awaiting_approval", "reason": None, "location": None, "exit_code": None, "message": None,
-            "steps_used": 0, "max_steps": max_steps, "build": None, "thread_id": None, "thread_name": None,
-            "exception": None, "output": [], "partial": "", "folder": folder, "launch": launch, "roots": roots,
-            "breakpoints": breakpoints,
-            "functions": [{"name": n, "id": i} for n, i in zip(functions, answer.get("function_ids", []))],
-            "verified": {}, "by_id": {}, "pending": {}, "capabilities": {}, "asked": None, "connected": False,
-            "caps": {}, "root": None, "active": None, "activity": [], "activity_seq": 0, "modules": {},
-            "watches": [], "frames": {},
-        }
-        self._changed()
-        return {"state": self.snapshot(), "build": build, "folder": folder}
+        return notes, label, build
 
     def _source_folders(self, folders: list) -> list[str]:
         if len(folders) > 10:
@@ -524,7 +272,7 @@ class Session:
                                                       "outside the workspace")
         if not os.path.isfile(full):
             raise DebugError("NOT_FOUND", f"no file {file}")
-        condition = str(b["condition"])[:500] if b.get("condition") else None
+        condition = check_condition(b.get("condition"))
         column = b.get("column")
         if column is not None and (not isinstance(column, int) or isinstance(column, bool) or column < 1):
             raise DebugError("BAD_REQUEST", "column is a positive integer (1 is the first character)")
@@ -538,7 +286,7 @@ class Session:
         features = set((info or {}).get("features") or []) if info is not None else getattr(self, "features", set())
         if "breakpoint_options" not in features and any(
                 b.get(key) is not None for b in breakpoints for key in ("column", "hit_condition", "log_message")):
-            raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')} "
+            raise DebugError("OLD_EXTENSION", f"the Autodebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')} "
                                               "is older than this server and cannot place hit counts, log points or "
                                               "columns. Run autodebug setup, then reload the IDE window (Visual Studio: "
                                               "close it first)")
@@ -635,63 +383,71 @@ class Session:
         `session` names the debug session it belongs to: a program can run in child sessions (Node.js, browsers,
         Python subprocesses), and each has its own sequence numbers, threads and capabilities."""
         s = self.s
-        kind, body = m.get("type"), m.get("body") or {}
         if s["root"] is None and session is not None:
             s["root"] = session
+        kind = m.get("type")
         if direction == "to_adapter" and kind == "request":
-            arguments = m.get("arguments") or {}
-            pending = f"{session}:{m.get('seq')}"
-            if m.get("command") == "setBreakpoints" and isinstance(arguments.get("source"), dict):
-                s["pending"][pending] = ("lines", arguments["source"].get("path"),
-                                         [b.get("line") for b in arguments.get("breakpoints") or []])
-            elif m.get("command") == "setFunctionBreakpoints":
-                s["pending"][pending] = ("functions", None, [b.get("name") for b in arguments.get("breakpoints") or []])
-            return stop
-        if kind == "response":
-            if m.get("command") == "initialize":
-                s["caps"][session] = body
-                if session in (None, s["root"]) or not s["capabilities"]:
-                    s["capabilities"] = body
-            sent = s["pending"].pop(f"{session}:{m.get('request_seq')}", None)
-            if sent:
-                what, file, items = sent
-                for bp, item in zip(body.get("breakpoints") or [], items):
-                    key = f"fn:{item}" if what == "functions" else f"{_key(file)}:{item}"
-                    s["verified"][key] = bp
-                    if bp.get("id") is not None:
-                        s["by_id"][bp["id"]] = key
-                self._changed()
-            return stop
-        if kind != "event":
-            return stop
-        event = m.get("event")
-        if event == "breakpoint" and isinstance(body.get("breakpoint"), dict):
-            bp = body["breakpoint"]
-            key = s["by_id"].get(bp.get("id"))
-            if key:
-                s["verified"][key] = {**s["verified"].get(key, {}), **bp}
-                self._changed()
-        elif event == "output":
-            self._capture(body)
-        elif event == "stopped":
+            self._sent_breakpoints(m, session)
+        elif kind == "response":
+            self._response(m, session)
+        elif kind == "event":
+            return self._event(m.get("event"), m.get("body") or {}, stop, session)
+        return stop
+
+    def _sent_breakpoints(self, m: dict, session: str | None) -> None:
+        """The IDE sent breakpoints to the debugger: remember them until the answer says which are bound."""
+        arguments = m.get("arguments") or {}
+        pending = f"{session}:{m.get('seq')}"
+        if m.get("command") == "setBreakpoints" and isinstance(arguments.get("source"), dict):
+            self.s["pending"][pending] = ("lines", arguments["source"].get("path"),
+                                          [b.get("line") for b in arguments.get("breakpoints") or []])
+        elif m.get("command") == "setFunctionBreakpoints":
+            self.s["pending"][pending] = ("functions", None, [b.get("name") for b in arguments.get("breakpoints") or []])
+
+    def _response(self, m: dict, session: str | None) -> None:
+        """The debugger's capabilities, and which of the breakpoints sent it bound."""
+        s, body = self.s, m.get("body") or {}
+        if m.get("command") == "initialize":
+            s["caps"][session] = body
+            if session in (None, s["root"]) or not s["capabilities"]:
+                s["capabilities"] = body
+        sent = s["pending"].pop(f"{session}:{m.get('request_seq')}", None)
+        if not sent:
+            return
+        what, file, items = sent
+        for bp, item in zip(body.get("breakpoints") or [], items, strict=False):
+            key = f"fn:{item}" if what == "functions" else f"{_key(file)}:{item}"
+            s["verified"][key] = bp
+            if bp.get("id") is not None:
+                s["by_id"][bp["id"]] = key
+        self._changed()
+
+    def _event(self, event: str | None, body: dict, stop: dict | None, session: str | None) -> dict | None:
+        s = self.s
+        if event == "stopped":
             s["thread_id"] = body.get("threadId")
             s["active"] = session if session is not None else s["root"]
             return {"threadId": body.get("threadId"), "reason": body.get("reason"), "description": body.get("description")}
+        if event == "continued":
+            if s["status"] not in FINISHED:
+                self._changed(status="running", location=None, reason=None, exception=None)
+            return None
+        if event == "terminated" and session in (None, s["root"]):  # a child session ending does not end the program
+            self._finish("the program exited")
+            return None
+        if event == "breakpoint" and isinstance(body.get("breakpoint"), dict):
+            key = s["by_id"].get(body["breakpoint"].get("id"))
+            if key:
+                s["verified"][key] = {**s["verified"].get(key, {}), **body["breakpoint"]}
+                self._changed()
+        elif event == "output":
+            self._capture(body)
         elif event == "capabilities" and isinstance(body.get("capabilities"), dict):
             s["caps"][session] = {**s["caps"].get(session, {}), **body["capabilities"]}
         elif event in ("thread", "process", "module", "loadedSource", "progressStart", "progressEnd"):
             self._event_activity(event, body)
-        elif event == "continued":
-            if s["status"] not in FINISHED:
-                self._changed(status="running", location=None, reason=None, exception=None)
-            return None
-        elif event == "exited":
-            if s["status"] != "ended":
-                s["exit_code"] = body.get("exitCode")
-        elif event == "terminated":
-            if session in (None, s["root"]):  # a child session ending (a subprocess) does not end the program
-                self._finish("the program exited")
-                return None
+        elif event == "exited" and s["status"] != "ended":
+            s["exit_code"] = body.get("exitCode")
         return stop
 
     def _capture(self, body: dict) -> None:
@@ -792,7 +548,7 @@ class Session:
             return self._relay("dap", request, timeout=timeout_ms / 1000 + 5).get("body") or {}
         except DebugError as exc:
             if exc.code == "BAD_REQUEST" and "is not allowed" in exc.message:
-                raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')}"
+                raise DebugError("OLD_EXTENSION", f"the Autodebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')}"
                                                   f" is older than this server and cannot send {command}. Run autodebug "
                                                   "setup, then reload the IDE window (Visual Studio: close it first)") from None
             raise
@@ -931,247 +687,66 @@ class Session:
 
     def exceptions(self, args: dict) -> dict:
         """List the debugger's exception filters; enable some (each with a condition where the debugger takes one),
-        and with `types` stop only for those exception types."""
+        and with `types` stop only for those exception types. What a call leaves out stays as it was: `types` alone
+        keeps the enabled filters (at first the debugger's defaults), `enable` alone keeps the types."""
         s = self.current()
         if not s["connected"] or s["status"] in FINISHED or s["status"] in ("awaiting_approval", "building"):
             raise DebugError("NOT_FOUND", "the debugger is not connected yet")
         caps = self._caps()
-        filters = caps.get("exceptionBreakpointFilters") or []
         offered = [{"id": f.get("filter"), "label": f.get("label"), "default": bool(f.get("default")),
-                    "condition": bool(f.get("supportsCondition"))} for f in filters]
+                    "condition": bool(f.get("supportsCondition"))} for f in caps.get("exceptionBreakpointFilters") or []]
         enable, types = args.get("enable"), args.get("types")
         if isinstance(enable, list) or types:
-            known = {f["id"]: f for f in offered}
-            chosen = [e if isinstance(e, dict) else {"id": e} for e in enable or []]
-            unknown = [str(c.get("id")) for c in chosen if c.get("id") not in known]
-            if unknown:
-                raise DebugError("BAD_REQUEST", f"unknown exception filters: {', '.join(unknown)}; offered: "
-                                                f"{', '.join(known) or 'none'}")
-            request: dict = {"filters": [c["id"] for c in chosen if not c.get("condition")]}
-            conditioned = [c for c in chosen if c.get("condition")]
-            if conditioned:
-                if not caps.get("supportsExceptionFilterOptions"):
-                    raise DebugError("NOT_SUPPORTED", "this debugger takes no conditions on exception filters")
-                missing = [c["id"] for c in conditioned if not known[c["id"]]["condition"]]
-                if missing:
-                    raise DebugError("NOT_SUPPORTED", f"filter {', '.join(missing)} takes no condition")
-                request["filterOptions"] = [{"filterId": c["id"], "condition": str(c["condition"])[:300]}
-                                            for c in conditioned]
+            if s.get("exception_filters") is None:
+                s["exception_filters"] = [{"id": f["id"]} for f in offered if f["default"]]
+            if isinstance(enable, list):
+                s["exception_filters"] = self._exception_filters(enable, offered, caps)
             if types:
-                if not caps.get("supportsExceptionOptions"):
-                    raise DebugError("NOT_SUPPORTED", "this debugger cannot stop for chosen exception types; enable a "
-                                                      "filter and check the exception at the stop")
-                mode = {"unhandled": "unhandled", "always": "always"}.get(args.get("mode") or "always")
-                if mode is None:
-                    raise DebugError("BAD_REQUEST", "mode is always or unhandled")
-                names = [str(t)[:200] for t in types]
-                path = [{"names": names}]
-                if s["launch"].get("type") in ("debugpy", "python"):
-                    path.insert(0, {"names": ["Python Exceptions"]})
-                request["exceptionOptions"] = [{"path": path, "breakMode": mode}]
+                s["exception_types"] = self._exception_types(types, args.get("mode") or "always", caps)
+            chosen = s["exception_filters"]
+            request: dict = {"filters": [c["id"] for c in chosen if not c.get("condition")]}
+            if any(c.get("condition") for c in chosen):
+                request["filterOptions"] = [{"filterId": c["id"], "condition": c["condition"]}
+                                            for c in chosen if c.get("condition")]
+            if s.get("exception_types"):
+                request["exceptionOptions"] = s["exception_types"]
             self._dap("setExceptionBreakpoints", request)
         return {"filters": offered, "types_supported": bool(caps.get("supportsExceptionOptions"))}
 
+    @staticmethod
+    def _exception_filters(enable: list, offered: list[dict], caps: dict) -> list[dict]:
+        known = {f["id"]: f for f in offered}
+        chosen = [dict(e) if isinstance(e, dict) else {"id": e} for e in enable]
+        unknown = [str(c.get("id")) for c in chosen if c.get("id") not in known]
+        if unknown:
+            raise DebugError("BAD_REQUEST", f"unknown exception filters: {', '.join(unknown)}; offered: "
+                                            f"{', '.join(known) or 'none'}")
+        conditioned = [c for c in chosen if c.get("condition")]
+        if conditioned and not caps.get("supportsExceptionFilterOptions"):
+            raise DebugError("NOT_SUPPORTED", "this debugger takes no conditions on exception filters")
+        missing = [c["id"] for c in conditioned if not known[c["id"]]["condition"]]
+        if missing:
+            raise DebugError("NOT_SUPPORTED", f"filter {', '.join(missing)} takes no condition")
+        for c in conditioned:
+            c["condition"] = check_condition(c["condition"])
+        return chosen
+
+    def _exception_types(self, types: list, mode: str, caps: dict) -> list[dict]:
+        if not caps.get("supportsExceptionOptions"):
+            raise DebugError("NOT_SUPPORTED", "this debugger cannot stop for chosen exception types; enable a "
+                                              "filter and check the exception at the stop")
+        if mode not in ("always", "unhandled"):
+            raise DebugError("BAD_REQUEST", "mode is always or unhandled")
+        path = [{"names": [str(t)[:200] for t in types]}]
+        if self.s["launch"].get("type") in ("debugpy", "python"):
+            path.insert(0, {"names": ["Python Exceptions"]})
+        return [{"path": path, "breakMode": mode}]
+
     # -- variables -----------------------------------------------------------------------
 
-    def _frame_id(self, args: dict) -> int:
-        s = self.s
-        frame = args.get("frame")
-        if isinstance(frame, int):
-            return frame
-        frames = self._dap("stackTrace", {"threadId": s["thread_id"], "startFrame": 0, "levels": 1}).get("stackFrames") or []
-        if not frames:
-            raise DebugError("NOT_FOUND", "the debugger shows no stack frame")
-        return frames[0]["id"]
-
-    def _format(self, args: dict) -> dict | None:
-        if not args.get("hex"):
-            return None
-        self._need("supportsValueFormattingOptions", "show values in hex")
-        return {"hex": True}
-
-    def variables(self, args: dict) -> dict:
-        """Variables of a frame. `scope` reads one scope by name (also the slow ones: globals, registers); `start`
-        and `count` page through a large array or list; `hex` asks the debugger for hexadecimal values."""
-        self.current("paused")
-        frame = self._frame_id(args)
-        fmt = self._format(args)
-        depth = max(0, min(int(args.get("depth") or 0), 3))
-        scopes = self._dap("scopes", {"frameId": frame}).get("scopes") or []
-        listed = [{"name": sc.get("name"), "expensive": bool(sc.get("expensive"))} for sc in scopes]
-        wanted = [str(n) for n in args["names"]] if isinstance(args.get("names"), list) else None
-        scope_name = args.get("scope")
-        if scope_name:
-            searched = [sc for sc in scopes if str(sc.get("name", "")).lower() == str(scope_name).lower()]
-            if not searched:
-                raise DebugError("NOT_FOUND", f"no scope {scope_name}; this frame has: "
-                                              f"{', '.join(str(sc.get('name')) for sc in scopes) or 'none'}")
-        else:
-            searched = [sc for sc in scopes if not sc.get("expensive") and sc.get("variablesReference")]
-            if not wanted:
-                # The frame's own variables (gdb lists Arguments and Locals apart), not globals or registers.
-                own = [sc for sc in searched if not _WIDE_SCOPE.search(str(sc.get("name")))]
-                searched = own or searched[:1]
-        found: dict[str, dict] = {}
-        for scope in searched:
-            for variable in (self._children(scope["variablesReference"], fmt))[:500 if scope_name else 200]:
-                name = variable.get("name")
-                if name not in found and not re.fullmatch(r"(special|function) variables", str(name)):
-                    found[name] = variable
-        budget = {"nodes": 0}
-        page = None
-        if args.get("start") is not None or args.get("count") is not None:
-            if not wanted or len(wanted) != 1:
-                raise DebugError("BAD_REQUEST", "start and count page through one variable: pass exactly one name")
-            page = (max(0, int(args.get("start") or 0)), max(1, min(int(args.get("count") or 50), 200)))
-        if wanted is None:
-            chosen = list(found.values())
-        else:
-            chosen = []
-            for name in wanted:
-                variable = self._lookup(found, name, fmt)
-                if variable is not None:
-                    chosen.append({**variable, "name": name})
-        if page is not None:
-            return {"frame": frame, "scopes": listed,
-                    "variables": [self._page(v, page[0], page[1], fmt) for v in chosen]}
-        return {"frame": frame, "scopes": listed,
-                "variables": [self._expand(v, depth, wanted is not None, budget, fmt) for v in chosen]}
-
-    def _children(self, reference: int, fmt: dict | None = None, start: int | None = None,
-                  count: int | None = None, indexed: bool = False) -> list[dict]:
-        request: dict = {"variablesReference": reference}
-        if fmt:
-            request["format"] = fmt
-        if start is not None:
-            request.update({"start": start, "count": count or 1})
-            if indexed:
-                request["filter"] = "indexed"
-        return self._dap("variables", request).get("variables") or []
-
-    def _child(self, parent: dict, part: str, fmt: dict | None) -> dict | None:
-        """One child by name. An index into a large array is read on its own when the debugger pages, and found
-        by following debugpy's "more" links otherwise."""
-        if part.isdigit() and parent.get("indexedVariables"):
-            for child in self._children(parent["variablesReference"], fmt, int(part), 1, indexed=True):
-                if _child_matches(child, part):
-                    return child
-        if part.isdigit():
-            found, _ = self._slice(parent["variablesReference"], int(part), int(part) + 1, fmt, [200])
-            return found[0] if found else None
-        return next((c for c in self._children(parent["variablesReference"], fmt) if _child_matches(c, part)), None)
-
-    def _slice(self, reference: int, start: int, end: int, fmt: dict | None, budget: list[int]) -> tuple[list[dict], int | None]:
-        """The elements with index start..end-1 of a list or array, and its length when the debugger says it.
-        Follows debugpy's "more" child and its [a:b] ranges, reading only the ranges that hold those elements."""
-        elements, total, position = [], None, 0
-        for child in self._children(reference, fmt):
-            name = str(child.get("name"))
-            bounds = _RANGE.fullmatch(name)
-            if _is_more(child) or (bounds and child.get("variablesReference")):
-                if bounds and (int(bounds.group(2)) <= start or int(bounds.group(1)) >= end):
-                    continue
-                if budget[0] <= 0:
-                    break
-                budget[0] -= 1
-                elements += self._slice(child["variablesReference"], start, end, fmt, budget)[0]
-                continue
-            if name == "len()" and str(child.get("value")).isdigit():
-                total = int(child["value"])
-                continue
-            if _NOT_ELEMENTS.fullmatch(name):
-                continue
-            digits = name.strip("[]")
-            index = int(digits) if digits.isdigit() else position
-            position += 1
-            if start <= index < end:
-                elements.append(child)
-        return elements, total
-
-    def _lookup(self, roots: dict[str, dict], name: str, fmt: dict | None = None) -> dict | None:
-        parts = split_path(name)
-        if not parts:
-            return None
-        current = roots.get(name) or roots.get(parts[0])
-        if current is None:
-            return None
-        if name in roots:
-            return current
-        for part in parts[1:]:
-            if not current.get("variablesReference"):
-                return None
-            current = self._child(current, part, fmt)
-            if current is None:
-                return None
-        return current
-
-    def _page(self, variable: dict, start: int, count: int, fmt: dict | None) -> dict:
-        node = {"name": variable.get("name"), "type": variable.get("type") or "", "value": str(variable.get("value"))}
-        if not variable.get("variablesReference"):
-            return node
-        total = variable.get("indexedVariables")
-        if total:
-            children = self._children(variable["variablesReference"], fmt, start, min(count, max(0, total - start)), True)
-        else:
-            children, known = self._slice(variable["variablesReference"], start, start + count, fmt, [200])
-            total = known if known is not None else (len(children) + start if len(children) < count else None)
-        node["children"] = [{"name": c.get("name"), "type": c.get("type") or "", "value": str(c.get("value")),
-                             **({"expandable": True} if c.get("variablesReference") else {})} for c in children]
-        node["page"] = {"start": start, "count": len(children), "total": total}
-        return node
-
-    def _expand(self, variable: dict, depth: int, named: bool, budget: dict, fmt: dict | None = None) -> dict:
-        node = {"name": variable.get("name"), "type": variable.get("type") or "", "value": str(variable.get("value"))}
-        if budget["nodes"] >= 1000:
-            return {**node, "expandable": True}
-        budget["nodes"] += 1
-        if not variable.get("variablesReference"):
-            return node
-        if variable.get("indexedVariables"):
-            node["size"] = variable["indexedVariables"]
-        if depth <= 0:
-            return {**node, "expandable": True}
-        limit = 50 if named else 20
-        if variable.get("indexedVariables"):
-            children = self._children(variable["variablesReference"], fmt, 0, min(limit, variable["indexedVariables"]), True)
-            total = variable["indexedVariables"] + (variable.get("namedVariables") or 0)
-        else:
-            children = self._children(variable["variablesReference"], fmt)
-            total = len(children)
-        node["children"] = []
-        for child in children[:limit]:
-            if budget["nodes"] >= 1000:
-                break
-            node["children"].append(self._expand(child, depth - 1, named, budget, fmt))
-        if total > len(node["children"]):
-            node["more"] = total - len(node["children"])
-            node["expandable"] = True
-        return node
 
     # -- watchpoints, modules, code without a file, machine code and memory --------------------
 
-    def _variable(self, name: str, frame: int) -> tuple[dict | None, int, str]:
-        """A variable by path in `frame`: (it, the reference of the container that holds it, its name there)."""
-        scopes = [sc for sc in self._dap("scopes", {"frameId": frame}).get("scopes") or [] if sc.get("variablesReference")]
-        parts = split_path(name)
-        if not parts:
-            raise DebugError("BAD_REQUEST", f"{name!r} is not a variable name or path")
-        for scope in scopes:
-            if scope.get("expensive") and len(scopes) > 1:
-                continue
-            container = scope["variablesReference"]
-            current = next((v for v in self._children(container) if v.get("name") == parts[0]), None)
-            if current is None:
-                continue
-            for part in parts[1:]:
-                if not current.get("variablesReference"):
-                    return None, 0, ""
-                container = current["variablesReference"]
-                current = self._child(current, part, None)
-                if current is None:
-                    return None, 0, ""
-            return current, container, current.get("name") or parts[-1]
-        return None, 0, ""
 
     def watch(self, args: dict) -> dict:
         """Data breakpoints: stop when a variable's value changes (or is read). The debugger watches the memory
@@ -1204,7 +779,7 @@ class Session:
             raise DebugError("LIMIT", "at most 8 watched values at a time (processors have few hardware watchpoints)")
         answer = self._dap("setDataBreakpoints", {"breakpoints": [{"dataId": w["data_id"], "accessType": w["access"]}
                                                                   for w in watches]}) if (add or remove) else {}
-        for w, bp in zip(watches, answer.get("breakpoints") or []):
+        for w, bp in zip(watches, answer.get("breakpoints") or [], strict=False):
             w["verified"], w["message"] = bool(bp.get("verified")), str(bp.get("message") or "")
         s["watches"] = watches
         self._changed()
@@ -1315,7 +890,7 @@ class Session:
     def memory(self, args: dict) -> dict:
         """Raw bytes of a variable (or at a frame's instruction), as hex. At most 256 bytes; bytes whose text looks
         like a key or token, and variables with secret names, are hidden."""
-        s = self.current("paused")
+        self.current("paused")
         self._need("supportsReadMemoryRequest", "read memory")
         count = max(1, min(int(args.get("count") or 64), MAX_MEMORY))
         offset = int(args.get("offset") or 0)
@@ -1425,7 +1000,7 @@ class Session:
         self._dap(command, request)
         return {"state": self.snapshot()}
 
-    def pause(self, args: dict) -> dict:
+    def pause(self, _args: dict) -> dict:
         s = self.current("running")
         thread_id = s["thread_id"]
         if thread_id is None:
@@ -1454,11 +1029,11 @@ class Session:
             "add": [self._placed(b) for b in added],
             "add_functions": new_functions,
         })
-        for b, ident in zip(added, answer.get("breakpoint_ids", [])):
+        for b, ident in zip(added, answer.get("breakpoint_ids", []), strict=False):
             b["id"] = ident
         s["breakpoints"] = [b for b in s["breakpoints"] if b not in gone] + added
         s["functions"] = [f for f in s["functions"] if f not in gone_functions] + [
-            {"name": n, "id": i} for n, i in zip(new_functions, answer.get("function_ids", []))]
+            {"name": n, "id": i} for n, i in zip(new_functions, answer.get("function_ids", []), strict=False)]
         self._changed()
         return {"state": self.snapshot()}
 
@@ -1469,7 +1044,7 @@ class Session:
         file = os.path.join(s["folder"], "autodebug-reports", "screenshots", f"{name}.png")
         return self._relay("screenshot", {"file": file}, timeout=40)
 
-    def stop(self, args: dict) -> dict:
+    def stop(self, _args: dict) -> dict:
         s = self.s
         if s is None:
             return {"state": self.snapshot()}

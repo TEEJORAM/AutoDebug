@@ -17,7 +17,7 @@ namespace AutoDebug.VisualStudio
             ThreadHelper.ThrowIfNotOnUIThread();
             var window = new DialogWindow
             {
-                Title = "AutoDebug",
+                Title = "Autodebug",
                 Width = 760,
                 Height = 600,
                 MinWidth = 480,

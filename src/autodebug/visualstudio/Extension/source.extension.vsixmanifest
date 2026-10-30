@@ -2,7 +2,7 @@
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Id="AutoDebug.VisualStudio.4f9b2c71" Version="0.8.0" Language="en-US" Publisher="AutoDebug" />
-    <DisplayName>AutoDebug</DisplayName>
+    <DisplayName>Autodebug</DisplayName>
     <Description xml:space="preserve">Lets an AI agent debug your C++ program with Visual Studio's own debugger, after you click Approve, and write a root-cause report. The agent cannot evaluate code or change variables.</Description>
     <License>LICENSE.txt</License>
     <Tags>debugging, AI, MCP, C++</Tags>

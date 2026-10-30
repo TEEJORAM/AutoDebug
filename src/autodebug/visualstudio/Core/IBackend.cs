@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace AutoDebug
 {
     /// <summary>Reports from the IDE while a session runs. Messages are shaped like the
-    /// Debug Adapter Protocol, because that is what the AutoDebug server understands.</summary>
+    /// Debug Adapter Protocol, because that is what the Autodebug server understands.</summary>
     public interface IBackendEvents
     {
         /// <summary>An event from the debugger, e.g. {"type":"event","event":"stopped","body":{...}}.</summary>

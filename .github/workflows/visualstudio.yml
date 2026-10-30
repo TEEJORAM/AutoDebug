@@ -1,6 +1,6 @@
 name: Visual Studio extension
 
-# Builds the AutoDebug extension for Visual Studio 2022 / 2026 with MSBuild and the
+# Builds the Autodebug extension for Visual Studio 2022 / 2026 with MSBuild and the
 # VS SDK build tools. On main, publishes it as the release `visualstudio-v<version>`,
 # which `autodebug setup visualstudio` downloads.
 on:
@@ -39,7 +39,7 @@ jobs:
           }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $names = [IO.Compression.ZipFile]::OpenRead($vsix.FullName).Entries.FullName
-          foreach ($needed in "extension.vsixmanifest", "AutoDebug.VisualStudio.dll", "AutoDebug.VisualStudio.pkgdef") {
+          foreach ($needed in "extension.vsixmanifest", "AutoDebug.VisualStudio.dll", "AutoDebug.VisualStudio.pkgdef", "ConsoleReader.ps1") {
             if ($names -notcontains $needed) { "::error::$($vsix.Name) has no $needed; it has: $($names -join ', ')"; exit 1 }
           }
           $zip = [IO.Compression.ZipFile]::OpenRead($vsix.FullName)
@@ -79,6 +79,6 @@ jobs:
           else
             flag=$([ "$GITHUB_REF" = refs/heads/main ] || echo --prerelease)
             gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" $flag \
-              --title "AutoDebug for Visual Studio $version" \
+              --title "Autodebug for Visual Studio $version" \
               --notes "Install with: autodebug setup visualstudio (Visual Studio 2022 or 2026)."
           fi

@@ -86,7 +86,7 @@ function register(vscode, context, { stateFolder, log, home = os.homedir() }) {
     log(`MCP: registered autodebug with Cursor (${server.command})`);
     return 'cursor';
   }
-  const definition = new vscode.McpStdioServerDefinition('AutoDebug', server.command, server.args, server.env, server.version);
+  const definition = new vscode.McpStdioServerDefinition('Autodebug', server.command, server.args, server.env, server.version);
   context.subscriptions.push(vscode.lm.registerMcpServerDefinitionProvider(PROVIDER, {
     provideMcpServerDefinitions: () => [definition],
     resolveMcpServerDefinition: (d) => d,

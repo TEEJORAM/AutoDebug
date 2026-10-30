@@ -13,7 +13,14 @@ import sys
 from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import discover, outdated_extension, preferred_ide, set_preferred_ide, state_folder, version_problem
+from autodebug.connection import (
+    discover,
+    outdated_extension,
+    preferred_ide,
+    set_preferred_ide,
+    state_folder,
+    version_problem,
+)
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 
@@ -32,7 +39,7 @@ TARGETS = {**IDES, "claude": "Claude Code"}
 LEFT_FOR_YOU = {
     "cursor": "Cursor: Developer: Reload Window in every window. The agent then has the tools as "
               "extension-autodebug, already switched on.",
-    "vscode": "VS Code: Developer: Reload Window. The first time the agent uses AutoDebug, allow it to start.",
+    "vscode": "VS Code: Developer: Reload Window. The first time the agent uses Autodebug, allow it to start.",
     "visualstudio": "Visual Studio: open your solution. For Copilot in Visual Studio: chat → Tools → tick autodebug "
                     "(Visual Studio starts MCP tools switched off). Cursor and Claude Code need nothing more.",
 }
@@ -126,7 +133,7 @@ def _setup_claude(args: argparse.Namespace) -> tuple[bool, list[str]]:
 
 
 def _self_update(args: argparse.Namespace) -> int | None:
-    """Before connecting anything: when PyPI has a newer AutoDebug, install it and run setup again with
+    """Before connecting anything: when PyPI has a newer Autodebug, install it and run setup again with
     the new code. Returns that run's exit code, or None to go on with this version (no newer one, a source
     checkout, offline, --no-update, or the update failed, which is reported)."""
     if args.no_update or _from_checkout() or os.environ.get("AUTODEBUG_UPDATED") == "1":
@@ -134,7 +141,7 @@ def _self_update(args: argparse.Namespace) -> int | None:
     latest = install.latest_version()
     if not latest or not install.is_newer(latest, __version__):
         return None
-    print(f"Updating AutoDebug {__version__} → {latest} (the older copy is replaced)")
+    print(f"Updating Autodebug {__version__} → {latest} (the older copy is replaced)")
     try:
         result = install.upgrade_self(latest)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -144,7 +151,7 @@ def _self_update(args: argparse.Namespace) -> int | None:
         _bad(f"could not update automatically ({detail[0][:200]}); run: {_upgrade_command(latest)}. "
              f"Going on with {__version__}.")
         return None
-    _ok(f"AutoDebug {latest} installed; continuing with it\n")
+    _ok(f"Autodebug {latest} installed; continuing with it\n")
     again = [sys.executable, "-m", "autodebug", "setup", *args.argv[1:]]
     sys.stdout.flush()  # our lines first, then the new version's
     return subprocess.run(again, env=dict(os.environ, AUTODEBUG_UPDATED="1"), check=False).returncode
@@ -165,7 +172,7 @@ def _setup(args: argparse.Namespace) -> int:
         _bad("found none of VS Code, Cursor, Visual Studio 2022/2026 or Claude Code; install one, or name it: "
              f"{you_run()} setup cursor|vscode|visualstudio|claude")
         return 1
-    print(f"Setting up AutoDebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
+    print(f"Setting up Autodebug {__version__} for {', '.join(TARGETS[t] for t in targets)}\n")
     install.write_server_file()
     if args.debug_in:
         set_preferred_ide(None if args.debug_in == "any" else args.debug_in)
@@ -185,7 +192,7 @@ def _setup(args: argparse.Namespace) -> int:
         _ok(f"agent instructions written to {install.write_agent_instructions(folder, run_command())}")
     open_folders = [f for window in discover() for f in window.folders]
     for path in install.refresh_agent_instructions(run_command(), open_folders):
-        _ok(f"agent instructions updated to this AutoDebug in {path}")
+        _ok(f"agent instructions updated to this Autodebug in {path}")
     if args.no_update or _from_checkout():  # otherwise _self_update already looked
         _update_notice()
     print("\nLeft for you:" if left else "\nNothing left to set up.")
@@ -202,7 +209,7 @@ Chat in one app and debug in another IDE? Set the IDE once: {you_run()} setup --
 def _upgrade_command(version: str | None = None) -> str:
     """The manual update command, with an exact version so pip's cached package list cannot hold it back."""
     if _from_checkout():
-        return "git pull in the AutoDebug folder"
+        return "git pull in the Autodebug folder"
     pinned = f"autodebug=={version}" if version else "autodebug"
     if you_run() == "py -m autodebug":
         return f"py -m pip install --upgrade --no-cache-dir {pinned}"
@@ -210,19 +217,19 @@ def _upgrade_command(version: str | None = None) -> str:
 
 
 def _update_notice() -> bool:
-    """Say when PyPI has a newer AutoDebug than this one; True when it does."""
+    """Say when PyPI has a newer Autodebug than this one; True when it does."""
     latest = install.latest_version()
     if latest and install.is_newer(latest, __version__):
         how = (f"{_upgrade_command(latest)}" if _from_checkout()
                else f"{you_run()} setup installs it and reconnects everything")
-        _bad(f"AutoDebug {latest} is available (this is {__version__}): {how}")
+        _bad(f"Autodebug {latest} is available (this is {__version__}): {how}")
         return True
     return False
 
 
 def _agents(args: argparse.Namespace) -> int:
     path = install.write_agent_instructions(args.folder, run_command())
-    _ok(f"AutoDebug section written to {path}")
+    _ok(f"Autodebug section written to {path}")
     print(f"  Agents that read AGENTS.md (Cursor, Copilot, Codex, ...) now know to run `{run_command()} run ...`\n"
           "  when the MCP tools are missing. Claude Code reads CLAUDE.md: add the line @AGENTS.md there.")
     return 0
@@ -261,7 +268,7 @@ def _hub(args: argparse.Namespace) -> int:
 
     running = hub.status()
     if running and (running.get("version"), running.get("code")) == (__version__, hub.code_id()):
-        print(f"the AutoDebug service is already running (process {running.get('pid')})", file=sys.stderr)
+        print(f"the Autodebug service is already running (process {running.get('pid')})", file=sys.stderr)
         return 0
     service = hub.Hub(idle_seconds=args.idle_minutes * 60)
     logging.getLogger("autodebug").info("version %s listening on 127.0.0.1:%s", __version__, service.port)
@@ -282,7 +289,7 @@ def _quoted(parts: list[str]) -> str:
 
 
 def _py_is_this_python() -> bool:
-    """Whether the Windows `py` launcher starts this same Python, so `py -m autodebug` runs this AutoDebug."""
+    """Whether the Windows `py` launcher starts this same Python, so `py -m autodebug` runs this Autodebug."""
     launcher = shutil.which("py") if os.name == "nt" else None
     if not launcher:
         return False
@@ -295,7 +302,7 @@ def _py_is_this_python() -> bool:
 
 
 def run_command() -> str:
-    """How an agent's terminal runs this AutoDebug, written into AGENTS.md and the MCP instructions: the
+    """How an agent's terminal runs this Autodebug, written into AGENTS.md and the MCP instructions: the
     `autodebug` command when it is on PATH, else this Python with `-m autodebug` (a checkout: its folder)."""
     if _from_checkout():
         return _quoted([Path(sys.executable).as_posix(), Path(__file__).resolve().parent.as_posix()])
@@ -374,7 +381,7 @@ def tool_guide() -> str:
 
     command = run_command()
     lines = [f"Usage: {command} run <tool> key=value ...   (prints the tool's JSON result)", "",
-             "The same tools as the AutoDebug MCP server, in the same session. Values need no JSON:",
+             "The same tools as the Autodebug MCP server, in the same session. Values need no JSON:",
              "  breakpoints=geometry.cpp:16,other.cpp:4   variables=total,i   after=false",
              '  "steps_to_reproduce=A step, with commas" (repeat the key for each step)',
              "  args=-m args=repro/issue1771.js (one program argument per key)", "",
@@ -420,10 +427,10 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _doctor(args: argparse.Namespace) -> int:
-    print(f"AutoDebug {__version__} doctor\n")
+    print(f"Autodebug {__version__} doctor\n")
     problems = 0
     where = "a source checkout" if _from_checkout() else "installed"
-    _ok(f"AutoDebug {__version__}, {where} at {Path(__file__).resolve().parent}, run with {sys.executable}")
+    _ok(f"Autodebug {__version__}, {where} at {Path(__file__).resolve().parent}, run with {sys.executable}")
     _ok(f"in a terminal: {you_run()}")
     preferred = preferred_ide()
     print(f"  ok    debugs in {IDES[preferred]} when several IDEs are open" if preferred else
@@ -431,10 +438,10 @@ def _doctor(args: argparse.Namespace) -> int:
           f"(set one: {you_run()} setup --debug-in visualstudio|cursor|vscode)")
     if _update_notice():
         problems += 1
-    if sys.version_info >= (3, 11):
+    if sys.version_info >= (3, 11):  # noqa: UP036 (doctor may run from a checkout on an older Python)
         _ok(f"Python {sys.version.split()[0]}")
     else:
-        _bad(f"Python {sys.version.split()[0]}: AutoDebug needs 3.11 or newer")
+        _bad(f"Python {sys.version.split()[0]}: Autodebug needs 3.11 or newer")
         problems += 1
     server = install.read_config(install.server_file())
     if server.get("command") == sys.executable:
@@ -483,7 +490,7 @@ def _doctor(args: argparse.Namespace) -> int:
     try:
         hub.connect_service()
         running = hub.status() or {}
-        _ok(f"AutoDebug service {running.get('version')} running (process {running.get('pid')})"
+        _ok(f"Autodebug service {running.get('version')} running (process {running.get('pid')})"
             + ("; a debug session is open" if running.get("busy") else ""))
     except hub.ServiceError as exc:
         _bad(str(exc))
@@ -493,12 +500,12 @@ def _doctor(args: argparse.Namespace) -> int:
         agents_md = Path(args.folder).resolve() / "AGENTS.md"
         if install.has_agent_instructions(args.folder) and install.agent_instructions(run_command()) not in \
                 agents_md.read_text(encoding="utf-8"):
-            _bad(f"{agents_md} tells agents to run another AutoDebug; run `{you_run()} setup {args.folder}`")
+            _bad(f"{agents_md} tells agents to run another Autodebug; run `{you_run()} setup {args.folder}`")
             problems += 1
         elif install.has_agent_instructions(args.folder):
             _ok(f"agent instructions in {agents_md}")
         else:
-            _bad(f"no AutoDebug section in {Path(args.folder).resolve() / 'AGENTS.md'}; run `{you_run()} agents {args.folder}`")
+            _bad(f"no Autodebug section in {Path(args.folder).resolve() / 'AGENTS.md'}; run `{you_run()} agents {args.folder}`")
             problems += 1
     print("\nReady." if not problems else f"\n{problems} thing(s) to fix.")
     return 1 if problems else 0
@@ -516,7 +523,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("ide", nargs="?", metavar="ide", help="cursor, vscode, visualstudio or claude (default: all found)")
     setup.add_argument("folder", nargs="?", help="a project folder: its own MCP entries and AGENTS.md")
     setup.add_argument("--no-install", action="store_true", help="only write the MCP entry")
-    setup.add_argument("--no-update", action="store_true", help="do not install a newer AutoDebug from PyPI first")
+    setup.add_argument("--no-update", action="store_true", help="do not install a newer Autodebug from PyPI first")
     setup.add_argument("--debug-in", choices=sorted(IDES) + ["any"],
                        help="the IDE you debug in when several are open (any: no preference)")
     setup.add_argument("--vsix", help="Visual Studio: install this extension package instead of downloading it")
@@ -530,10 +537,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--log-level", default="warning", choices=("debug", "info", "warning", "error"))
     serve.add_argument("--direct", action="store_true", help="run tools in this process, not the shared service")
     serve.set_defaults(handler=_serve)
-    service = commands.add_parser("hub", help="run the AutoDebug service (started for you when needed)")
+    service = commands.add_parser("hub", help="run the Autodebug service (started for you when needed)")
     service.add_argument("--idle-minutes", type=float, default=30)
     service.set_defaults(handler=_hub)
-    agents = commands.add_parser("agents", help="write the AutoDebug section of <folder>/AGENTS.md for agents")
+    agents = commands.add_parser("agents", help="write the Autodebug section of <folder>/AGENTS.md for agents")
     agents.add_argument("folder")
     agents.set_defaults(handler=_agents)
     doctor = commands.add_parser("doctor", help="check the setup")

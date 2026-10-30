@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes one AutoDebug version to every store when the tag v<version> is pushed
+# Publishes one Autodebug version to every store when the tag v<version> is pushed
 # (v[0-9]*, so the visualstudio-v* test-build tags do not match)
 # (or by hand). A store is skipped until its account is connected:
 #   PyPI                       trusted publishing, GitHub environment "pypi"

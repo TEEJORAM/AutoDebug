@@ -1,6 +1,6 @@
 # Autodebug
 
-AutoDebug lets an AI agent debug your program with the debugger of **VS Code**,
+Autodebug lets an AI agent debug your program with the debugger of **VS Code**,
 **Cursor** or **Visual Studio 2022/2026**: it builds, sets breakpoints, runs,
 steps, reads variables, and writes a root-cause report into your project.
 Nothing runs until you click **Approve** in the IDE.
@@ -8,17 +8,17 @@ Nothing runs until you click **Approve** in the IDE.
 Agents: Cursor's agent, Claude Code, GitHub Copilot (VS Code and Visual
 Studio), and any other agent that supports MCP or has a terminal.
 
-**Documentation:** [autodebug-tool.github.io](https://autodebug-tool.github.io/)
+**Documentation:** autodebug-tool.github.io
 
-**Case studies:** [five real Godot bugs](https://autodebug-tool.github.io/#cases), each with the video of the
-session and the report AutoDebug wrote.
+**Case studies:** five real Godot bugs on the documentation site, each with the video of the
+session and the report Autodebug wrote.
 
 ## Where to get it
 
 | Store | What | Status |
 |---|---|---|
-| [PyPI](https://pypi.org/project/autodebug/) | `autodebug`: the Python program and `autodebug setup` | **Available** |
-| [Open VSX](https://open-vsx.org/extension/SwagatTeejoram/autodebug) | The extension `SwagatTeejoram.autodebug`; Cursor installs and updates from here | **Available** |
+| PyPI | `autodebug`: the Python program and `autodebug setup` | **Available** |
+| Open VSX | The extension `SwagatTeejoram.autodebug`; Cursor installs and updates from here | **Available** |
 | VS Code Marketplace | The same extension for VS Code (until then, `autodebug setup` installs it) | Planned |
 | Visual Studio Marketplace | The Visual Studio extension (until then, `autodebug setup` installs it from the GitHub release) | Planned |
 
@@ -56,15 +56,15 @@ PATH: write `py -m autodebug` wherever these docs say `autodebug`. On macOS and
 Linux, open a new terminal after `pipx ensurepath`.
 `autodebug setup` finds VS Code, Cursor, Visual Studio and Claude Code, connects
 each one, and prints the few steps left for you (below). `autodebug doctor`
-checks everything: which AutoDebug runs and from where, the connected IDEs, the
+checks everything: which Autodebug runs and from where, the connected IDEs, the
 open IDE windows, and whether a newer version is on PyPI. Setup and doctor print
 commands in the form that works on your computer (`py -m autodebug doctor` on
 Windows).
 
 **To update**, run setup again (`py -m autodebug setup` on Windows). When PyPI
-has a newer AutoDebug, setup installs that exact version first, replacing every
+has a newer Autodebug, setup installs that exact version first, replacing every
 file of the old copy (pip's cache cannot hold it back), and then reconnects your
-IDEs with the new version. It also updates the AutoDebug section of every
+IDEs with the new version. It also updates the Autodebug section of every
 `AGENTS.md` it wrote. `--no-update` skips this; a source checkout is never
 changed (`git pull` instead).
 
@@ -84,7 +84,7 @@ changed (`git pull` instead).
 |---|---|
 | VS Code | Command Palette → **Developer: Reload Window**. In the Copilot chat (Agent mode) make sure **autodebug** is ticked in the tools; allow it if VS Code asks to trust the server. |
 | Cursor | Command Palette → **Developer: Reload Window** in every window. Nothing to turn on: **Cursor Settings → Customize → MCPs** shows **extension-autodebug** with a green dot. Start a new chat. |
-| Visual Studio | Open the solution; **View → Output → AutoDebug** says it is listening. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: chat → **Tools** → tick **autodebug**. |
+| Visual Studio | Open the solution; **View → Output → Autodebug** says it is listening. Set the startup project and the **Debug** configuration. For Copilot in Visual Studio only: chat → **Tools** → tick **autodebug**. |
 | Claude Code | Nothing. Start a new session. |
 
 **IDE and agent can be different apps.** The IDE you debug in runs the program and
@@ -106,7 +106,7 @@ use two IDEs on one project, set the one you debug in once:
 `autodebug setup --debug-in visualstudio` (or `vscode`, `cursor`; `any` clears it).
 
 **Don't** start your own debug session (F5) in that IDE while the agent's runs,
-open the same folder in two windows of one IDE, switch off the AutoDebug
+open the same folder in two windows of one IDE, switch off the Autodebug
 extension or the autodebug tools, or add `autodebug` to Cursor's `mcp.json` by
 hand (Cursor starts it switched off). A chat message is never an approval.
 
@@ -130,7 +130,7 @@ breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
 report is written to `autodebug-reports/` in the project: ticket, problem, steps to
 reproduce, the stops that show the bug (in Visual Studio a screenshot of the IDE
 with the code, Locals or Autos and the Call Stack, which the Approve dialog asks
-you to allow), what went wrong and why, the smallest fix that follows the
+you to allow), what went wrong and why, the correct fix that follows the
 project's own patterns, and which AI model was used with its token usage. A chat message is
 never an approval, and the agent cannot evaluate expressions or change
 variables.
@@ -149,17 +149,16 @@ ticket, so check them before you approve. Ticket text can come from anyone: the
 agent never runs commands from it, and uses made-up test data, never customer
 data from the ticket.
 
-Try it on [examples/AutoDebugDemo](https://github.com/TEEJORAM/AutoDebug/blob/main/examples/AutoDebugDemo/README.md)
-first. Step-by-step guides per IDE: [the documentation](https://autodebug-tool.github.io/).
+Try it on `examples/AutoDebugDemo` first. Step-by-step guides per IDE are in the
+documentation at autodebug-tool.github.io.
 
 **No tools in the chat?** Some apps drop MCP tools without an error. The agent
 can run the same tools in its terminal, in the same session:
 `autodebug run list_targets ide=visualstudio` (`autodebug run help` lists them).
 `autodebug setup <project folder>` writes that into the project's `AGENTS.md`.
 
-AutoDebug listens on 127.0.0.1 only, with a token, and collects no data. It is
-released under the [MIT License](https://github.com/TEEJORAM/AutoDebug/blob/main/LICENSE).
-How it works: [docs/design.md](https://github.com/TEEJORAM/AutoDebug/blob/main/docs/design.md).
+Autodebug listens on 127.0.0.1 only, with a token, and collects no data. It is
+released under the MIT License (`LICENSE`). How it works: `docs/design.md`.
 
 ## Large C++ programs
 
@@ -229,7 +228,7 @@ session ends the debugger detaches and the app keeps running.
 - **One test.** `start_session` with `test` runs a single pytest, unittest, go,
   jest or vitest test.
 - **Node.js and browsers.** The program runs in a child debug session of the
-  one you approve; AutoDebug follows it.
+  one you approve; Autodebug follows it.
 - **GUI reproduction.** `wait` with `ask_developer` shows you a note such as
   "Click Delete on the last item". You do it, and the program stops at the
   breakpoint.
@@ -247,14 +246,14 @@ Debug only programs and data you are allowed to share with it.
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-All of AutoDebug's logic is Python (`src/autodebug`). The IDE extension is a
+All of Autodebug's logic is Python (`src/autodebug`). The IDE extension is a
 small JavaScript relay (`src/autodebug/extension/relay.js`) for VS Code and
 Cursor, and a C# relay (`src/autodebug/visualstudio`) for Visual Studio. The
 relays show the Approve dialog and pass debugger requests and events through.
 
-To work on AutoDebug itself, clone the repository and install it editable:
+To work on Autodebug itself, clone the repository and install it editable:
 `py -m pip install -e .` (Windows) or `python3 -m pip install -e .`.
 
 Most tests run with Python alone. The relay tests need Node.js. The
 real-debugger tests also need `pip install debugpy` (Python) and gdb 14 or later
-with g++ (C++, Linux and macOS). See [CLAUDE.md](https://github.com/TEEJORAM/AutoDebug/blob/main/CLAUDE.md) for the rules.
+with g++ (C++, Linux and macOS). See `CLAUDE.md` for the rules.

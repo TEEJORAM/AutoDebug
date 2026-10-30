@@ -1,5 +1,5 @@
 'use strict';
-// AutoDebug extension entry point. The relay is in relay.js; the logic is in the Python server.
+// Autodebug extension entry point. The relay is in relay.js; the logic is in the Python server.
 const path = require('path');
 const vscode = require('vscode');
 const { Relay } = require('./relay');
@@ -8,11 +8,11 @@ const mcp = require('./mcp');
 let relay;
 
 function activate(context) {
-  const output = vscode.window.createOutputChannel('AutoDebug');
+  const output = vscode.window.createOutputChannel('Autodebug');
   const log = (line) => output.appendLine(`${new Date().toISOString()} ${line}`);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-  status.text = '$(debug-alt) AutoDebug';
-  status.tooltip = 'AutoDebug is ready. An AI agent can debug here only after you click Approve.';
+  status.text = '$(debug-alt) Autodebug';
+  status.tooltip = 'Autodebug is ready. An AI agent can debug here only after you click Approve.';
   status.command = 'autodebug.showLog';
   const folder = vscode.workspace.getConfiguration('autodebug').get('bridgesFolder') || undefined;
   relay = new Relay(vscode, { folder, log });
