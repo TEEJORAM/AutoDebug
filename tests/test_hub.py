@@ -1,5 +1,6 @@
 """The AutoDebug service: the command line and the MCP server share one session through it."""
 
+import contextlib
 import json
 import os
 import re
@@ -16,7 +17,6 @@ from autodebug.cli import main, parse_tool_arguments
 from autodebug.connection import discover
 from autodebug.tools import Debugger
 from tests.fake_extension import FakeExtension
-import contextlib
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -48,6 +48,7 @@ class ServiceTest(unittest.TestCase):
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline and hub.hub_file().exists():
                 time.sleep(0.05)
+        hub.reap(5)
         # On Windows the exiting service still holds hub.log open for a moment; wait until it lets go.
         log = self.state / "hub.log"
         deadline = time.monotonic() + 15
@@ -207,8 +208,8 @@ class Arguments(unittest.TestCase):
             self.assertIn(text, str(caught.exception))
 
     def test_help_lists_every_tool(self):
-        from io import StringIO
         from contextlib import redirect_stdout
+        from io import StringIO
 
         out = StringIO()
         with redirect_stdout(out):

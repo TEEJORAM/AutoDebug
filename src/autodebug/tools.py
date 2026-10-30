@@ -6,6 +6,7 @@ timeline for the report, and applies redaction to everything it returns.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -14,11 +15,19 @@ from dataclasses import dataclass, field
 
 from autodebug import report
 from autodebug.build import describe
-from autodebug.connection import (IDE_NAMES, DebugError, Window, choose, discover, matching, outdated_extension,
-                                  preferred_ide, same_folder)
+from autodebug.connection import (
+    IDE_NAMES,
+    DebugError,
+    Window,
+    choose,
+    discover,
+    matching,
+    outdated_extension,
+    preferred_ide,
+    same_folder,
+)
 from autodebug.redact import REDACTED, clean_text, clean_value, is_secret_name
 from autodebug.session import Session, connect
-import contextlib
 
 SHORT_VALUE = 200
 MAX_CAPTURES = 5

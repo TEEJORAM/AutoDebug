@@ -24,9 +24,19 @@ from pathlib import Path
 from autodebug.build import build_type, describe
 from autodebug.checks import check_condition, check_hit_condition, check_log_message
 from autodebug.connection import IDE_NAMES, Connection, DebugError, Window
-from autodebug.launch import (DEBUGGER_EXTENSIONS, apply_platform, attach_target, missing_program, prepare_launch,
-                              process_name, program_arguments, program_exists, substitutions, task_chain,
-                              test_arguments)
+from autodebug.launch import (
+    DEBUGGER_EXTENSIONS,
+    apply_platform,
+    attach_target,
+    missing_program,
+    prepare_launch,
+    process_name,
+    program_arguments,
+    program_exists,
+    substitutions,
+    task_chain,
+    test_arguments,
+)
 from autodebug.redact import REDACTED, clean_text, is_secret_name, looks_secret
 from autodebug.values import Values, split_path
 

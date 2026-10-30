@@ -6,7 +6,7 @@ the IDE's own debugger and write a root-cause report. All logic is in Python;
 the extension is a thin JavaScript relay (IDE extensions can only be JavaScript):
 the Approve dialog, tasks, breakpoints, start/stop and Debug Adapter Protocol
 passthrough. Visual Studio has its own C# relay (`src/autodebug/visualstudio`)
-speaking the same protocol; only `Extension/VsBackend.cs` touches Visual Studio,
+speaking the same protocol; only `Extension/VsBackend*.cs` touch Visual Studio,
 the rest builds with plain .NET. Add new behaviour in Python; change a relay only
 when the IDE API itself is needed.
 Read `docs/design.md` first; it is the contract between the two parts.

@@ -502,6 +502,7 @@ class OpenIde(ToolsTest):
     def setUp(self):
         super().setUp()
         from unittest import mock
+
         from autodebug import ide_launch
 
         self.started = []

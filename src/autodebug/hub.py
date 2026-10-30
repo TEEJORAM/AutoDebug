@@ -12,6 +12,7 @@ starts one in the background; it exits after IDLE_SECONDS without calls while no
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -29,7 +30,6 @@ from pathlib import Path
 from autodebug import __version__
 from autodebug.connection import state_folder
 from autodebug.tools import Debugger
-import contextlib
 
 _LOG = logging.getLogger("autodebug")
 IDLE_SECONDS = 30 * 60
@@ -200,8 +200,22 @@ def _ping(info: dict | None) -> dict | None:
     return reply if reply.get("ok") else None
 
 
+#: Background services this process started. Kept so each one is reaped once it exits (not left as a zombie or
+#: reported as a leaked process); the service itself outlives this process.
+_started: list[subprocess.Popen] = []
+
+
+def reap(wait_seconds: float = 0) -> None:
+    """Collect the exit of background services this process started that have ended (or end within the wait)."""
+    for process in list(_started):
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(wait_seconds)
+            _started.remove(process)
+
+
 def _start_process() -> None:
     """Start `autodebug hub` in the background, detached from the caller (an IDE may kill its MCP servers)."""
+    reap()
     package_parent = str(Path(__file__).resolve().parent.parent)
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(p for p in (package_parent, env.get("PYTHONPATH")) if p)
@@ -214,11 +228,12 @@ def _start_process() -> None:
         if os.name == "nt":
             flags = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
             try:
-                subprocess.Popen(command, creationflags=flags | 0x01000000, **options)  # CREATE_BREAKAWAY_FROM_JOB
+                process = subprocess.Popen(command, creationflags=flags | 0x01000000, **options)  # BREAKAWAY_FROM_JOB
             except OSError:
-                subprocess.Popen(command, creationflags=flags, **options)
+                process = subprocess.Popen(command, creationflags=flags, **options)
         else:
-            subprocess.Popen(command, start_new_session=True, **options)
+            process = subprocess.Popen(command, start_new_session=True, **options)
+        _started.append(process)
     finally:
         log.close()
 

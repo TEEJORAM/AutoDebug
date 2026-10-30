@@ -2,8 +2,8 @@
 
 import unittest
 
-from autodebug.connection import DebugError
 from autodebug.checks import check_hit_condition, check_log_message
+from autodebug.connection import DebugError
 from autodebug.launch import apply_platform, prepare_launch, remote_problem, substitutions, task_chain, test_arguments
 from autodebug.values import split_path
 

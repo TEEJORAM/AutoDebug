@@ -8,8 +8,8 @@ import sys
 import unittest
 
 from autodebug.connection import DebugError
-
 from tests.test_extension import HarnessTest
+
 
 def _gdb_major() -> int:
     gdb = shutil.which("gdb")

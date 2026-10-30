@@ -13,7 +13,6 @@ from pathlib import Path
 from autodebug.connection import DebugError
 from autodebug.redact import looks_secret
 
-
 #: Test runners `test` knows: how a launch configuration runs one test.
 TEST_RUNNERS = "pytest, unittest, go test, jest or vitest"
 

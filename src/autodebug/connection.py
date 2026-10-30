@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -11,7 +12,6 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-import contextlib
 
 PROTOCOL = 4
 HOST = "127.0.0.1"

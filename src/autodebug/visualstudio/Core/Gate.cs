@@ -379,7 +379,7 @@ namespace AutoDebug
                 Emit(Json.Make("kind", "approval", "approved", approved, "reason", reason));
                 if (!approved) return;
                 backend.Log($"approved: {Json.Str(s.Launch, "name")}");
-                Task.Run(() =>
+                _ = Task.Run(() =>
                 {
                     try { Run(s); }
                     catch (Exception error)
@@ -577,6 +577,9 @@ namespace AutoDebug
             }
             var ms = Clamp(Json.Get(args, "timeout_ms"), 100, 10000, 60000);
             var call = Task.Run(() => backend.Request(command, Json.Obj(Json.Get(args, "arguments"))));
+            // A blocking wait on purpose: this runs on a relay connection thread, never on Visual Studio's main
+            // thread, and the shared core has no Visual Studio threading library (analyzer rule VSTHRD002).
+#pragma warning disable VSTHRD002
             try
             {
                 if (!call.Wait(ms)) throw Fail("IDE_ERROR", $"the debugger did not answer {command} in time");
@@ -589,6 +592,7 @@ namespace AutoDebug
                 if (inner is RelayException relay) throw relay;
                 throw Fail("IDE_ERROR", inner.Message);
             }
+#pragma warning restore VSTHRD002
         }
 
         object Breakpoints(Dictionary<string, object> args)
@@ -625,6 +629,8 @@ namespace AutoDebug
             var folder = Path.Combine(s.Folder, "autodebug-reports", "screenshots");
             if (!Within(folder, file) || Same(folder, file)) throw Fail("OUTSIDE_WORKSPACE", $"screenshots are saved only in {folder}");
             var call = Task.Run(() => backend.Screenshot(Norm(file)));
+            // A blocking wait on a relay connection thread, as in the request above (VSTHRD002).
+#pragma warning disable VSTHRD002
             try
             {
                 if (!call.Wait(30000)) throw Fail("IDE_ERROR", "the screenshot took too long");
@@ -636,6 +642,7 @@ namespace AutoDebug
                 if (inner is RelayException relay) throw relay;
                 throw Fail("IDE_ERROR", inner.Message);
             }
+#pragma warning restore VSTHRD002
         }
 
         object Notify(Dictionary<string, object> args)

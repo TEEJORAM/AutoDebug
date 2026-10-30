@@ -28,7 +28,13 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, JavaScript, Visual Studio's native 
   session state (built from the debugger's own events), stack, threads and
   variables, limits, redaction and the report. The logic runs in the **service**
   (below); the MCP server the agent's IDE starts and the `autodebug run` command
-  are two thin ways to call it.
+  are two thin ways to call it. The main modules: `tools.py` (the agent tools),
+  `session.py` (one debug session: state from events, moving the program),
+  `values.py` (reading variables), `launch.py` (checks on launch configurations,
+  arguments and tasks), `checks.py` (conditions, hit counts and log messages),
+  `mcp_server.py`, `hub.py` (the service) and `report.py`. The relays check
+  the same rules again on their own, and `tests/test_consistency.py` checks the
+  three copies are written alike.
 - **AutoDebug extension (JavaScript, no dependencies).** Runs in each IDE window.
   IDE extensions can only be written in JavaScript, so it is kept to what needs
   the IDE: the Approve dialog, running the approved build task and launch
@@ -41,7 +47,7 @@ the debugger (CodeLLDB, C/C++, gdb, debugpy, JavaScript, Visual Studio's native 
   C++ and .NET programs. Its
   shared core (`visualstudio/Core`: connection, Approve gate, limits, events) has
   no Visual Studio references, so a test harness runs it with plain .NET; only
-  `Extension/VsBackend.cs` talks to Visual Studio.
+  the `Extension/VsBackend*.cs` files (one partial class) talk to Visual Studio.
 
 ## The service
 

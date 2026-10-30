@@ -13,7 +13,14 @@ import sys
 from pathlib import Path
 
 from autodebug import __version__, install
-from autodebug.connection import discover, outdated_extension, preferred_ide, set_preferred_ide, state_folder, version_problem
+from autodebug.connection import (
+    discover,
+    outdated_extension,
+    preferred_ide,
+    set_preferred_ide,
+    state_folder,
+    version_problem,
+)
 
 IDES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual Studio"}
 

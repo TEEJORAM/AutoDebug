@@ -8,7 +8,6 @@ import re
 
 from autodebug.connection import DebugError
 
-
 #: A hit condition: a count, optionally with the comparison the debugger applies (>=, >, ==, <=, <, %).
 _HIT = re.compile(r"\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*")
 

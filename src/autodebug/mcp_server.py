@@ -338,7 +338,12 @@ def argument_problem(value: object, schema: dict, name: str = "arguments") -> st
     """Why `value` does not fit `schema`, naming the argument and what is allowed; None when it fits."""
     if "anyOf" in schema:
         problems = [argument_problem(value, choice, name) for choice in schema["anyOf"]]
-        return None if None in problems else problems[0]
+        if None in problems:
+            return None
+        # Explain the choice the value was meant to be: an object's own problem, not "must be text".
+        shaped = [problem for choice, problem in zip(schema["anyOf"], problems, strict=True)
+                  if isinstance(value, _SHAPES.get(choice.get("type"), ()))]
+        return (shaped or problems)[0]
     check = _CHECKS.get(schema.get("type"))
     return check(value, schema, name) if check else None
 
@@ -395,6 +400,9 @@ def _number_problem(value: object, schema: dict, name: str) -> str | None:
             f"at least {low}" if low is not None else f"at most {high}")
         return f"{name} must be {bounds}; got {value}{_HINTS.get(name, '')}"
     return None
+
+
+_SHAPES = {"object": dict, "array": list, "string": str}
 
 
 _CHECKS = {

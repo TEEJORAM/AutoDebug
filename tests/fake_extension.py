@@ -6,6 +6,7 @@ against the scripted program in tests/fake_adapter.py, in-process.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
@@ -15,7 +16,6 @@ import threading
 from pathlib import Path
 
 from tests.fake_adapter import AdapterError, Program
-import contextlib
 
 LAUNCH = [{"name": "Debug tests", "type": "debugpy", "request": "launch", "module": "unittest", "args": ["-v"]}]
 ALLOWED = {"threads", "stackTrace", "scopes", "variables", "next", "stepIn", "stepOut", "continue", "pause",

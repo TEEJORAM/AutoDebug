@@ -4,10 +4,10 @@ driven by the real Python tools over the real protocol. Skipped without Node.js.
 
 import json
 import os
-import sys
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
