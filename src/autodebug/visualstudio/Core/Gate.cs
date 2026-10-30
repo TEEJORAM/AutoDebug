@@ -38,6 +38,57 @@ namespace AutoDebug
             new System.Text.RegularExpressions.Regex(@"^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$");
         static readonly System.Text.RegularExpressions.Regex Placeholder =
             new System.Text.RegularExpressions.Regex(@"\{([^{}]*)\}");
+        // One token of a condition; the same grammar as the server's check_condition (session.py) and relay.js.
+        static readonly System.Text.RegularExpressions.Regex ConditionToken = new System.Text.RegularExpressions.Regex(
+            @"\G\s*(?:(""(?:[^""\\]|\\.)*""|'(?:[^'\\]|\\.)*')|(0[xX][0-9a-fA-F]+|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[fFuUlL]*)|(==|!=|<=|>=|<|>|&&|\|\||!)|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*))");
+
+        /// <summary>A condition may only compare values (variables, paths, numbers, strings, true/false/null) with
+        /// ==, !=, &lt;, &lt;=, &gt;, &gt;=, is (not), not/!, and/&amp;&amp;, or/||. No calls, assignments or
+        /// arithmetic: they would run code.</summary>
+        public static bool ConditionAllowed(string text)
+        {
+            if (text.Length > 300 || text.Any(ch => ch < ' ')) return false;
+            var tokens = new List<(string Kind, string Word)>();
+            var end = text.TrimEnd().Length;
+            var at = 0;
+            while (at < end)
+            {
+                var m = ConditionToken.Match(text, at);
+                if (!m.Success || m.Length == 0) return false;
+                string kind;
+                if (m.Groups[4].Success)
+                {
+                    var word = m.Groups[4].Value;
+                    kind = word == "and" || word == "or" ? "join" : word == "not" ? "negate" : word == "is" ? "compare" : "value";
+                    tokens.Add((kind, word));
+                }
+                else if (m.Groups[3].Success)
+                {
+                    var word = m.Groups[3].Value;
+                    tokens.Add((word == "&&" || word == "||" ? "join" : word == "!" ? "negate" : "compare", word));
+                }
+                else tokens.Add(("value", m.Value.Trim()));
+                at = m.Index + m.Length;
+            }
+            var i = 0;
+            while (true)
+            {
+                while (i < tokens.Count && tokens[i].Kind == "negate") i++;
+                if (i >= tokens.Count || tokens[i].Kind != "value") return false;
+                i++;
+                if (i < tokens.Count && tokens[i].Kind == "compare")
+                {
+                    i++;
+                    if (i < tokens.Count && tokens[i - 1].Word == "is" && tokens[i].Kind == "negate") i++;
+                    if (i >= tokens.Count || tokens[i].Kind != "value") return false;
+                    i++;
+                }
+                if (i == tokens.Count) return true;
+                if (tokens[i].Kind != "join") return false;
+                i++;
+            }
+        }
+
         static readonly System.Text.RegularExpressions.Regex VariablePath =
             new System.Text.RegularExpressions.Regex(@"^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*$");
         static readonly string[] Open = { "awaiting_approval", "building", "starting", "debugging" };
@@ -245,9 +296,12 @@ namespace AutoDebug
                 if (!string.IsNullOrEmpty(log))
                     foreach (System.Text.RegularExpressions.Match m in Placeholder.Matches(log))
                         if (!VariablePath.IsMatch(m.Groups[1].Value.Trim())) throw Fail("BAD_REQUEST", "log_message may show variables by name only, like {total}");
+                var condition = Json.Str(item, "condition");
+                if (!string.IsNullOrEmpty(condition) && !ConditionAllowed(condition)) throw Fail("BAD_REQUEST", "a condition may only compare values, like i > 500");
                 var mark = new Mark
                 {
-                    Id = $"b{s.NextId++}", File = Norm(file), Line = (int)line, Column = (int)column, Condition = Cut(Json.Str(item, "condition"), 500),
+                    Id = $"b{s.NextId++}", File = Norm(file), Line = (int)line, Column = (int)column,
+                    Condition = string.IsNullOrEmpty(condition) ? null : condition.Trim(),
                     Hit = string.IsNullOrEmpty(hit) ? null : hit.Trim(), Log = string.IsNullOrEmpty(log) ? null : log,
                 };
                 s.Marks.Add(mark);
@@ -300,7 +354,8 @@ namespace AutoDebug
             lines.Add("");
             lines.Add("The AI agent can then read the stack, variables, modules, machine code and memory, add breakpoints and");
             lines.Add("watchpoints, step and continue.");
-            lines.Add("It cannot evaluate code or change variables. Secret-looking values are hidden from it.");
+            lines.Add("It cannot run code or change variables: conditions and log points only read values.");
+            lines.Add("Secret-looking values are hidden from it.");
             if (s.Screenshots)
                 lines.Add("Screenshots: at the stops the agent captures, a picture of this window is saved in " +
                           "autodebug-reports\\screenshots. It shows whatever the window shows, including values that look secret.");
@@ -508,6 +563,10 @@ namespace AutoDebug
         {
             var command = Json.Str(args, "command") ?? "";
             if (!Allowed.Contains(command)) throw Fail("BAD_REQUEST", $"the debugger request {command} is not allowed");
+            if (command == "setExceptionBreakpoints"
+                && Json.List(Json.Get(Json.Obj(Json.Get(args, "arguments")), "filterOptions")).Select(Json.Obj)
+                       .Any(o => Json.Str(o, "condition") is string c && c.Length > 0 && !ConditionAllowed(c)))
+                throw Fail("BAD_REQUEST", "an exception condition may only compare values");
             Session s;
             var step = Steps.Contains(command);
             lock (sync)

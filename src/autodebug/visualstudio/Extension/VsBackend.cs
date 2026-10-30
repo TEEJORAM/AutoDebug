@@ -882,7 +882,11 @@ namespace AutoDebug.VisualStudio
                     // Visual Studio watches the variable's memory: the debugger reads the variable's address, it runs nothing.
                     var added = (Breakpoint)dte.Debugger.Breakpoints.Add(Data: path, DataCount: 1).Item(1);
                     dataBreakpoints.Add(added);
-                    answers.Add(Json.Make("id", (long)dataBreakpoints.Count, "verified", added.Children == null || added.Children.Count > 0 || added.Enabled));
+                    // Bound, as for other breakpoints (Binding): Visual Studio lists a bound breakpoint's locations as its children.
+                    var bound = added.Children != null && added.Children.Count > 0;
+                    answers.Add(bound
+                        ? Json.Make("id", (long)dataBreakpoints.Count, "verified", true)
+                        : Json.Make("id", (long)dataBreakpoints.Count, "verified", false, "message", "Visual Studio has not bound this data breakpoint"));
                 }
                 catch (Exception error) when (error is COMException || error is ArgumentException)
                 {

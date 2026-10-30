@@ -287,6 +287,78 @@ def check_log_message(value: object) -> str | None:
     return value
 
 
+#: One token of a condition: a quoted string, a number, a comparison or joining operator, or a variable path.
+_CONDITION_TOKEN = re.compile(r"""\s*(?:
+    (?P<string>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')
+  | (?P<number>0[xX][0-9a-fA-F]+|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[fFuUlL]*)
+  | (?P<operator>==|!=|<=|>=|<|>|&&|\|\||!)
+  | (?P<path>[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*)
+)""", re.VERBOSE)
+_LITERALS = {"true", "false", "True", "False", "None", "null", "nullptr", "undefined", "nil"}
+
+
+def check_condition(value: object) -> str | None:
+    """A breakpoint or exception condition the debugger can only compare: variables, paths, numbers, strings and
+    true/false/null, joined by ==, !=, <, <=, >, >=, is (not), not/!, and/&&, or/||. No calls, no assignments, no
+    arithmetic: anything else would run code the developer did not approve."""
+    if value in (None, ""):
+        return None
+    text = str(value)
+    if len(text) > 300 or any(ord(ch) < 32 for ch in text):
+        raise DebugError("BAD_REQUEST", "a condition is one line of at most 300 characters")
+    tokens, at = [], 0
+    while at < len(text.rstrip()):
+        match = _CONDITION_TOKEN.match(text, at)
+        if not match or match.end() == at:
+            raise DebugError("BAD_REQUEST", f"a condition may only compare values, like i > 500 or name == \"x\"; "
+                                            f"{text[at:].strip()[:40]!r} is not allowed")
+        kind = match.lastgroup
+        word = match.group(kind)
+        if kind == "path" and word in ("and", "or"):
+            kind = "join"
+        elif kind == "path" and word in ("not",):
+            kind = "negate"
+        elif kind == "path" and word == "is":
+            kind = "compare"
+        elif kind == "path" and word in _LITERALS:
+            kind = "value"
+        elif kind in ("string", "number", "path"):
+            kind = "value"
+        elif word in ("&&", "||"):
+            kind = "join"
+        elif word == "!":
+            kind = "negate"
+        else:
+            kind = "compare"
+        tokens.append((kind, word))
+        at = match.end()
+    # term: [not] value [compare [not] value], terms joined by and/or
+    expect, i = "term", 0
+    while i < len(tokens):
+        while i < len(tokens) and tokens[i][0] == "negate":
+            i += 1
+        if i >= len(tokens) or tokens[i][0] != "value":
+            break
+        i += 1
+        if i < len(tokens) and tokens[i][0] == "compare":
+            i += 1
+            if i < len(tokens) and tokens[i - 1][1] == "is" and tokens[i][0] == "negate":
+                i += 1
+            if i >= len(tokens) or tokens[i][0] != "value":
+                break
+            i += 1
+        if i == len(tokens):
+            expect = "done"
+            break
+        if tokens[i][0] != "join":
+            break
+        i += 1
+    if expect != "done":
+        raise DebugError("BAD_REQUEST", f"a condition may only compare values, like i > 500 or name == \"x\"; "
+                                        f"{text!r} is not one")
+    return text.strip()
+
+
 def one_line(text: object, limit: int) -> str:
     """Ticket names and similar shown in the Approve dialog: one line, no control characters, capped."""
     return " ".join(clean_text(text, limit).split())
@@ -524,7 +596,7 @@ class Session:
                                                       "outside the workspace")
         if not os.path.isfile(full):
             raise DebugError("NOT_FOUND", f"no file {file}")
-        condition = str(b["condition"])[:500] if b.get("condition") else None
+        condition = check_condition(b.get("condition"))
         column = b.get("column")
         if column is not None and (not isinstance(column, int) or isinstance(column, bool) or column < 1):
             raise DebugError("BAD_REQUEST", "column is a positive integer (1 is the first character)")
@@ -931,46 +1003,60 @@ class Session:
 
     def exceptions(self, args: dict) -> dict:
         """List the debugger's exception filters; enable some (each with a condition where the debugger takes one),
-        and with `types` stop only for those exception types."""
+        and with `types` stop only for those exception types. What a call leaves out stays as it was: `types` alone
+        keeps the enabled filters (at first the debugger's defaults), `enable` alone keeps the types."""
         s = self.current()
         if not s["connected"] or s["status"] in FINISHED or s["status"] in ("awaiting_approval", "building"):
             raise DebugError("NOT_FOUND", "the debugger is not connected yet")
         caps = self._caps()
-        filters = caps.get("exceptionBreakpointFilters") or []
         offered = [{"id": f.get("filter"), "label": f.get("label"), "default": bool(f.get("default")),
-                    "condition": bool(f.get("supportsCondition"))} for f in filters]
+                    "condition": bool(f.get("supportsCondition"))} for f in caps.get("exceptionBreakpointFilters") or []]
         enable, types = args.get("enable"), args.get("types")
         if isinstance(enable, list) or types:
-            known = {f["id"]: f for f in offered}
-            chosen = [e if isinstance(e, dict) else {"id": e} for e in enable or []]
-            unknown = [str(c.get("id")) for c in chosen if c.get("id") not in known]
-            if unknown:
-                raise DebugError("BAD_REQUEST", f"unknown exception filters: {', '.join(unknown)}; offered: "
-                                                f"{', '.join(known) or 'none'}")
-            request: dict = {"filters": [c["id"] for c in chosen if not c.get("condition")]}
-            conditioned = [c for c in chosen if c.get("condition")]
-            if conditioned:
-                if not caps.get("supportsExceptionFilterOptions"):
-                    raise DebugError("NOT_SUPPORTED", "this debugger takes no conditions on exception filters")
-                missing = [c["id"] for c in conditioned if not known[c["id"]]["condition"]]
-                if missing:
-                    raise DebugError("NOT_SUPPORTED", f"filter {', '.join(missing)} takes no condition")
-                request["filterOptions"] = [{"filterId": c["id"], "condition": str(c["condition"])[:300]}
-                                            for c in conditioned]
+            if s.get("exception_filters") is None:
+                s["exception_filters"] = [{"id": f["id"]} for f in offered if f["default"]]
+            if isinstance(enable, list):
+                s["exception_filters"] = self._exception_filters(enable, offered, caps)
             if types:
-                if not caps.get("supportsExceptionOptions"):
-                    raise DebugError("NOT_SUPPORTED", "this debugger cannot stop for chosen exception types; enable a "
-                                                      "filter and check the exception at the stop")
-                mode = {"unhandled": "unhandled", "always": "always"}.get(args.get("mode") or "always")
-                if mode is None:
-                    raise DebugError("BAD_REQUEST", "mode is always or unhandled")
-                names = [str(t)[:200] for t in types]
-                path = [{"names": names}]
-                if s["launch"].get("type") in ("debugpy", "python"):
-                    path.insert(0, {"names": ["Python Exceptions"]})
-                request["exceptionOptions"] = [{"path": path, "breakMode": mode}]
+                s["exception_types"] = self._exception_types(types, args.get("mode") or "always", caps)
+            chosen = s["exception_filters"]
+            request: dict = {"filters": [c["id"] for c in chosen if not c.get("condition")]}
+            if any(c.get("condition") for c in chosen):
+                request["filterOptions"] = [{"filterId": c["id"], "condition": c["condition"]}
+                                            for c in chosen if c.get("condition")]
+            if s.get("exception_types"):
+                request["exceptionOptions"] = s["exception_types"]
             self._dap("setExceptionBreakpoints", request)
         return {"filters": offered, "types_supported": bool(caps.get("supportsExceptionOptions"))}
+
+    @staticmethod
+    def _exception_filters(enable: list, offered: list[dict], caps: dict) -> list[dict]:
+        known = {f["id"]: f for f in offered}
+        chosen = [dict(e) if isinstance(e, dict) else {"id": e} for e in enable]
+        unknown = [str(c.get("id")) for c in chosen if c.get("id") not in known]
+        if unknown:
+            raise DebugError("BAD_REQUEST", f"unknown exception filters: {', '.join(unknown)}; offered: "
+                                            f"{', '.join(known) or 'none'}")
+        conditioned = [c for c in chosen if c.get("condition")]
+        if conditioned and not caps.get("supportsExceptionFilterOptions"):
+            raise DebugError("NOT_SUPPORTED", "this debugger takes no conditions on exception filters")
+        missing = [c["id"] for c in conditioned if not known[c["id"]]["condition"]]
+        if missing:
+            raise DebugError("NOT_SUPPORTED", f"filter {', '.join(missing)} takes no condition")
+        for c in conditioned:
+            c["condition"] = check_condition(c["condition"])
+        return chosen
+
+    def _exception_types(self, types: list, mode: str, caps: dict) -> list[dict]:
+        if not caps.get("supportsExceptionOptions"):
+            raise DebugError("NOT_SUPPORTED", "this debugger cannot stop for chosen exception types; enable a "
+                                              "filter and check the exception at the stop")
+        if mode not in ("always", "unhandled"):
+            raise DebugError("BAD_REQUEST", "mode is always or unhandled")
+        path = [{"names": [str(t)[:200] for t in types]}]
+        if self.s["launch"].get("type") in ("debugpy", "python"):
+            path.insert(0, {"names": ["Python Exceptions"]})
+        return [{"path": path, "breakMode": mode}]
 
     # -- variables -----------------------------------------------------------------------
 

@@ -130,7 +130,7 @@ breakpoints and the limits. Read it and click **Approve** within 2 minutes. The
 report is written to `autodebug-reports/` in the project: ticket, problem, steps to
 reproduce, the stops that show the bug (in Visual Studio a screenshot of the IDE
 with the code, Locals or Autos and the Call Stack, which the Approve dialog asks
-you to allow), what went wrong and why, the smallest fix that follows the
+you to allow), what went wrong and why, the correct fix that follows the
 project's own patterns, and which AI model was used with its token usage. A chat message is
 never an approval, and the agent cannot evaluate expressions or change
 variables.

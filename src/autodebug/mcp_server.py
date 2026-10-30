@@ -44,10 +44,12 @@ AutoDebug runs the program under the IDE's own debugger (VS Code, Cursor or Visu
    Studio it saves a screenshot of the IDE (code on top, Locals or Autos and the Call Stack below) for the report.
    If the result has extension_note or screenshot_note, tell the developer.
 6. stop_session, then write_report. Write for a developer: short, plain sentences. No filler, no long dashes.
-   what_went_wrong is what the code did; why is the reason. The solution is the smallest fix that follows how the
-   project already solves the same thing (pattern: name that existing code). No rewrites, no extra layers.
+   what_went_wrong is what the code did; why is the reason. The solution is the correct fix for the proven root
+   cause, following how the project already solves the same thing (pattern: name that existing code). No rewrites,
+   no extra layers, no half fix.
    Pass model (the AI model you are) and token_usage only if your app shows it; never guess.
-Only report what tool results showed. Expression evaluation is not available.
+Only report what tool results showed. Expression evaluation is not available: a breakpoint condition may only compare
+values (i > 500, name == "x", p is None).
 Several IDEs: pass ide (and workspace_folder) from start_with; paths are relative to that window's folder.
 Attach: start_session with an attach configuration. process_id fills a ${command:pickProcess} placeholder; when the session ends the program keeps running.
 threads lists threads and can select one while paused. stack pages with start_frame (up to 200 frames). inspect depth 0-3 reads children; names can be paths such as mesh.verts[2].co (-> is the same as .).
@@ -78,7 +80,9 @@ _FILE_LINE = {
     "properties": {
         "file": {"type": "string", "description": "Path relative to the workspace folder, e.g. src/app.py"},
         "line": {"type": "integer", "minimum": 1},
-        "condition": {"type": "string", "description": "Optional condition, in the program's language"},
+        "condition": {"type": "string", "maxLength": 300,
+                      "description": "Optional condition that only compares values: i > 500, name == \"x\", p is None, "
+                                     "a and b. No calls or arithmetic"},
         "column": {"type": "integer", "minimum": 1, "description": "Optional column, for a lambda or minified code on the line"},
         "hit_condition": {"type": "string", "maxLength": 20,
                           "description": "Stop only at this hit: 5 (the 5th), >=5, or %10 (every 10th)"},
@@ -284,7 +288,7 @@ TOOLS = {
             "problem": {"type": "string", "description": "What goes wrong, as the user sees it"},
             "what_went_wrong": {"type": "string", "description": "What the code did, citing the values the debugger showed"},
             "why": {"type": "string", "description": "The reason it does that"},
-            "solution": {"type": "string", "description": "The smallest fix, with code if short"},
+            "solution": {"type": "string", "description": "The correct fix for the proven root cause, with code if short"},
             "pattern": {"type": "string", "description": "The existing code in this project that the fix follows"},
             "confidence": {"type": "string", "enum": ["confirmed", "likely", "unconfirmed"]},
             "how_confirmed": {"type": "string", "description": "Required for confirmed"},

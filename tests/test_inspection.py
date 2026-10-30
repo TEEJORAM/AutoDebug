@@ -138,6 +138,21 @@ class Exceptions(HarnessTest):
         with self.assertRaises(DebugError) as caught:
             self.debugger.exceptions(enable=[{"id": "uncaught", "condition": "x"}])
         self.assertIn("filter uncaught takes no condition", caught.exception.message)
+        with self.assertRaises(DebugError) as caught:
+            self.debugger.exceptions(enable=[{"id": "raised", "condition": "cleanup() or True"}])
+        self.assertIn("may only compare values", caught.exception.message)
+
+    def test_types_alone_keep_the_default_filters(self):
+        self.approved()
+        self.debugger.exceptions(types=["KeyError"])
+        self.debugger.step("over")
+        request = sent(self.debugger.connection.snapshot()["output"], "setExceptionBreakpoints")
+        self.assertEqual(request["filters"], ["uncaught"], "the debugger's default stays on")
+        self.debugger.exceptions(enable=["raised"])
+        self.debugger.step("over")
+        request = sent(self.debugger.connection.snapshot()["output"], "setExceptionBreakpoints")
+        self.assertEqual(request["filters"], ["raised"])
+        self.assertEqual(request["exceptionOptions"][0]["path"][-1], {"names": ["KeyError"]}, "the types stay")
 
 
 class ModulesAndCode(HarnessTest):

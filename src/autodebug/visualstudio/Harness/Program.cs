@@ -2,7 +2,7 @@
 // drive it over the real protocol without Visual Studio.
 //
 // usage: dotnet AutoDebug.Harness.dll <bridges-folder> <workspace-folder>
-// stdin: approve | deny | breakpoints | exit
+// stdin: approve | deny | breakpoints | condition <text> | exit
 // stdout: READY | DIALOG <json> | DIALOG_CLOSED | INFO <text> | DISCONNECT <json> | BREAKPOINTS <n> | LOG <text>
 
 using System;
@@ -28,6 +28,11 @@ namespace AutoDebug.Harness
             string line;
             while ((line = Console.In.ReadLine()) != null)
             {
+                if (line.StartsWith("condition ", StringComparison.Ordinal))
+                {
+                    ScriptedBackend.Say($"CONDITION {(Gate.ConditionAllowed(line.Substring(10)) ? "allowed" : "refused")}");
+                    continue;
+                }
                 switch (line.Trim())
                 {
                     case "approve": backend.Answer(true); break;

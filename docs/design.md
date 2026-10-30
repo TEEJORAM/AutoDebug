@@ -150,7 +150,7 @@ an agent waits longer for the Approve click by calling `wait` again.
 | `inspect` | Frame variables (the frame's own scopes: Locals, Arguments; not globals or registers). `depth` 0–3 expands children. Names may be paths (`mesh.verts[2].co`, `items[5000]`). `scope` reads one scope by name, slow ones too (Globals, Registers); the result lists the frame's scopes. `start` and `count` (at most 200) page through one array or list; `hex` asks for hexadecimal values. A large list is read by index: the debugger's paging (`indexedVariables`, `start`, `count`), else debugpy's `more` child and its `[a:b]` ranges, reading only the range that holds the element |
 | `stack` | Call stack, top frame first. `start_frame` pages; up to 200 frames |
 | `threads` | List threads. `select` switches the paused thread |
-| `exceptions` | List exception filters and enable them by id; an item `{id, condition}` passes a condition to a filter that takes one (`filterOptions`). `types` stops only for these exception types (`exceptionOptions`; debugpy gets the path `Python Exceptions` → types), `mode` `always` or `unhandled` |
+| `exceptions` | List exception filters and enable them by id; an item `{id, condition}` passes a condition to a filter that takes one (`filterOptions`). `types` stops only for these exception types (`exceptionOptions`; debugpy gets the path `Python Exceptions` → types), `mode` `always` or `unhandled`. What a call leaves out stays: `types` alone keeps the enabled filters (at first the debugger's defaults) |
 | `breakpoints` | Add or remove source or function breakpoints during the session. A source breakpoint can have `condition`, `hit_condition`, `log_message` and `column` (see "Breakpoint options"). `check {file, line, end_line}` lists the lines where a breakpoint binds (`breakpointLocations`) |
 | `watch` | While paused: data breakpoints (watchpoints). `add [{name, access}]` (`write`, `read`, `readWrite`), `remove [names]`; at most 8. The name is a variable or path in the frame; `dataBreakpointInfo` gets its id from the container that holds it, so nothing is evaluated. A stop on one has the reason `data breakpoint: <what changed>` |
 | `modules` | Loaded modules: name, path, version, symbol status, optimized (`modules` request, else the module events). `filter`; `sources` adds `loadedSources`, including code without a file |
@@ -162,10 +162,15 @@ an agent waits longer for the Approve click by calling `wait` again.
 | `stop_session` | End the debug session |
 | `write_report` | Write the Markdown report (see "Report") |
 
-There is no tool that evaluates expressions or changes variables. Breakpoint
-conditions are the program's language, as before; a log message may name only
-variables and paths (`{total}`, `{mesh.verts[2].co}`), and a hit condition only
-a count, so neither runs code the developer did not see.
+There is no tool that evaluates expressions or changes variables. Conditions
+(on breakpoints and on exception filters) may only compare values: variables,
+paths, numbers, strings and true/false/null, joined by `==`, `!=`, `<`, `<=`,
+`>`, `>=`, `is` (`not`), `not`/`!`, `and`/`&&`, `or`/`||`. No calls,
+assignments, arithmetic or parentheses: the server, the VS Code relay and the
+Visual Studio relay apply the same grammar, also to conditions added after
+Approve. A log message may name only variables and paths (`{total}`,
+`{mesh.verts[2].co}`), and a hit condition only a count. So nothing the agent
+writes runs code the developer did not see.
 
 **Breakpoint options.** `hit_condition` is a count with an optional comparison
 (`5`, `>=5`, `%10`, ...); what it means is the debugger's: debugpy and Visual
@@ -443,8 +448,9 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
   reported are left out); a column is the breakpoint's column.
 - **Data breakpoints**: `dataBreakpointInfo` takes the variable's plain path
   (`total`, `mesh.verts[2]`) from the locals and members listed, and
-  `setDataBreakpoints` adds Visual Studio data breakpoints on it (write access;
-  native code). They are removed when the session ends.
+  `setDataBreakpoints` adds Visual Studio data breakpoints on it (write access,
+  native code). One counts as bound when Visual Studio lists a location for it,
+  as for other breakpoints. They are removed when the session ends.
 - **Exception filters**: `cpp` (C++ Exceptions), `win32` (Win32 Exceptions) and
   `clr` (.NET) turn on "break when thrown" for the group's exceptions; `types`
   does it for named exceptions, adding a name that is not listed yet to the C++
@@ -454,8 +460,10 @@ treats Visual Studio like any other window (`ide: "visualstudio"`).
 - **Single thread**: the other threads are frozen for the step or continue and
   thawed at the next stop or the end.
 - **Console output**: a console program's own window is read for its output by
-  a small Windows PowerShell helper that attaches to the program's console and
-  prints each finished line until the program exits. Visual Studio itself never
+  a small Windows PowerShell script that ships with the extension
+  (`ConsoleReader.ps1`, run with `-File`, readable, not an encoded command). It
+  attaches to the program's console and prints each finished line until the
+  program exits. Visual Studio itself never
   attaches to a console, so closing the program's window cannot close Visual
   Studio. Where PowerShell cannot run that helper, there is no console output,
   as before.

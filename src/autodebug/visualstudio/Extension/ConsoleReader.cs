@@ -1,7 +1,7 @@
 // A console program debugged in Visual Studio prints to its own console window, which the debugger
 // does not report as output. This reads that window's text for the agent, from a small Windows
-// PowerShell helper process that attaches to the program's console: Visual Studio itself never
-// attaches to a console, so closing the program's window can never close Visual Studio.
+// PowerShell helper process (ConsoleReader.ps1) that attaches to the program's console: Visual Studio
+// itself never attaches to a console, so closing the program's window can never close Visual Studio.
 
 using System;
 using System.Diagnostics;
@@ -13,46 +13,9 @@ namespace AutoDebug.VisualStudio
 {
     sealed class ConsoleReader : IDisposable
     {
-        // Attach to the program's console, then print each finished line of its screen buffer once, until the
-        // program exits (one last read after that). PID is replaced with the program's process ID.
-        const string Script = @"
-$ErrorActionPreference = 'Stop'
-Add-Type -Namespace AutoDebug -Name Con -MemberDefinition @'
-[DllImport(""kernel32.dll"")] public static extern bool FreeConsole();
-[DllImport(""kernel32.dll"")] public static extern bool AttachConsole(uint pid);
-[DllImport(""kernel32.dll"", CharSet = CharSet.Unicode)] public static extern IntPtr CreateFile(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
-[DllImport(""kernel32.dll"")] public static extern bool GetConsoleScreenBufferInfo(IntPtr handle, out Info info);
-[DllImport(""kernel32.dll"", CharSet = CharSet.Unicode)] public static extern bool ReadConsoleOutputCharacter(IntPtr handle, System.Text.StringBuilder text, uint length, int at, out uint read);
-[DllImport(""kernel32.dll"")] public static extern bool CloseHandle(IntPtr handle);
-[StructLayout(LayoutKind.Sequential)] public struct Info { public short SizeX, SizeY, CursorX, CursorY, Attributes, Left, Top, Right, Bottom, MaxX, MaxY; }
-'@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$out = [Console]::Out
-[AutoDebug.Con]::FreeConsole() | Out-Null
-if (-not [AutoDebug.Con]::AttachConsole(PID)) { exit 2 }
-$row = 0
-$last = $false
-while ($true) {
-  $running = $null -ne (Get-Process -Id PID -ErrorAction SilentlyContinue)
-  $handle = [AutoDebug.Con]::CreateFile('CONOUT$', 0xC0000000, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)
-  if ($handle -eq [IntPtr]-1) { exit 0 }
-  $info = New-Object AutoDebug.Con+Info
-  if ([AutoDebug.Con]::GetConsoleScreenBufferInfo($handle, [ref]$info)) {
-    if ($info.CursorY -lt $row) { $row = 0 }
-    while ($row -lt $info.CursorY) {
-      $text = New-Object System.Text.StringBuilder ([int]$info.SizeX)
-      $read = [uint32]0
-      [AutoDebug.Con]::ReadConsoleOutputCharacter($handle, $text, [uint32]$info.SizeX, ($row -shl 16), [ref]$read) | Out-Null
-      $out.WriteLine($text.ToString().TrimEnd())
-      $row++
-    }
-    $out.Flush()
-  }
-  [AutoDebug.Con]::CloseHandle($handle) | Out-Null
-  if ($last) { exit 0 }
-  if (-not $running) { $last = $true } else { Start-Sleep -Milliseconds 400 }
-}
-";
+        // The helper script ships beside this assembly in the extension (ConsoleReader.ps1): a readable file, not an
+        // encoded command, so security tools and developers can see what it does.
+        static string ScriptFile => Path.Combine(Path.GetDirectoryName(typeof(ConsoleReader).Assembly.Location) ?? "", "ConsoleReader.ps1");
 
         readonly Process helper;
 
@@ -64,10 +27,14 @@ while ($true) {
         {
             try
             {
-                var script = Script.Replace("PID", processId.ToString(CultureInfo.InvariantCulture));
-                var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+                if (!File.Exists(ScriptFile))
+                {
+                    log($"cannot read the program's console: {ScriptFile} is missing");
+                    return null;
+                }
                 var shell = Path.Combine(System.Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-                var start = new ProcessStartInfo(shell, $"-NoProfile -NonInteractive -EncodedCommand {encoded}")
+                var arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{ScriptFile}\" -ProcessId {processId.ToString(CultureInfo.InvariantCulture)}";
+                var start = new ProcessStartInfo(shell, arguments)
                 {
                     UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
                     RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8,

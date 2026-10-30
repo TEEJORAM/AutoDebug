@@ -28,6 +28,44 @@ const STEPS = new Set(['next', 'stepIn', 'stepOut', 'stepBack']);
 const FEATURES = ['breakpoint_options', 'child_sessions', 'inspection'];
 const HIT = /^\s*(>=|<=|==|>|<|%)?\s*\d{1,9}\s*$/;
 const VARIABLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*$/;
+// One token of a condition; the same grammar as the server's check_condition (session.py) and Gate.cs.
+const CONDITION_TOKEN = /\s*(?:("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(0[xX][0-9a-fA-F]+|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[fFuUlL]*)|(==|!=|<=|>=|<|>|&&|\|\||!)|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|->[A-Za-z_$][\w$]*|\[\d{1,9}\])*))/y;
+const LITERALS = new Set(['true', 'false', 'True', 'False', 'None', 'null', 'nullptr', 'undefined', 'nil']);
+
+// A condition may only compare values (variables, paths, numbers, strings, true/false/null) with ==, !=, <, <=,
+// >, >=, is (not), not/!, and/&&, or/||. No calls, assignments or arithmetic: they would run code.
+function conditionAllowed(text) {
+  if (text.length > 300 || /[\x00-\x1f]/.test(text)) return false;
+  const tokens = [];
+  const end = text.trimEnd().length;
+  CONDITION_TOKEN.lastIndex = 0;
+  while (CONDITION_TOKEN.lastIndex < end) {
+    const at = CONDITION_TOKEN.lastIndex;
+    const m = CONDITION_TOKEN.exec(text);
+    if (!m || CONDITION_TOKEN.lastIndex === at) return false;
+    const word = m[1] || m[2] || m[3] || m[4];
+    let kind;
+    if (m[4]) kind = ['and', 'or'].includes(word) ? 'join' : word === 'not' ? 'negate' : word === 'is' ? 'compare' : 'value';
+    else if (m[3]) kind = ['&&', '||'].includes(word) ? 'join' : word === '!' ? 'negate' : 'compare';
+    else kind = 'value';
+    tokens.push([kind, word]);
+  }
+  let i = 0;
+  for (;;) {
+    while (i < tokens.length && tokens[i][0] === 'negate') i += 1;
+    if (i >= tokens.length || tokens[i][0] !== 'value') return false;
+    i += 1;
+    if (i < tokens.length && tokens[i][0] === 'compare') {
+      i += 1;
+      if (i < tokens.length && tokens[i - 1][1] === 'is' && tokens[i][0] === 'negate') i += 1;
+      if (i >= tokens.length || tokens[i][0] !== 'value') return false;
+      i += 1;
+    }
+    if (i === tokens.length) return true;
+    if (tokens[i][0] !== 'join') return false;
+    i += 1;
+  }
+}
 // IDE-to-debugger requests and debugger responses the server needs to see.
 const TO_ADAPTER = new Set(['setBreakpoints', 'setFunctionBreakpoints']);
 const RESPONSES = new Set(['initialize', 'setBreakpoints', 'setFunctionBreakpoints']);
@@ -339,8 +377,10 @@ class Relay {
       for (const placeholder of (log || '').matchAll(/\{([^{}]*)\}/g)) {
         if (!VARIABLE_PATH.test(placeholder[1].trim())) fail('BAD_REQUEST', 'log_message may show variables by name only, like {total}');
       }
+      const condition = b.condition ? String(b.condition) : undefined;
+      if (condition !== undefined && !conditionAllowed(condition)) fail('BAD_REQUEST', 'a condition may only compare values, like i > 500');
       const item = {
-        id: `b${s.nextId++}`, full, line, column, condition: b.condition ? String(b.condition).slice(0, 500) : undefined,
+        id: `b${s.nextId++}`, full, line, column, condition: condition && condition.trim(),
         hit, log, handle: null,
       };
       s.breakpoints.push(item);
@@ -381,7 +421,8 @@ class Relay {
       '',
       'The AI agent can then read the stack, variables, modules, machine code and memory, add breakpoints and',
       'watchpoints, step and continue.',
-      'It cannot evaluate code or change variables. Secret-looking values are hidden from it.',
+      'It cannot run code or change variables: conditions and log points only read values.',
+      'Secret-looking values are hidden from it.',
       '',
       'Launch configuration, exactly as it will be used:',
       s.json,
@@ -558,6 +599,10 @@ class Relay {
     const s = this.current();
     const command = String(args.command);
     if (!DAP_COMMANDS.has(command)) fail('BAD_REQUEST', `the debugger request ${command} is not allowed`);
+    const options = command === 'setExceptionBreakpoints' && args.arguments ? args.arguments.filterOptions || [] : [];
+    if (options.some((o) => o && o.condition && !conditionAllowed(String(o.condition)))) {
+      fail('BAD_REQUEST', 'an exception condition may only compare values');
+    }
     const step = STEPS.has(command);
     // The session the program last stopped in answers, unless the server names one of the approved sessions.
     let target = s.active || s.dap;
@@ -636,4 +681,4 @@ class Relay {
   }
 }
 
-module.exports = { Relay, RelayError, stateFolder, PROTOCOL, VERSION };
+module.exports = { Relay, RelayError, stateFolder, conditionAllowed, PROTOCOL, VERSION };
