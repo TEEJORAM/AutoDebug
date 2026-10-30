@@ -34,12 +34,13 @@ class Site(unittest.TestCase):
                 self.assertNotIn(store, text, page.name)
 
     def test_documentation_has_no_links(self):
-        # The documentation names files and sites as plain text: no hyperlinks, none to the repository or a store.
+        # The documentation names files as plain text. The one link allowed is to the documentation site itself:
+        # none to the repository or a store.
         pages = [ROOT / "README.md", ROOT / "CLAUDE.md", *(ROOT / "docs").rglob("*.md"),
                  *(ROOT / "examples").rglob("*.md"), *(ROOT / "src").rglob("*.md")]
         for page in pages:
             text = page.read_text(encoding="utf-8")
-            self.assertNotRegex(text, r"\]\(https?://|<a\s+href", page.name)
+            self.assertNotRegex(text, r"\]\(https?://(?!autodebug-tool\.github\.io/)|<a\s+href", page.name)
             self.assertNotIn("github.com/teejoram", text.lower(), page.name)
         self.assertNotIn("teejoram", (ROOT / "pyproject.toml").read_text(encoding="utf-8").lower())
 

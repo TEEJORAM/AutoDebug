@@ -11,7 +11,7 @@ fix. Nothing runs until you click **Approve**.
 
 - **IDEs:** VS Code, Cursor, Visual Studio 2022 and 2026
 - **Agents:** Cursor's agent, Claude Code, GitHub Copilot, and any agent with MCP or a terminal
-- **Documentation:** autodebug-tool.github.io has the step-by-step guides for each IDE and five real case studies
+- **Documentation:** [autodebug-tool.github.io](https://autodebug-tool.github.io/), with step-by-step guides for each IDE and five real case studies
 
 ## Install
 
