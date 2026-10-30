@@ -195,9 +195,9 @@ AGENTS_END = "<!-- autodebug:end -->"
 
 def agent_instructions(command: str) -> str:
     return f"""{AGENTS_START}
-## Debugging with AutoDebug
+## Debugging with Autodebug
 
-This project can be debugged with the IDE's own debugger (VS Code, Cursor or Visual Studio) through AutoDebug.
+This project can be debugged with the IDE's own debugger (VS Code, Cursor or Visual Studio) through Autodebug.
 
 - Use the `autodebug` MCP tools if they are in your tool list.
 - If they are not (some apps drop MCP tools), run the same tools in the terminal. It is the same session:
@@ -206,7 +206,7 @@ This project can be debugged with the IDE's own debugger (VS Code, Cursor or Vis
     `breakpoints=geometry.cpp:16` `variables=total,i`; for `steps_to_reproduce` repeat the key once per step;
     quote a whole pair that has spaces:
     `"launch_configuration=geometry (Debug|x64)"`.
-- Do not read AutoDebug's source, connection files or IDE logs to find the tools: use the commands above.
+- Do not read Autodebug's source, connection files or IDE logs to find the tools: use the commands above.
 - `start_session` opens an Approve dialog in the IDE. Tell the developer to click **Approve** there
   (it closes after 2 minutes). Nothing runs before that; a chat message is not an approval.
 - Order: `list_targets` → `start_session` (launch configuration, breakpoints, goal, and `build_task` from
@@ -251,7 +251,7 @@ def written_agent_folders() -> list[str]:
 
 
 def write_agent_instructions(folder: str, command: str) -> Path:
-    """Add or refresh the AutoDebug section of <folder>/AGENTS.md (read by Cursor, Copilot, Codex and others)."""
+    """Add or refresh the Autodebug section of <folder>/AGENTS.md (read by Cursor, Copilot, Codex and others)."""
     path = Path(folder).expanduser().resolve() / "AGENTS.md"
     folders = written_agent_folders()
     if str(path.parent) not in folders:
@@ -271,8 +271,8 @@ def write_agent_instructions(folder: str, command: str) -> Path:
 
 
 def refresh_agent_instructions(command: str, folders: list[str]) -> list[Path]:
-    """Rewrite the AutoDebug section, with this command, in every AGENTS.md that already has one: the folders
-    setup wrote before plus `folders` (the open IDE windows). An agent then never runs an older AutoDebug."""
+    """Rewrite the Autodebug section, with this command, in every AGENTS.md that already has one: the folders
+    setup wrote before plus `folders` (the open IDE windows). An agent then never runs an older Autodebug."""
     refreshed = []
     for folder in dict.fromkeys([*written_agent_folders(), *folders]):
         path = Path(folder) / "AGENTS.md"
@@ -296,7 +296,7 @@ PYPI_JSON = "https://pypi.org/pypi/autodebug/json"
 
 
 def latest_version(timeout: float = 3) -> str | None:
-    """The newest AutoDebug on PyPI, or None when PyPI cannot be reached (offline, proxy): never an error."""
+    """The newest Autodebug on PyPI, or None when PyPI cannot be reached (offline, proxy): never an error."""
     try:
         with urllib.request.urlopen(PYPI_JSON, timeout=timeout) as response:  # a fixed https URL
             version = json.loads(response.read())["info"]["version"]
@@ -309,7 +309,7 @@ def upgrade_self(version: str) -> subprocess.CompletedProcess:
     """Install exactly `version` from PyPI into this Python, replacing every file of the copy that runs now.
     The exact version and --no-cache-dir get past pip's cached package list (up to 10 minutes old), which
     otherwise answers "Requirement already satisfied" right after a release; --force-reinstall replaces the
-    files even when pip believes they are current. AutoDebug has no dependencies, hence --no-deps."""
+    files even when pip believes they are current. Autodebug has no dependencies, hence --no-deps."""
     command = [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "--no-deps", "--no-cache-dir",
                "--disable-pip-version-check", "--no-warn-script-location", f"autodebug=={version}"]
     result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)

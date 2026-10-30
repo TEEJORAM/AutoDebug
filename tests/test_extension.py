@@ -382,7 +382,7 @@ class AskDeveloper(HarnessTest):
         self.approved()
         result = self.debugger.wait(0.4, ask_developer="move the square")
         self.assertEqual(result["status"], "paused")
-        self.assertEqual(self.expect("INFO", 2), "AutoDebug: the AI agent asks you to: move the square")
+        self.assertEqual(self.expect("INFO", 2), "Autodebug: the AI agent asks you to: move the square")
         self.debugger.wait(0.2, ask_developer="move the square")
         try:
             extra = self.lines.get_nowait()

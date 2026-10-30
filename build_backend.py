@@ -1,4 +1,4 @@
-"""Standard-library PEP 517 backend: builds AutoDebug without downloading anything."""
+"""Standard-library PEP 517 backend: builds Autodebug without downloading anything."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Find AutoDebug extension windows and talk to them (docs/design.md, "Extension protocol")."""
+"""Find Autodebug extension windows and talk to them (docs/design.md, "Extension protocol")."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ IDE_NAMES = {"cursor": "Cursor", "vscode": "VS Code", "visualstudio": "Visual St
 
 
 def outdated_extension(window: Window) -> str | None:
-    """Visual Studio's extension ships with each AutoDebug version (its version is AutoDebug's). An older one
+    """Visual Studio's extension ships with each Autodebug version (its version is Autodebug's). An older one
     speaks the same protocol but lacks newer features (screenshots, the debug window layout), so say so."""
     if window.ide != "visualstudio" or not window.version:
         return None
@@ -124,7 +124,7 @@ def outdated_extension(window: Window) -> str | None:
         return None
     if not older:
         return None
-    return (f"Visual Studio's AutoDebug extension is {window.version}, older than AutoDebug {__version__}: "
+    return (f"Visual Studio's Autodebug extension is {window.version}, older than Autodebug {__version__}: "
             "screenshots, the debug window layout (Locals or Autos, Call Stack) and the newer debugging tools "
             "(.NET, exception filters, registers, watchpoints, console output) need the new one. Ask the "
             "developer to close every Visual Studio window and run `autodebug setup` (Windows: "
@@ -136,7 +136,7 @@ def version_problem(window: Window) -> DebugError:
     from autodebug import __version__
 
     ide = IDE_NAMES.get(window.ide, window.ide)
-    found = (f"The {ide} window with {', '.join(window.folders)} open is running AutoDebug extension "
+    found = (f"The {ide} window with {', '.join(window.folders)} open is running Autodebug extension "
              f"{window.version or '(unknown version)'} (protocol {window.protocol}); this server is {__version__} "
              f"(protocol {PROTOCOL}).")
     if window.protocol < PROTOCOL and window.ide == "visualstudio":
@@ -145,7 +145,7 @@ def version_problem(window: Window) -> DebugError:
         fix = (f" Ask the developer to run `autodebug setup {window.ide}`, then in that window run Developer: Reload "
                f"Window, or quit and reopen {ide}. Restarting only the extension host keeps the old extension.")
     else:
-        fix = " Ask the developer to update the server: `git pull`, then `python -m pip install -e .` in the AutoDebug folder."
+        fix = " Ask the developer to update the server: `git pull`, then `python -m pip install -e .` in the Autodebug folder."
     return DebugError("OLD_EXTENSION", found + fix)
 
 
@@ -199,7 +199,7 @@ def choose(windows: list[Window], folder: str | None, ide: str | None = None) ->
             raise version_problem(stale[0])
         where = f" with {folder} open" if folder else ""
         which = IDE_NAMES.get(ide, ide) if ide else "VS Code, Cursor or Visual Studio"
-        raise DebugError("NO_WINDOW", f"no {which} window{where} is running the AutoDebug extension. Call open_ide "
+        raise DebugError("NO_WINDOW", f"no {which} window{where} is running the Autodebug extension. Call open_ide "
                                       "with the solution or project folder: it opens the IDE once and waits for it. "
                                       "Do not start the IDE yourself. If the IDE is open, run `autodebug setup` "
                                       "(the extension may be missing).")

@@ -1,5 +1,5 @@
 'use strict';
-// AutoDebug extension: a thin relay between the AutoDebug server (Python) and
+// Autodebug extension: a thin relay between the Autodebug server (Python) and
 // this IDE window. The server decides what to debug. This file shows the Approve
 // dialog, runs only what the dialog showed, and passes Debug Adapter Protocol
 // requests and events through. See docs/design.md ("Extension protocol").
@@ -438,8 +438,8 @@ class Relay {
     const timeout = setTimeout(() => answered(false, 'no answer within 2 minutes'), APPROVAL_SECONDS * 1000);
     if (timeout.unref) timeout.unref();
     const title = s.launch.request === 'attach'
-      ? `AutoDebug: let the AI agent attach the debugger for "${s.label}"?`
-      : `AutoDebug: let the AI agent debug "${s.launch.name}"?`;
+      ? `Autodebug: let the AI agent attach the debugger for "${s.label}"?`
+      : `Autodebug: let the AI agent debug "${s.launch.name}"?`;
     Promise.resolve(this.vscode.window.showWarningMessage(title, { modal: true, detail: this.dialogText(s) }, 'Approve'))
       .then((choice) => {
         clearTimeout(timeout);
@@ -658,7 +658,7 @@ class Relay {
     if (!text || text.length > 300) fail('BAD_REQUEST', 'the note is 1 to 300 characters');
     if (!this.session || !OPEN.includes(this.session.phase)) fail('NOT_FOUND', 'no debug session is running');
     this.log(`asked the developer: ${text}`);
-    const shown = this.vscode.window.showInformationMessage(`AutoDebug: the AI agent asks you to: ${text}`);
+    const shown = this.vscode.window.showInformationMessage(`Autodebug: the AI agent asks you to: ${text}`);
     if (shown && typeof shown.then === 'function') shown.then(() => {}, () => {});
     return {};
   }

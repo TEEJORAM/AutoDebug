@@ -49,7 +49,7 @@ namespace AutoDebug.VisualStudio
         public string ShowDebugWindows() => OnMain(ShowDebugWindowsOnMain);
 
         // Visual Studio's debug layout puts the code on top, Autos/Locals bottom left and Call Stack bottom right.
-        // At every stop of an AutoDebug session, bring the right tabs forward so that layout shows values:
+        // At every stop of an Autodebug session, bring the right tabs forward so that layout shows values:
         // Locals when the frame has locals or arguments (never an empty window), else Autos. The code document
         // stays in front. The developer's own window arrangement is not moved.
         string ShowDebugWindowsOnMain()

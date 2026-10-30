@@ -1,4 +1,4 @@
-name: AutoDebug test suite
+name: Autodebug test suite
 
 # Python tests; the VS Code relay through the Node harness and the Visual Studio relay's
 # core through its .NET harness. On Linux also gdb and debugpy (the real-debugger tests) and

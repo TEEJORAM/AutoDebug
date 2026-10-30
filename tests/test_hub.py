@@ -1,4 +1,4 @@
-"""The AutoDebug service: the command line and the MCP server share one session through it."""
+"""The Autodebug service: the command line and the MCP server share one session through it."""
 
 import contextlib
 import json
@@ -105,7 +105,7 @@ class CommandLineAndMcpShareOneSession(ServiceTest):
                                 "confidence=unconfirmed")
         self.assertEqual(code, 0)
         text = Path(report["report_file"]).read_text(encoding="utf-8")
-        calls = int(re.search(r"- AutoDebug: (\d+) tool calls", text).group(1))
+        calls = int(re.search(r"- Autodebug: (\d+) tool calls", text).group(1))
         self.assertGreaterEqual(calls, 4)  # list_targets and start_session here, wait and stop_session over MCP
 
     def test_tool_errors_and_bad_arguments(self):

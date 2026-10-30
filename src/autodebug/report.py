@@ -43,7 +43,7 @@ class Report:
     captures: list = field(default_factory=list)  # stops that show the bug (tools.capture)
     pattern: str | None = None  # the existing code the fix follows
     token_usage: str | None = None  # as the agent's app reports it
-    tool_calls: int = 0  # AutoDebug tool calls since the last report
+    tool_calls: int = 0  # Autodebug tool calls since the last report
     tool_characters: int = 0  # characters of their arguments and results
 
 
@@ -121,7 +121,7 @@ def render(report: Report) -> str:
               f"- Model: {_line(report.model, 200)} (as the agent reported it)",
               f"- Tokens: {_line(report.token_usage, 300)}" if report.token_usage
               else "- Tokens: not reported by the agent. Your AI app's usage page shows the exact count.",
-              f"- AutoDebug: {report.tool_calls} tool calls, about {estimate:,} tokens of tool input and output "
+              f"- Autodebug: {report.tool_calls} tool calls, about {estimate:,} tokens of tool input and output "
               f"(estimated at {CHARS_PER_TOKEN} characters per token, part of the total above).",
               ""]
     return "\n".join(lines)

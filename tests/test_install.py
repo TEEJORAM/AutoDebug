@@ -183,7 +183,7 @@ class Config(InstallTest):
         fake.write_file(protocol=2, version="0.2.0")
         code, out = self.run_cli("doctor")
         self.assertEqual(code, 1)
-        self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", out)
+        self.assertIn("Autodebug extension 0.2.0 (protocol 2)", out)
         self.assertIn("Developer: Reload Window", out)
 
     def test_visual_studio_config_is_the_user_mcp_json(self):
@@ -268,13 +268,13 @@ class Commands(InstallTest):
         project.mkdir()
         other.mkdir()
         install.write_agent_instructions(str(project), "C:/old/checkout/src/autodebug")
-        (other / "AGENTS.md").write_text("# no AutoDebug section\n", encoding="utf-8")
+        (other / "AGENTS.md").write_text("# no Autodebug section\n", encoding="utf-8")
         code, out = self.run_cli("doctor", str(project))
-        self.assertIn("tells agents to run another AutoDebug", out)
+        self.assertIn("tells agents to run another Autodebug", out)
         refreshed = install.refresh_agent_instructions(cli.run_command(), [str(other)])
         self.assertEqual(refreshed, [project.resolve() / "AGENTS.md"])
         self.assertNotIn("C:/old/checkout", (project / "AGENTS.md").read_text(encoding="utf-8"))
-        self.assertEqual((other / "AGENTS.md").read_text(encoding="utf-8"), "# no AutoDebug section\n")
+        self.assertEqual((other / "AGENTS.md").read_text(encoding="utf-8"), "# no Autodebug section\n")
         self.assertEqual(install.refresh_agent_instructions(cli.run_command(), []), [])  # already current
 
     def test_doctor_says_which_autodebug_runs_and_when_a_newer_one_exists(self):
@@ -282,14 +282,14 @@ class Commands(InstallTest):
         with mock.patch.object(install, "latest_version", return_value="99.0.0"):
             code, out = self.run_cli("doctor")
         self.assertEqual(code, 1)
-        self.assertIn(f"AutoDebug {__version__}, ", out)
-        self.assertIn("AutoDebug 99.0.0 is available", out)
+        self.assertIn(f"Autodebug {__version__}, ", out)
+        self.assertIn("Autodebug 99.0.0 is available", out)
         self.assertTrue(install.is_newer("0.5.10", "0.5.2"))
         self.assertFalse(install.is_newer("0.5.1", "0.5.1"))
 
 
 class SelfUpdate(InstallTest):
-    """`setup` installs a newer AutoDebug from PyPI first, replacing the old copy, then runs again with it."""
+    """`setup` installs a newer Autodebug from PyPI first, replacing the old copy, then runs again with it."""
 
     def setUp(self):
         super().setUp()
@@ -308,7 +308,7 @@ class SelfUpdate(InstallTest):
             code, out = self.run_cli("setup", "cursor", "--no-install")
         self.assertEqual(code, 0)
         upgrade.assert_called_once_with("9.9.9")
-        self.assertIn("Updating AutoDebug", out)
+        self.assertIn("Updating Autodebug", out)
         self.assertEqual(again.call_args.args[0], [sys.executable, "-m", "autodebug", "setup", "cursor", "--no-install"])
         self.assertEqual(again.call_args.kwargs["env"]["AUTODEBUG_UPDATED"], "1")  # the new run does not update again
         ide.assert_not_called()  # the old version connects nothing

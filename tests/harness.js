@@ -34,7 +34,7 @@ let session; // the approved session; with HARNESS_CHILD=1 the program runs in a
 const sessions = [];
 const dialogs = [];
 const breakpoints = [];
-// HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before AutoDebug starts.
+// HARNESS_EDITOR_BP=geometry.py:16 sets a breakpoint "in the editor" before Autodebug starts.
 for (const spec of (process.env.HARNESS_EDITOR_BP || '').split(',').filter(Boolean)) {
   const [file, line] = spec.split(':');
   breakpoints.push(new SourceBreakpoint(new Location({ fsPath: path.join(workspace, file) }, new Position(Number(line) - 1, 0)), true));

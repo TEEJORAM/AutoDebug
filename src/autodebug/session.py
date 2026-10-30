@@ -286,7 +286,7 @@ class Session(Values):
         features = set((info or {}).get("features") or []) if info is not None else getattr(self, "features", set())
         if "breakpoint_options" not in features and any(
                 b.get(key) is not None for b in breakpoints for key in ("column", "hit_condition", "log_message")):
-            raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')} "
+            raise DebugError("OLD_EXTENSION", f"the Autodebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')} "
                                               "is older than this server and cannot place hit counts, log points or "
                                               "columns. Run autodebug setup, then reload the IDE window (Visual Studio: "
                                               "close it first)")
@@ -548,7 +548,7 @@ class Session(Values):
             return self._relay("dap", request, timeout=timeout_ms / 1000 + 5).get("body") or {}
         except DebugError as exc:
             if exc.code == "BAD_REQUEST" and "is not allowed" in exc.message:
-                raise DebugError("OLD_EXTENSION", f"the AutoDebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')}"
+                raise DebugError("OLD_EXTENSION", f"the Autodebug extension in {IDE_NAMES.get(self.window.ide, 'the IDE')}"
                                                   f" is older than this server and cannot send {command}. Run autodebug "
                                                   "setup, then reload the IDE window (Visual Studio: close it first)") from None
             raise

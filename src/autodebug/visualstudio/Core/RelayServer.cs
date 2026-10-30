@@ -1,4 +1,4 @@
-// The connection the AutoDebug server uses: 127.0.0.1 only, a random token, one JSON
+// The connection the Autodebug server uses: 127.0.0.1 only, a random token, one JSON
 // object per line, and a connection file in <state>/bridges (docs/design.md). The same
 // contract as the VS Code / Cursor relay.
 
@@ -70,7 +70,7 @@ namespace AutoDebug
             listener.Start();
             Announce();
             backend.Log($"listening on 127.0.0.1:{Port}");
-            new Thread(AcceptLoop) { IsBackground = true, Name = "AutoDebug relay" }.Start();
+            new Thread(AcceptLoop) { IsBackground = true, Name = "Autodebug relay" }.Start();
             // If something deletes the connection file while the IDE is open, write it again,
             // or the server could never find this window.
             keeper = new Timer(_ =>
@@ -112,7 +112,7 @@ namespace AutoDebug
                 TcpClient client;
                 try { client = listener.AcceptTcpClient(); }
                 catch (Exception) { return; }
-                new Thread(() => Serve(client)) { IsBackground = true, Name = "AutoDebug connection" }.Start();
+                new Thread(() => Serve(client)) { IsBackground = true, Name = "Autodebug connection" }.Start();
             }
         }
 

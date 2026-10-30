@@ -187,7 +187,7 @@ def prepare_launch(raw: dict, process_id, platform: str) -> dict:
         raise DebugError("BAD_REQUEST", f"refuses {', '.join(tokens)}: they would ask the developer after approval")
     remote = remote_problem(launch)
     if remote:
-        raise DebugError("BAD_REQUEST", f"AutoDebug debugs only programs on this computer ({remote})")
+        raise DebugError("BAD_REQUEST", f"Autodebug debugs only programs on this computer ({remote})")
     return launch
 
 
@@ -241,5 +241,5 @@ def test_arguments(launch: dict, test: object) -> list[str]:
         return ["--runInBand", "-t", test]
     if "vitest" in runner or "/vitest/" in program:
         return ["run", "-t", test]
-    raise DebugError("BAD_REQUEST", f'launch configuration "{launch.get("name")}" does not run a test runner AutoDebug '
+    raise DebugError("BAD_REQUEST", f'launch configuration "{launch.get("name")}" does not run a test runner Autodebug '
                                     f"knows ({TEST_RUNNERS}); pass args with the runner's own option instead")

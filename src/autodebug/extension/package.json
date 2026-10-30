@@ -1,6 +1,6 @@
 {
   "name": "autodebug",
-  "displayName": "AutoDebug",
+  "displayName": "Autodebug",
   "description": "Lets an AI agent debug your program with this window's debugger, after you click Approve, and write a root-cause report.",
   "version": "0.6.0",
   "publisher": "SwagatTeejoram",
@@ -12,15 +12,15 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
-    "commands": [{"command": "autodebug.showLog", "title": "AutoDebug: Show Log"}],
-    "mcpServerDefinitionProviders": [{"id": "autodebug.server", "label": "AutoDebug"}],
+    "commands": [{"command": "autodebug.showLog", "title": "Autodebug: Show Log"}],
+    "mcpServerDefinitionProviders": [{"id": "autodebug.server", "label": "Autodebug"}],
     "configuration": {
-      "title": "AutoDebug",
+      "title": "Autodebug",
       "properties": {
         "autodebug.bridgesFolder": {
           "type": "string",
           "default": "",
-          "description": "Folder where this window announces itself to the AutoDebug server. Leave empty for the default."
+          "description": "Folder where this window announces itself to the Autodebug server. Leave empty for the default."
         }
       }
     }

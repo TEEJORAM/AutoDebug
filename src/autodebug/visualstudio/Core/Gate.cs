@@ -397,8 +397,8 @@ namespace AutoDebug
                 try { close?.Invoke(); }
                 catch (Exception error) { backend.Log($"could not close the Approve dialog: {error.Message}"); }
             }, null, Timeout.Infinite, Timeout.Infinite);
-            var title = s.Attach ? $"AutoDebug: let the AI agent attach the debugger for \"{s.Label}\"?"
-                                 : $"AutoDebug: let the AI agent debug \"{Json.Str(s.Launch, "name")}\"?";
+            var title = s.Attach ? $"Autodebug: let the AI agent attach the debugger for \"{s.Label}\"?"
+                                 : $"Autodebug: let the AI agent debug \"{Json.Str(s.Launch, "name")}\"?";
             close = backend.Ask(title, DialogText(s, tasks), (approved, reason) =>
             {
                 timeout.Dispose();
@@ -651,7 +651,7 @@ namespace AutoDebug
             if (text.Length == 0 || text.Length > 300) throw Fail("BAD_REQUEST", "the note is 1 to 300 characters");
             lock (sync) { if (session == null || !Open.Contains(session.Phase)) throw Fail("NOT_FOUND", "no debug session is running"); }
             backend.Log($"asked the developer: {text}");
-            backend.Notify($"AutoDebug: the AI agent asks you to: {text}");
+            backend.Notify($"Autodebug: the AI agent asks you to: {text}");
             return Json.Make();
         }
 

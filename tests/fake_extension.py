@@ -1,4 +1,4 @@
-"""A fake AutoDebug extension speaking the real relay protocol, for Python tests
+"""A fake Autodebug extension speaking the real relay protocol, for Python tests
 that run without Node.js. It plays VS Code's side of the Debug Adapter Protocol
 against the scripted program in tests/fake_adapter.py, in-process.
 `approve()` / `deny()` stand in for the developer's click.

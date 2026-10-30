@@ -71,7 +71,7 @@ class NotBuilt(ToolsTest):
         (self.workspace / "build" / "app.py").write_text("", encoding="utf-8")
         self.assertEqual(self.debugger.start_session(launch_configuration="Run app", **args)["status"], "awaiting_approval")
         self.debugger.stop_session()
-        # A path AutoDebug cannot resolve itself is left to the debugger.
+        # A path Autodebug cannot resolve itself is left to the debugger.
         self.assertEqual(self.debugger.start_session(launch_configuration="Run file", **args)["status"], "awaiting_approval")
 
 
@@ -155,7 +155,7 @@ class OldExtension(ToolsTest):
         for call in (self.debugger.list_targets,
                      lambda: self.debugger.start_session(launch_configuration="Debug tests", breakpoints=[], goal="x")):
             error = self.assertCode("OLD_EXTENSION", call)
-            self.assertIn("AutoDebug extension 0.2.0 (protocol 2)", error.message)
+            self.assertIn("Autodebug extension 0.2.0 (protocol 2)", error.message)
             self.assertIn("`autodebug setup cursor`", error.message)
             self.assertIn("Developer: Reload Window", error.message)
             self.assertIn("Restarting only the extension host keeps the old extension", error.message)
@@ -321,7 +321,7 @@ class Report(ToolsTest):
             self.assertNotIn(absent, text)
         self.assertIn("- Model: test model (as the agent reported it)", text)
         self.assertIn("- Tokens: not reported by the agent.", text)
-        self.assertRegex(text, r"- AutoDebug: 0 tool calls, about 0 tokens")  # tools called directly, not over MCP
+        self.assertRegex(text, r"- Autodebug: 0 tool calls, about 0 tokens")  # tools called directly, not over MCP
 
     def test_ai_usage_counts_the_tool_traffic(self):
         from autodebug.mcp_server import call_tool
@@ -335,7 +335,7 @@ class Report(ToolsTest):
         text = path.read_text(encoding="utf-8")
         self.assertIn("- Model: Claude Opus (Cursor) (as the agent reported it)", text)
         self.assertIn("- Tokens: about 180k (Cursor usage page)", text)
-        self.assertRegex(text, r"- AutoDebug: 2 tool calls, about \d[\d,]* tokens")
+        self.assertRegex(text, r"- Autodebug: 2 tool calls, about \d[\d,]* tokens")
         self.assertEqual(self.debugger.usage, {"calls": 0, "characters": 0})
 
     def test_an_unverified_fix_says_so(self):
@@ -562,7 +562,7 @@ class OutdatedExtension(unittest.TestCase):
             return Window("w", ide, ("D:/p",), 1, "0" * 64, version)
 
         note = outdated_extension(window("visualstudio", "0.6.0"))
-        self.assertIn(f"Visual Studio's AutoDebug extension is 0.6.0, older than AutoDebug {__version__}", note)
+        self.assertIn(f"Visual Studio's Autodebug extension is 0.6.0, older than Autodebug {__version__}", note)
         self.assertIn("close every Visual Studio window and run `autodebug setup`", note)
         self.assertIsNone(outdated_extension(window("visualstudio", __version__)))
         self.assertIsNone(outdated_extension(window("cursor", "0.5.0")))  # its own version line

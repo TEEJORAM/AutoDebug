@@ -1,6 +1,6 @@
 name: Visual Studio extension
 
-# Builds the AutoDebug extension for Visual Studio 2022 / 2026 with MSBuild and the
+# Builds the Autodebug extension for Visual Studio 2022 / 2026 with MSBuild and the
 # VS SDK build tools. On main, publishes it as the release `visualstudio-v<version>`,
 # which `autodebug setup visualstudio` downloads.
 on:
@@ -79,6 +79,6 @@ jobs:
           else
             flag=$([ "$GITHUB_REF" = refs/heads/main ] || echo --prerelease)
             gh release create "$tag" out/AutoDebug.VisualStudio.vsix --target "$GITHUB_SHA" $flag \
-              --title "AutoDebug for Visual Studio $version" \
+              --title "Autodebug for Visual Studio $version" \
               --notes "Install with: autodebug setup visualstudio (Visual Studio 2022 or 2026)."
           fi

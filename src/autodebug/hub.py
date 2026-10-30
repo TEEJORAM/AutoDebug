@@ -1,4 +1,4 @@
-"""The AutoDebug service: one process per user that owns the debug session (docs/design.md, "The service").
+"""The Autodebug service: one process per user that owns the debug session (docs/design.md, "The service").
 
 Every agent reaches the same session through it: the MCP server (`autodebug serve`, started by
 Cursor, VS Code or Visual Studio) and the command line (`autodebug run <tool> ...`), which any agent
@@ -50,7 +50,7 @@ _CODE: list[str] = []
 
 
 def code_id() -> str:
-    """A fingerprint of this AutoDebug's Python code, so a service left running from before an update
+    """A fingerprint of this Autodebug's Python code, so a service left running from before an update
     (`git pull`, same version number) is replaced instead of answering with the old code."""
     if not _CODE:
         digest = hashlib.sha256()
@@ -147,7 +147,7 @@ class Hub:
         while True:
             time.sleep(min(30.0, max(0.05, self.idle_seconds / 4)))
             if time.monotonic() - self.last_call > self.idle_seconds and not self.busy():
-                _LOG.info("idle; the AutoDebug service exits")
+                _LOG.info("idle; the Autodebug service exits")
                 self.server.shutdown()
                 return
 
@@ -252,7 +252,7 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
     if alive:
         return info
     if not start:
-        raise ServiceError("the AutoDebug service is not running")
+        raise ServiceError("the Autodebug service is not running")
     _start_process()
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
@@ -260,7 +260,7 @@ def connect_service(start: bool = True, wait_seconds: float = 15) -> dict:
         if _ping(info):
             return info
         time.sleep(0.1)
-    raise ServiceError(f"the AutoDebug service did not start; see {state_folder() / 'hub.log'}")
+    raise ServiceError(f"the Autodebug service did not start; see {state_folder() / 'hub.log'}")
 
 
 def call(name: str, arguments: dict, timeout: float = CALL_TIMEOUT) -> tuple[dict, bool]:
@@ -269,9 +269,9 @@ def call(name: str, arguments: dict, timeout: float = CALL_TIMEOUT) -> tuple[dic
     try:
         reply = _request(info, {"op": "call", "name": name, "arguments": arguments}, timeout)
     except (OSError, ValueError) as exc:
-        raise ServiceError(f"lost the AutoDebug service during {name}: {exc}") from exc
+        raise ServiceError(f"lost the Autodebug service during {name}: {exc}") from exc
     if "result" not in reply:
-        raise ServiceError(f"the AutoDebug service refused the call: {reply.get('message') or reply}")
+        raise ServiceError(f"the Autodebug service refused the call: {reply.get('message') or reply}")
     return reply["result"], bool(reply.get("is_error"))
 
 

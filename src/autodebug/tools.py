@@ -327,7 +327,7 @@ class Debugger:
         return result
 
     def open_ide(self, ide: str, path: str, wait_seconds: float = 45) -> dict:
-        """Open the solution or folder in the IDE once and wait until its AutoDebug extension answers."""
+        """Open the solution or folder in the IDE once and wait until its Autodebug extension answers."""
         from autodebug import ide_launch
 
         opened, folder = ide_launch.target(ide, path)

@@ -1,4 +1,4 @@
-# Reads a console program's window for AutoDebug in Visual Studio (see ConsoleReader.cs): attaches to the
+# Reads a console program's window for Autodebug in Visual Studio (see ConsoleReader.cs): attaches to the
 # program's console and prints each finished line once, until the program exits, then one last read.
 # A separate process does this so that Visual Studio itself never attaches to a console.
 param([Parameter(Mandatory = $true)][int]$ProcessId)

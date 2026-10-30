@@ -1,6 +1,6 @@
 <Project>
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
-  <!-- The AutoDebug extension for Visual Studio 2022 and 2026: the relay's shared core
+  <!-- The Autodebug extension for Visual Studio 2022 and 2026: the relay's shared core
        (../Core) plus the Visual Studio backend. Build with MSBuild on Windows with the
        "Visual Studio extension development" workload, or let CI build it:
        msbuild -restore -p:Configuration=Release

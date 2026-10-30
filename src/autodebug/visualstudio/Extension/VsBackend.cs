@@ -98,7 +98,7 @@ namespace AutoDebug.VisualStudio
             backend.debugger = await package.GetServiceAsync(typeof(SVsShellDebugger)) as IVsDebugger ?? throw new InvalidOperationException("no debugger service");
             var output = await package.GetServiceAsync(typeof(SVsOutputWindow)) as IVsOutputWindow ?? throw new InvalidOperationException("no output window");
             var guid = PaneGuid;
-            output.CreatePane(ref guid, "AutoDebug", 1, 1);
+            output.CreatePane(ref guid, "Autodebug", 1, 1);
             output.GetPane(ref guid, out backend.pane);
             backend.Subscribe();
             return backend;
@@ -211,7 +211,7 @@ namespace AutoDebug.VisualStudio
                     if (!closed)
                     {
                         BringToFront();
-                        Log("waiting for Approve or Deny in the AutoDebug dialog");
+                        Log("waiting for Approve or Deny in the Autodebug dialog");
                         open = window;
                         approved = window.ShowModal() == true;
                         open = null;
